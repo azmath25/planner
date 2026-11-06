@@ -30,7 +30,7 @@ Neon Auth/Functions/PostgreSQL, production task persistence, server-side authori
 
 ## Repository safety
 
-Original code backed up to `backup/legacy-canvas-20261106`. GitHub `home-planner` is now the explicit destination requested by the user. Replaced code files are absent from the new source tree. Quizer, Mimo and all Neon projects unchanged.
+The original canvas code was initially backed up, but all extra branches were subsequently deleted at the user's explicit request. The renamed repository is `azmath25/planner`, and only `main` remains. Replaced code files are absent from the active source tree. Quizer, Mimo and all Neon projects unchanged. GitHub Pages deployment is configured in `.github/workflows/deploy-pages.yml` but requires the owner to enable GitHub Actions as Pages source in repository Settings → Pages before publishing.
 
 ## Next milestone
 
