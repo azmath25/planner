@@ -6,3 +6,5 @@ dist/
 .vite/
 .DS_Store
 *.log
+# Browser smoke-generated files
+tests/.harness/

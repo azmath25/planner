@@ -64,3 +64,46 @@
 @media(prefers-reduced-motion:reduce){.workspace-cover,.workspace-detail-cover{transition:none}}
 
 @media(max-width:760px){.page-home .page-head .actions{display:none}}
+
+/* Focus tracking: persistent across navigation, unobtrusive on phones. */
+.global-timer{
+ position:sticky;top:0;z-index:13;display:flex;align-items:center;gap:15px;
+ padding:10px clamp(15px,3vw,42px);min-height:74px;
+ background:color-mix(in srgb,var(--surface) 96%,transparent);border-bottom:1px solid var(--line);
+ backdrop-filter:blur(16px);box-shadow:0 7px 24px rgba(25,35,30,.05);
+}
+.global-timer-task{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.timer-pulse{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted-2)}
+.timer-pulse.live{background:#3c9a79;box-shadow:0 0 0 4px rgba(60,154,121,.12)}
+.timer-task-name{min-width:0;display:flex;flex-direction:column;gap:2px}
+.timer-task-link{border:0;background:transparent;color:var(--ink);font-weight:760;font-size:13px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;padding:0}
+.timer-task-name small{font-size:11px;color:var(--muted)}
+.global-time-value{font-size:23px;letter-spacing:-.03em;font-weight:790;font-variant-numeric:tabular-nums;white-space:nowrap}
+.global-timer-actions{display:flex;gap:6px;align-items:center}
+.timer-compact-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--ink);font-size:12px;font-weight:720}
+.timer-compact-button svg{width:17px;height:17px}
+.timer-compact-button.timer-complete{background:var(--accent);color:white;border-color:transparent}
+.timer-inline-actions{display:flex;flex-wrap:wrap;gap:6px}
+.session-history{display:grid;gap:8px;margin-top:15px}
+.session-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 13px;border:1px solid var(--line);border-radius:12px}
+.session-item strong{display:block;font-size:12px}.session-item small{display:block;color:var(--muted);font-size:11px}
+.session-item time{font-weight:780;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:760px){
+ .global-timer{position:fixed;top:auto;bottom:calc(68px + env(safe-area-inset-bottom));left:10px;right:10px;
+   z-index:19;min-height:65px;padding:10px 12px;gap:10px;border:1px solid var(--line);border-radius:17px;
+   box-shadow:0 7px 28px rgba(26,45,35,.16)}
+ .global-time-value{font-size:18px}
+ .global-timer-actions{gap:4px}
+ .timer-compact-button{min-width:38px;min-height:42px;padding:7px}
+ .timer-compact-button span{display:none}
+ .timer-task-name small{font-size:10px;max-width:175px;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+ .shell:has(.global-timer) .content{padding-bottom:calc(175px + env(safe-area-inset-bottom))}
+}
+@media(max-width:390px){
+ .global-timer{gap:6px;padding:9px}
+ .timer-pulse{display:none}
+ .timer-task-link{font-size:12px}
+ .timer-task-name small{display:none}
+ .global-time-value{font-size:16px}
+ .timer-compact-button{min-width:35px;min-height:40px;padding:6px}
+}

@@ -21,6 +21,7 @@ export interface Task {
   priority: TaskPriority;
   estimate: number;
   spent: number;
+  spentMs?: number;
   deadline: ISODate | null;
   deadlineTime?: ClockTime | null;
   reminder: ISODate | null;
@@ -46,12 +47,7 @@ export interface QuickNote {
   color: string;
 }
 
-export interface ActiveTimer {
-  taskId: string;
-  startedAt: number;
-  elapsed: number;
-  running: boolean;
-}
+import type { ActiveTimer, TimeSession } from './timeTracking';
 
 /** One day can contain multiple timed intervals and an independent untimed pool. */
 export interface DemoSnapshot {
@@ -61,6 +57,7 @@ export interface DemoSnapshot {
   scheduled: ScheduledInterval[];
   capacity: number;
   timer: ActiveTimer | null;
+  sessions?: TimeSession[];
   theme?: string;
   accent?: string;
   density?: 'comfortable' | 'compact';

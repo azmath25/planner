@@ -9,7 +9,8 @@
     "build": "npm run typecheck && vite build",
     "check:dist": "node scripts/check-dist.mjs",
     "test:source": "node tests/source-smoke.mjs",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:time": "node --experimental-strip-types --test tests/time-tracking.test.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
