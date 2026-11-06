@@ -2,7 +2,7 @@
 
 **M1.1 design checkpoint (November 2026)**
 
-Dayframe is a personal task, time, reminder, notes and workspace platform. This repository replaces the former `home-planner` canvas editor. The original implementation is preserved in the `backup/legacy-canvas-20261106` Git branch.
+Dayframe is a personal task, time, reminder, notes and workspace platform. This repository replaces the former `home-planner` canvas editor. The original canvas planner has been replaced. Obsolete branches were deleted at the user's request; only `main` remains.
 
 ## Current state
 
@@ -25,6 +25,12 @@ Visit http://localhost:8080. No dependency installation or build step is require
 - Hybrid day planner: ordered untimed pool plus fixed start/end intervals
 - Quick Note creation and deletion confirmation
 - Basic in-tab demo timer, report mockups and six appearance themes
+
+## Website preview deployment
+
+The single-branch workflow is `.github/workflows/deploy-pages.yml`, publishing the static website from `main` without a `gh-pages` branch. In **Settings → Pages**, choose **GitHub Actions** as the build source (one-time repository administration step). Then rerun the **Deploy Dayframe website** action, or push a frontend change to `main`.
+
+Expected preview URL: `https://azmath25.github.io/planner/` after successful deployment. GitHub Pages may be publicly accessible despite private source; do not place personal information or secrets in the preview.
 
 ## Verification
 
