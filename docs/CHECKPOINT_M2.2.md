@@ -18,7 +18,10 @@
 
 - Auth provisioned in Neon and origin registered. PostgreSQL migration applied idempotently.
 - Backend unit tests: forged/missing bearer denial, CORS, spoofed owner, protected paths, outage, user-scoped SQL.
-- GitHub Actions backend checks, React TypeScript build and branch Pages publish must be verified at final checkpoint.
+- **PASS:** GitHub backend authentication tests and function packaging ([run 42299665481](https://github.com/azmath25/planner/actions/runs/42299665481)).
+- **PASS:** React TypeScript build and branch-based Pages publishing ([React run 42299858997](https://github.com/azmath25/planner/actions/runs/42299858997)); [latest Pages deployment 42300100417](https://github.com/azmath25/planner/actions/runs/42300100417)).
+- **PASS:** Live Neon API smoke ([run 42300101306](https://github.com/azmath25/planner/actions/runs/42300101306)): `/health` responded with `stage: auth-workspaces`, anonymous and forged bearer tokens returned 401, approved CORS preflight returned 204, and untrusted origin returned 403.
+- **PASS:** Neon Function `dayframeapi` deployment 2 reported completed, migration index and trigger verified. Synthetic same-user General creation returned exactly one row and test data was rolled back.
 - **No automated end-to-end real email sign-up or login was run.** User must verify with their own credentials before trusting the flow for everyday use.
 - No stored database passwords or user tokens in GitHub or frontend.
 
