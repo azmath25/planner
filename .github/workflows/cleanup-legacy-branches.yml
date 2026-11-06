@@ -1,0 +1,38 @@
+name: One-time legacy branch cleanup
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cleanup-legacy-branches.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  delete-legacy-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify default branch and delete old refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_branch="$(gh api "repos/$GH_REPO" --jq '.default_branch')"
+          test "$default_branch" = "main" || { echo "Default branch is not main; aborting"; exit 1; }
+          branches=(
+            "azmath25-calude-1"
+            "backup/legacy-canvas-20261106"
+            "backup/legacy-default-20261106"
+            "feature/dayframe-mobile-m1-20261106"
+            "gh-pages"
+          )
+          for branch in "${branches[@]}"; do
+            test "$branch" != "main"
+            echo "Deleting $branch"
+            if gh api --method DELETE "repos/$GH_REPO/git/refs/heads/$branch"; then
+              echo "Deleted $branch"
+            else
+              echo "Failed to delete $branch" >&2
+              exit 1
+            fi
+          done
