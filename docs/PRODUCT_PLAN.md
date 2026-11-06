@@ -1,9 +1,9 @@
 # Dayframe — Product Plan
 
-**Status:** v1.0 specification, 2026-11-06  
+**Status:** v1.1 specification, 2026-11-06  
 **Project:** Standalone personal time, task and knowledge management platform  
 **Delivery sequence:** Mobile-first website on GitHub Pages + Neon first; Android/Google Play second.  
-**Implementation status:** M1.1 interactive mobile design prototype only; no backend is connected.
+**Implementation status:** M1.2 mobile design prototype; no backend is connected.
 
 ## 1. Product vision
 
@@ -73,14 +73,14 @@ Proposed conceptual tables: users/auth, workspaces, tasks, task_relations (or pa
 
 ## 10. Milestones (one at a time)
 
-Every milestone: implement only approved scope, run relevant checks, document outcomes and risks, **stop for approval**. The user approved replacement of this repository’s legacy app; a backup branch protects its previous implementation. Avoid unrelated protected branches, Neon production resources and live deployments without explicit approval.
+Every milestone: implement only approved scope, run relevant checks, document outcomes and risks, **stop for approval**. The user approved replacement of this repository’s legacy app; the legacy branches have been deleted by the user's explicit instruction, and only GitHub `main` is used. Avoid unrelated protected branches, Neon production resources and live deployments without explicit approval.
 
 ### Phase I — website
 
 - **M1.1 Mobile UX architecture:** page map, responsive navigation, Home/Tasks/Plan/Notes/Workspaces/Reports screens, interactive example flow; design-only with sample data; write this plan and checkpoint.
 - **M1.2 Visual design system:** theme gallery, typography, palettes, touch controls, image/cover treatments and accessibility.
 - **M1.3 React frontend foundation:** reimplement validated prototype as React + TypeScript + Vite, app routing and tests; sample-data flows only.
-- **M2.1 Isolated infrastructure:** approved existing GitHub repository (`azmath25/home-planner`), new Neon project and development branch, CI and safe API foundation.
+- **M2.1 Isolated infrastructure:** existing renamed GitHub repository (`azmath25/planner`, `main` only), separate Neon project, CI and safe API foundation.
 - **M2.2 Identity:** Neon Auth, server session verification, secure profile management and General workspace auto-creation.
 - **M2.3 Workspaces:** create/edit/archive custom workspaces, workspace navigation, image storage plan and authorization tests.
 - **M3.1 Tasks:** create/edit, estimates, independent deadlines and reminders, filtering.
@@ -100,7 +100,7 @@ Every milestone: implement only approved scope, run relevant checks, document ou
 - **M7.3 Insights:** estimates, progress, trends, deadline history and CSV export.
 - **M8.1 Quality:** accessibility, mobile responsiveness, device testing, imagery optimization, performance and security.
 - **M8.2 PWA:** installation, offline/sync semantics and supported notification behavior.
-- **M8.3 Website release:** backup/export verification, end-to-end acceptance, production GitHub Pages configuration and go-live approval.
+- **M8.3 Website release:** backup/export verification, end-to-end acceptance and go-live approval. Website preview uses GitHub Pages **Deploy from a branch → main / (root)**; no additional deployment branches or Actions publishing workflow.
 
 ### Phase II — Android after stable website
 
@@ -119,4 +119,4 @@ A user can create a reminder-only task without deadline; create a hard-deadline 
 
 ## 12. Current checkpoint
 
-M1.1 is the only active milestone. Prototype uses mock fixtures and does not write to any database. The user explicitly approved replacing the old `azmath25/home-planner` canvas editor. Its former main version is preserved in `backup/legacy-canvas-20261106`. Dayframe replaces the root source files; do not change Quizer, Mimo or their Neon resources. The static demo is not a production application.
+M1.2 visual design milestone: six coherent themes, six optional accent colors, comfortable/compact layout, three cover styles, avatar and cover photo preview for tasks and workspaces with client-side image size/type checks, compression and focal-position adjustment. These appearance controls are deliberately confined to Settings or entity detail views to keep the mobile daily interface clean. Uploaded images are disposable browser-local preview data only (no remote uploads). Use GitHub Pages **branch deployment from `main` / `(root)`**, not a `gh-pages` branch or an Actions deployment workflow. The user explicitly requested GitHub to retain only one branch (`main`); all obsolete branches were deleted. No Neon mutations, real notifications or production uploads. The static demo is not a production application.

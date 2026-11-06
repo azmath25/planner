@@ -1,12 +1,12 @@
 # Dayframe — mobile-first planning website
 
-**M1.1 design checkpoint (November 2026)**
+**M1.2 design checkpoint (November 2026)**
 
-Dayframe is a personal task, time, reminder, notes and workspace platform. This repository replaces the former `home-planner` canvas editor. The original canvas planner has been replaced. Obsolete branches were deleted at the user's request; only `main` remains.
+Dayframe is a personal task, time, reminder, notes and workspace platform. This repository replaces the former `home-planner` canvas editor. The former canvas implementation has been replaced and the legacy branches were deleted at the user's request. Only `main` remains.
 
 ## Current state
 
-A **static, interactive, mobile-first design prototype** for GitHub Pages. It uses sample data and browser-local storage for demonstration only. It is **not** connected to Neon or an authenticated backend. Time tracking, statistics, calendar views, notifications, rich documents, asset uploads and deletion are not production-ready.
+A **static, interactive, mobile-first design prototype** for GitHub Pages. It uses sample data and browser-local storage for demonstration only. It is **not** connected to Neon or an authenticated backend. Time tracking, statistics, calendar views, notifications, rich documents, cloud asset uploads and deletion are not production-ready.
 
 Open `index.html` or serve the directory locally:
 
@@ -25,12 +25,13 @@ Visit http://localhost:8080. No dependency installation or build step is require
 - Hybrid day planner: ordered untimed pool plus fixed start/end intervals
 - Quick Note creation and deletion confirmation
 - Basic in-tab demo timer, report mockups and six appearance themes
+- M1.2: six accent palettes, comfortable/compact density and three cover presentations
+- M1.2: workspace/task cover and avatar upload preview, focal-position control, replace/remove
+- Image previews are compressed and saved **only to this browser** (localStorage with storage limits)
 
-## Website preview deployment
+## GitHub Pages — deploy from a branch
 
-The single-branch workflow is `.github/workflows/deploy-pages.yml`, publishing the static website from `main` without a `gh-pages` branch. In **Settings → Pages**, choose **GitHub Actions** as the build source (one-time repository administration step). Then rerun the **Deploy Dayframe website** action, or push a frontend change to `main`.
-
-Expected preview URL: `https://azmath25.github.io/planner/` after successful deployment. GitHub Pages may be publicly accessible despite private source; do not place personal information or secrets in the preview.
+In repository **Settings → Pages**, select **Build and deployment → Source: Deploy from a branch**, then **Branch: `main` / `/(root)` → Save**. No `gh-pages` or deployment branch and no Actions-based Pages publishing workflow. The website address is `https://azmath25.github.io/planner/` after GitHub Pages finishes building. The site may be publicly visible even though source is private. Do not store sensitive data in this preview.
 
 ## Verification
 
@@ -39,13 +40,13 @@ node --check app.js
 python3 tests/smoke.py  # requires Playwright and local Chromium
 ```
 
-The browser smoke test covers task creation, reminder time, daily pool, timed schedule, quick notes, themes and delete confirmation.
+The browser smoke tests cover task creation, reminder time, daily pool, timed schedule, quick notes, themes, accent/density/cover settings, workspace/task cover and avatar uploads, and delete confirmation.
 
 ## Important limitations
 
-**Do not rely on this prototype for real reminders or recorded time.** Local browser data is disposable. A future milestone will add Neon Auth, protected APIs, database-backed sessions, notifications and recoverable Trash. The current delete confirmation removes only local demo objects.
+**Do not rely on this prototype for real reminders or recorded time.** Local browser data is disposable. A future milestone will add Neon Auth, protected APIs, database-backed sessions, notifications and recoverable Trash. The current delete confirmation removes only local demo objects. Photo uploads in M1.2 never go to the server, and localStorage can be cleared by the browser. Do not upload confidential images.
 
-See [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md) for the complete scope and ordered milestones, and [`docs/CHECKPOINT_M1.1.md`](docs/CHECKPOINT_M1.1.md) for implementation verification.
+See [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md) for the complete scope and ordered milestones, and [`docs/CHECKPOINT_M1.2.md`](docs/CHECKPOINT_M1.2.md) for the latest verification.
 
 ## Safety
 
