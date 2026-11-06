@@ -1,53 +1,40 @@
-# Dayframe — mobile-first planning website
+# Dayframe — mobile-first personal planner
 
-**M1.2 design checkpoint (November 2026)**
+**M1.3: React + TypeScript frontend foundation.** The mobile website is the first product; Android is deliberately later.
 
-Dayframe is a personal task, time, reminder, notes and workspace platform. This repository replaces the former `home-planner` canvas editor. The former canvas implementation has been replaced and the legacy branches were deleted at the user's request. Only `main` remains.
-
-## Current state
-
-A **static, interactive, mobile-first design prototype** for GitHub Pages. It uses sample data and browser-local storage for demonstration only. It is **not** connected to Neon or an authenticated backend. Time tracking, statistics, calendar views, notifications, rich documents, cloud asset uploads and deletion are not production-ready.
-
-Open `index.html` or serve the directory locally:
+## Run locally
 
 ```bash
-python3 -m http.server 8080
+npm install
+npm run dev
+npm run typecheck
+npm run test:source
+npm run build
+npm run check:dist
 ```
 
-Visit http://localhost:8080. No dependency installation or build step is required for the M1.1 prototype.
+Vite serves `web/`. The application source lives in `web/src/` and a small typed domain layer is under `web/src/domain/`.
 
-## What works in the design preview
+The existing M1.2 interactive UI is mounted by a **temporary compatibility adapter** (`web/src/legacy/legacy.ts`) under a React 19 root. This preserves task creation, hard deadlines and soft reminders, global Home, hybrid day planning, quick notes, six themes, and task/workspace cover and avatar previews. It is **not** a completed migration of all screen logic into React components. Follow-on milestones can move each screen and state into typed React incrementally.
 
-- Mobile bottom navigation and desktop sidebar
-- Common Home across General, Research and Development example workspaces
-- Task creation and editing with hard deadline and separate soft reminder date
-- Complete/reopen in local demo state, opening task details
-- Hybrid day planner: ordered untimed pool plus fixed start/end intervals
-- Quick Note creation and deletion confirmation
-- Basic in-tab demo timer, report mockups and six appearance themes
-- M1.2: six accent palettes, comfortable/compact density and three cover presentations
-- M1.2: workspace/task cover and avatar upload preview, focal-position control, replace/remove
-- Image previews are compressed and saved **only to this browser** (localStorage with storage limits)
+### Preview safety
 
-## GitHub Pages — deploy from a branch
+All tasks, images and reminders are still demo data stored only in this browser's localStorage using the unchanged key `dayframe.m1.design-demo.1`. No Neon, login, push service, or real persistent task tracking is connected. Do not rely on this prototype for actual reminders, critical deadlines, confidential content or recorded time.
 
-In repository **Settings → Pages**, select **Build and deployment → Source: Deploy from a branch**, then **Branch: `main` / `/(root)` → Save**. No `gh-pages` or deployment branch and no Actions-based Pages publishing workflow. The website address is `https://azmath25.github.io/planner/` after GitHub Pages finishes building. The site may be publicly visible even though source is private. Do not store sensitive data in this preview.
+## GitHub Pages, one branch
 
-## Verification
+The repo retains exactly one branch: `main`. In **Settings → Pages**, use **Deploy from a branch → main → /(root)**. GitHub Actions runs `npm run build`, verifies assets and then commits Vite's built `index.html` and `assets/` to **main itself**. GitHub Pages does not automatically publish bot-authored commits; the milestone deployment is finalized by a separate human/app-authored `main` commit after CI verification. The Pages source never changes to GitHub Actions; no `gh-pages` branch is needed.
 
-```bash
-node --check app.js
-python3 tests/smoke.py  # requires Playwright and local Chromium
-```
+Published preview: https://azmath25.github.io/planner/
 
-The browser smoke tests cover task creation, reminder time, daily pool, timed schedule, quick notes, themes, accent/density/cover settings, workspace/task cover and avatar uploads, and delete confirmation.
+Do not manually edit generated root `index.html` or `assets/`. Edit `web/` instead. Generated assets are committed so the branch-based Pages source can serve them.
 
-## Important limitations
+## Documentation
 
-**Do not rely on this prototype for real reminders or recorded time.** Local browser data is disposable. A future milestone will add Neon Auth, protected APIs, database-backed sessions, notifications and recoverable Trash. The current delete confirmation removes only local demo objects. Photo uploads in M1.2 never go to the server, and localStorage can be cleared by the browser. Do not upload confidential images.
+- [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md) — long-term product requirements and milestones.
+- [`docs/CHECKPOINT_M1.3.md`](docs/CHECKPOINT_M1.3.md) — implementation, verification, limitations and next step.
+- Historic M1.1 and M1.2 checkpoints remain unchanged.
 
-See [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md) for the complete scope and ordered milestones, and [`docs/CHECKPOINT_M1.2.md`](docs/CHECKPOINT_M1.2.md) for the latest verification.
+## Security
 
-## Safety
-
-The new product is independent of Quizer and Mimo. No API secrets, Neon connection strings, provider keys or real user data belong in this static frontend.
+The frontend must never contain database connection strings, private API tokens, or cloud credentials. Quizer, Mimo and all Neon projects are independent and unchanged.

@@ -1,0 +1,52 @@
+name: Build Dayframe React website for branch Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - 'scripts/**'
+      - '.github/workflows/build-branch-pages.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: dayframe-main-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify feature parity source
+        run: npm run test:source
+      - name: Type-check and build React website
+        run: npm run build
+      - name: Verify generated site and Pages path
+        run: npm run check:dist
+      - name: Publish compiled assets to main root
+        run: |
+          set -euo pipefail
+          cp dist/index.html index.html
+          rm -rf assets
+          cp -R dist/assets assets
+          touch .nojekyll
+          # Legacy source moved into web/src/legacy; old browser bundles are not served.
+          git rm -f --ignore-unmatch app.js styles.css || true
+          git add -A -- index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo 'No generated-site changes'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: refresh React preview on main [skip ci]'
+          git push origin HEAD:main
