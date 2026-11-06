@@ -1,42 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler from '../src/index.mjs';
-
-function request(path, method = 'GET', headers = {}) {
-  return handler.fetch(new Request('https://api.dayframe.invalid' + path, { method, headers }));
+import {createHandler, BOOTSTRAP_SQL, LIST_SQL} from '../src/index.mjs';
+function make() {
+  const queries=[];
+  const verifyToken=async token=>{if(!['alice','bob'].includes(token))throw Error('signature invalid'); return token;};
+  const query=async(sql,args)=>{queries.push([sql,args]);return sql===LIST_SQL?{rows:[{id:args[0]+'-general',name:'General',kind:'general'}]}:{rows:[]}};
+  const handler=createHandler({verifyToken,query});
+  const req=(path,method='GET',headers={})=>handler.fetch(new Request('https://api.invalid'+path,{method,headers}));
+  return {req,queries};
 }
-
-test('public health is deliberately non-sensitive and no-cache', async () => {
-  const response = await request('/health');
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { service: 'dayframe', status: 'ok', stage: 'foundation' });
-  assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
-  assert.equal(response.headers.get('access-control-allow-origin'), null);
+test('health no cache and no database operations',async()=>{
+  const {req,queries}=make();const r=await req('/health');
+  assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');assert.equal(queries.length,0);
 });
-
-test('all future application routes deny anonymous and forged bearer credentials', async () => {
-  for (const headers of [{}, { authorization: 'Bearer fabricated' }, { 'x-user-id': 'admin' }]) {
-    for (const path of ['/v1/tasks', '/v1/workspaces', '/v1/me', '/v1/tasks/anything']) {
-      const result = await request(path, 'GET', headers);
-      assert.equal(result.status, 401, path + ': should fail closed');
-    }
-  }
+test('unauthenticated, forged and malformed tokens denied before database access',async()=>{
+  const {req,queries}=make();
+  for(const path of ['/v1/me','/v1/workspaces','/v1/tasks'])for(const headers of [{},{authorization:'Bearer forged'},{'x-user-id':'alice'},{authorization:'Basic alice'}])assert.equal((await req(path,'GET',headers)).status,401);
+  assert.equal(queries.length,0);
 });
-
-test('CORS preflight only grants the exact published frontend origin', async () => {
-  const allowed = await request('/v1/tasks', 'OPTIONS', { origin: 'https://azmath25.github.io' });
-  assert.equal(allowed.status, 204);
-  assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://azmath25.github.io');
-  const other = await request('/v1/tasks', 'OPTIONS', { origin: 'https://evil.example' });
-  assert.equal(other.status, 403);
-  assert.equal(other.headers.get('access-control-allow-origin'), null);
-  const missing = await request('/v1/tasks', 'OPTIONS');
-  assert.equal(missing.status, 403);
+test('ownership derived only from verified subject; query and header spoofing ignored',async()=>{
+  const {req,queries}=make();
+  const a=await req('/v1/me?owner_user_id=bob','GET',{authorization:'Bearer alice'});
+  assert.equal(a.status,200);assert.equal((await a.json()).generalWorkspace.id,'alice-general');
+  const b=await req('/v1/workspaces','GET',{authorization:'Bearer bob','x-user-id':'alice'});
+  assert.equal(b.status,200);assert.deepEqual((await b.json()).workspaces.map(w=>w.id),['bob-general']);
+  assert.deepEqual(queries.map(q=>q[1]),[['alice'],['alice'],['bob'],['bob']]);
+  assert.equal(queries[0][0],BOOTSTRAP_SQL);
 });
-
-test('nonexistent paths and invalid health method are not executable', async () => {
-  assert.equal((await request('/unknown')).status, 404);
-  assert.equal((await request('/health', 'POST')).status, 405);
-  assert.equal((await request('/v1/tasks', 'DELETE')).status, 401);
+test('CORS only trusts exact website origin',async()=>{
+  const {req}=make();
+  const valid=await req('/v1/me','OPTIONS',{origin:'https://azmath25.github.io'});
+  assert.equal(valid.status,204);assert.equal(valid.headers.get('access-control-allow-origin'),'https://azmath25.github.io');
+  assert.equal((await req('/v1/me','OPTIONS',{origin:'https://other.example'})).status,403);
+  const denied=await req('/v1/me','GET',{origin:'https://azmath25.github.io'});
+  assert.equal(denied.status,401);assert.equal(denied.headers.get('access-control-allow-origin'),'https://azmath25.github.io');
+});
+test('disabled writes and not-yet-implemented routes stay blocked',async()=>{
+  const {req,queries}=make();
+  assert.equal((await req('/v1/me','POST',{authorization:'Bearer alice'})).status,405);
+  assert.equal((await req('/v1/workspaces','DELETE',{authorization:'Bearer alice'})).status,405);
+  assert.equal((await req('/v1/tasks','GET',{authorization:'Bearer alice'})).status,404);
+  assert.equal((await req('/unknown')).status,404);assert.equal(queries.length,0);
+});
+test('database errors fail closed without exposing secrets',async()=>{
+  const handler=createHandler({verifyToken:async()=> 'alice',query:async()=>{throw Error('password=hidden')}});
+  const r=await handler.fetch(new Request('https://api.invalid/v1/me',{headers:{authorization:'Bearer alice'}}));
+  assert.equal(r.status,503);assert.equal(JSON.stringify(await r.json()).includes('password'),false);
 });

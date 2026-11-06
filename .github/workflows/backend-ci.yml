@@ -1,22 +1,47 @@
-name: Dayframe backend checks
+name: Dayframe backend authentication checks and bundle
 on:
   push:
     branches: [main]
     paths:
-      - 'backend/**'
+      - 'backend/src/**'
+      - 'backend/tests/**'
+      - 'backend/db/**'
+      - 'package.json'
       - '.github/workflows/backend-ci.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: dayframe-backend-build
+  cancel-in-progress: false
 jobs:
-  test:
+  security-and-bundle:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Syntax
-        run: node --check backend/src/index.mjs
-      - name: Node tests (security + API routes)
-        run: node --test backend/tests/*.test.mjs
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify backend unit and ownership cases
+        run: npm run test:api
+      - name: Bundle Neon Function for deployed Node 24 runtime
+        run: |
+          set -euo pipefail
+          mkdir -p backend/deploy backend/packaged
+          npx esbuild backend/src/index.mjs --bundle --platform=node --target=node24 --format=esm --external:pg-native --outfile=backend/deploy/index.mjs --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
+          node --check backend/deploy/index.mjs
+          (cd backend/deploy && zip -q -9 ../dayframeapi.zip index.mjs)
+          base64 -w0 backend/dayframeapi.zip > backend/packaged/dayframeapi.b64
+          test -s backend/packaged/dayframeapi.b64
+      - name: Publish reproducible deploy bundle to same branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f backend/packaged/dayframeapi.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'build: package M2.2 Neon Function [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
