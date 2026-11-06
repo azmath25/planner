@@ -19,7 +19,7 @@
 - PASS: six Node domain tests — pause/resume, reload, migration from old demo timers, corrupt state rejection, short-session retention, long sessions.
 - PASS: Playwright mobile Chromium regression — start, pause, resume after navigation, stop without completion, finish with completion, session history, widths 320/390/768/1440, no browser errors.
 - PASS: Existing source-smoke and core parsing tests.
-- GitHub CI and Pages deployment: validate run after commit.
+- - **PASS:** GitHub React build workflow [42297266620](https://github.com/azmath25/planner/actions/runs/42297266620): tests, typecheck, build and branch-root publication all succeeded.\n- **PASS:** GitHub Pages [42297319648](https://github.com/azmath25/planner/actions/runs/42297319648): published built site from `main` successfully (commit `5f708a77ebddbd1ecbdd3ab3c2a5e3286164b697`).
 
 ## Known limitations
 
