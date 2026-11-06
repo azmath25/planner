@@ -1,0 +1,41 @@
+name: Dayframe live Neon API smoke
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/neon-api-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Probe live Neon Function without credentials
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const base='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
+          async function request(path,init={}) {
+            const res=await fetch(base+path,{...init,signal:AbortSignal.timeout(20000),redirect:'manual'});
+            return res;
+          }
+          const health=await request('/health');
+          assert.equal(health.status,200,'GET /health');
+          const data=await health.json();
+          assert.equal(data.stage,'auth-workspaces','Newest deployed function');
+          console.log('PASS /health',data.stage);
+          assert.equal((await request('/v1/me')).status,401,'Anonymous user forbidden');
+          assert.equal((await request('/v1/workspaces',{headers:{authorization:'Bearer forged'}})).status,401,'Forged JWT forbidden');
+          console.log('PASS anonymous and forged bearer rejections');
+          const opts=await request('/v1/me',{method:'OPTIONS',headers:{origin:'https://azmath25.github.io','access-control-request-method':'GET','access-control-request-headers':'authorization'}});
+          assert.equal(opts.status,204,'Trusted preflight');
+          assert.equal(opts.headers.get('access-control-allow-origin'),'https://azmath25.github.io');
+          const evil=await request('/v1/me',{method:'OPTIONS',headers:{origin:'https://other.example'}});
+          assert.equal(evil.status,403,'Untrusted preflight');
+          console.log('PASS CORS allowlist');
+          JS
