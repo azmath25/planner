@@ -107,3 +107,33 @@
  .global-time-value{font-size:16px}
  .timer-compact-button{min-width:35px;min-height:40px;padding:6px}
 }
+/* M2.2 Neon Auth — account UI remains independent of browser-local preview state. */
+.auth-page{min-height:100dvh;display:grid;place-items:center;padding:24px 16px;background:radial-gradient(circle at 15% 8%,#e0ece5 0%,transparent 39%),radial-gradient(circle at 85% 88%,#f4eadd 0%,transparent 35%),#f7f8f6;color:#25332e}
+.auth-card{width:min(100%,430px);padding:36px 30px;background:#fff;border:1px solid #dce5de;border-radius:25px;box-shadow:0 20px 65px #20382916;text-align:center}
+.auth-symbol{width:50px;height:50px;display:grid;place-items:center;border-radius:17px;background:#e3eee6;margin:0 auto 16px;font-size:32px;color:#38654b}
+.auth-kicker{letter-spacing:.22em;font-size:11px;font-weight:800;color:#5b8571;margin:0 0 12px}
+.auth-card h1{font-size:clamp(25px,5vw,31px);line-height:1.15;letter-spacing:-.035em;margin:0 0 10px}
+.auth-subtitle{font-size:14px;color:#77837a;line-height:1.5;margin:0 0 26px}
+.auth-form{display:grid;gap:15px;text-align:left}
+.auth-form label{display:grid;gap:7px;font-size:12px;font-weight:720;color:#465e50}
+.auth-form input{width:100%;height:46px;border:1px solid #cbd8ce;border-radius:12px;padding:11px 13px;background:#fff;color:#25332e;font-size:15px;font-family:inherit}
+.auth-form input:focus-visible,.auth-submit:focus-visible,.auth-switch:focus-visible,.account-signout:focus-visible{outline:3px solid #82b39b;outline-offset:2px}
+.auth-submit{width:100%;border:0;border-radius:12px;background:#326649;color:#fff;font-weight:760;font-size:14px;min-height:45px;cursor:pointer}
+.auth-submit:disabled,.auth-switch:disabled{opacity:.55;cursor:wait}
+.auth-message{color:#a23b36;font-size:13px;line-height:1.5;margin:0}
+.auth-switch{border:0;background:transparent;color:#37664f;font-size:13px;font-weight:700;margin-top:21px;cursor:pointer}
+.auth-note{font-size:11px;line-height:1.55;color:#7d887f;margin:28px 0 0}
+.authed-app{min-height:100dvh}
+.account-topbar{min-height:47px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 18px;background:#e8f0eb;border-bottom:1px solid #cddbcf;color:#2e4e3c;font-size:12px;position:relative;z-index:51}
+.account-identity{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-identity strong{font-weight:750}
+.account-local-notice{font-size:11px;color:#567362;text-align:center}
+.account-signout{flex-shrink:0;border:1px solid #a8c4b0;border-radius:8px;background:#fff;cursor:pointer;padding:8px 12px;font-size:12px;font-weight:750;color:#2c6147}
+.authed-app #app .shell{min-height:calc(100dvh - 47px)}
+.authed-app .auth-wait{min-height:calc(100dvh - 47px)}
+@media(max-width:730px){
+ .account-topbar{padding:6px 12px;min-height:44px}
+ .account-local-notice{display:none}
+ .auth-card{padding:30px 21px}
+ .authed-app #app .shell{min-height:calc(100dvh - 44px)}
+}

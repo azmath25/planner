@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M1.3: React + TypeScript frontend foundation; Timer UX slice implemented after M2.1.** The mobile website is the first product; Android is deliberately later.
+**M2.2: Neon Auth and permanent General workspace; timer preview preserved.** The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -10,6 +10,7 @@ npm run dev
 npm run typecheck
 npm run test:source
 npm run test:time
+npm run test:api
 npm run build
 npm run check:dist
 ```
@@ -20,7 +21,7 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 ### Preview safety
 
-All tasks, images and reminders are still demo data stored only in this browser's localStorage using the unchanged key `dayframe.m1.design-demo.1`. No Neon, login, push service, or real persistent task tracking is connected. Do not rely on this prototype for actual reminders, critical deadlines, confidential content or recorded time.
+After sign-in, a unique General workspace is created in Neon. **Task and timer screens are still only browser-local demos**, now namespaced per signed-in account. No persistent task tracking or notifications are connected. Do not rely on this prototype for actual reminders, critical deadlines, confidential content or recorded time.
 
 ## Browser-local time tracking (timer UX slice)
 
@@ -54,3 +55,7 @@ Do not manually edit generated root `index.html` or `assets/`. Edit `web/` inste
 ## Security
 
 The frontend must never contain database connection strings, private API tokens, or cloud credentials. Quizer, Mimo and all Neon projects are independent and unchanged.
+
+## Neon account milestone (M2.2)
+
+Email/password sign-up, sign-in and sign-out are provided by Managed Neon Auth. The `dayframeapi` Neon Function verifies user JWTs and offers only `GET /v1/me` and `GET /v1/workspaces`, scoped to the verified user. `General` is permanent in Postgres. No database secret is bundled into the website. See [the checkpoint](docs/CHECKPOINT_M2.2.md) for setup and limits.

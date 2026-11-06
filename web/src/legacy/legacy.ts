@@ -5,7 +5,7 @@
  */
 import { getElapsedMs, startTimer, pauseTimer, resumeTimer, finishSession, formatElapsed, restoreTimer, recordedMs } from '../domain/timeTracking';
 
-export function mountLegacyDayframe() {
+export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1') {
   const listeners = [];
   const trackListener = (eventName, handler) => {
     document.addEventListener(eventName, handler);
@@ -37,7 +37,7 @@ const initialTasks=()=>[
 {id:'t7',title:'Organize desk and notes',workspace:'general',estimate:15,spent:15,status:'done',deadline:null,reminder:null,long:false,priority:'low',parent:null,notes:''}
 ];
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
-const STORAGE='dayframe.m1.design-demo.1';
+const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',workspaceFilter:'all',viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:saved.tasks||initialTasks(),notes:saved.notes||initialNotes(),pools:saved.pools||{[today()]:['t2','t4','t5']},scheduled:saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}],capacity:saved.capacity||6,timer:saved.timer||null,sessions:Array.isArray(saved.sessions)?saved.sessions:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));

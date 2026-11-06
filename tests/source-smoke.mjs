@@ -12,5 +12,10 @@ for (const word of ['home()', 'tasksPage()', 'plan()', 'notesPage()', 'settingsP
   if (!legacy.includes(word)) throw new Error(`Existing feature missing after compatibility migration: ${word}`);
 }
 const react = readFileSync('web/src/components/App.tsx', 'utf8');
-if (!react.includes('mountLegacyDayframe()')) throw new Error('React compatibility mount missing');
+if (!react.includes('mountLegacyDayframe(')) throw new Error('React compatibility mount missing');
 console.log('PASS: React sources present and existing Dayframe screens preserved');
+const auth = readFileSync('web/src/components/App.tsx','utf8');
+if (!auth.includes('authClient.useSession()') || !auth.includes('loadGeneralWorkspace')) throw new Error('Auth gate or general bootstrap missing');
+const api = readFileSync('backend/src/index.mjs','utf8');
+if (!api.includes('jwtVerify(') || !api.includes('owner_user_id=$1')) throw new Error('Backend verified identity and owner filter missing');
+console.log('PASS: M2.2 auth and user-scoped workspace integration present');
