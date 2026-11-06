@@ -30,3 +30,19 @@ The UI remains a local demo. No Neon Auth, persistent task records, server notif
 ## Next checkpoint
 
 Finish only M1.3, report CI and Pages results, and **stop before M2.1** pending user approval.
+
+
+## Verified M1.3 results
+
+- **PASS** GitHub Actions source parity check, TypeScript typecheck and Vite production build: [run 42293082064](https://github.com/azmath25/planner/actions/runs/42293082064).
+- **PASS** Build output checks: React root, compiled JavaScript/CSS, and `/planner/` base path.
+- **PASS** Existing M1.2 photo/theme/mobile test against the lifecycle-adapted preview (390 px viewport and 320/390/768/1440 px overflow checks).
+- **PASS** Generated root `index.html` references `/planner/assets/index-Cxcb0SEL.js` and `/planner/assets/index-vCU_HWmW.css`.
+- **PASS** Exactly one Git branch (`main`); legacy root `app.js` and `styles.css` removed from the published root after compilation.
+- Compiled-site commit: `4d11776bbf8c45f14b656aa54e09e962e87d6130`.
+- Pages uses **Deploy from branch: main / (root)**. GitHub's `GITHUB_TOKEN` build commit does not itself trigger branch Pages; this checkpoint update is authored via the connected GitHub App to trigger publishing.
+
+### Explicit limitations
+
+- React owns the lifetime and error boundary, but the M1.2 screen internals are still handled by the temporary adapter. This is **not** a complete React screen-by-screen rewrite.
+- No Neon storage, authentication, real reminders or production task persistence.
