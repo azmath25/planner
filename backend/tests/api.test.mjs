@@ -28,7 +28,7 @@ function make({rejectSql=false,denyMutations=false,hasOpenChildren=false}={}){
     if(sql.startsWith('UPDATE dayframe.task_media m'))return {rows:[{slot:args[2]}]};
     if(sql.startsWith('DELETE FROM dayframe.task_media m'))return {rows:[{slot:args[2]}]};
     if(sql.startsWith('SELECT revision FROM dayframe.tasks'))return {rows:[{revision:1}]};
-    if(sql.startsWith('WITH RECURSIVE subtree AS')){
+    if(sql.startsWith('WITH RECURSIVE locked_root AS')){
       if(sql.includes('SELECT id::text AS id FROM changed'))return {rows:[{id:args[1]}]};
       return {rows:[{...task,id:args[1],archivedAt:args[3]?'2026-11-07T12:00:00Z':null,revision:2}]};
     }
@@ -207,7 +207,7 @@ test('M3 task archive and restore are verified-user, revision guarded operations
   assert.equal((await req(path,'GET')).status,401);
   assert.equal((await req(path,'POST','forged',{revision:1})).status,401);
  }
- const archive=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('archived_at'));
+ const archive=queries.find(q=>q.sql.startsWith('WITH RECURSIVE locked_root AS')&&q.sql.includes('archived_at'));
  assert.deepEqual(archive.args,['alice',TASK,1,true]);
  assert.match(archive.sql,/owner_user_id=\$1/);
  assert.match(archive.sql,/root.revision=\$3/);
@@ -295,13 +295,13 @@ test('M1-M4 deep audit: task Trash and restore require the revision observed by 
  assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:0})).status,400);
  const result=await req('/v1/tasks/'+TASK,'DELETE','alice',{revision:9});
  assert.equal(result.status,200);
- const trashSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('deleted_at=now()'));
+ const trashSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE locked_root AS')&&q.sql.includes('deleted_at=now()'));
  assert.ok(trashSql);
  assert.deepEqual(trashSql.args,['alice',TASK,9]);
  assert.match(trashSql.sql,/root.revision=\$3/);
  assert.equal(queries.some(q=>q.sql.startsWith('SELECT revision FROM dayframe.tasks')),false);
  assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:12})).status,200);
- const restoreSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('deleted_at= CASE'));
+ const restoreSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE locked_root AS')&&q.sql.includes('deleted_at= CASE'));
  assert.ok(restoreSql);
  assert.deepEqual(restoreSql.args,['alice',TASK,12,false]);
  assert.match(restoreSql.sql,/root.revision=\$3/);
