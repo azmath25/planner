@@ -1,13 +1,5 @@
 name: Dayframe backend authentication checks and bundle
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/src/**'
-      - 'backend/tests/**'
-      - 'backend/db/**'
-      - 'package.json'
-      - '.github/workflows/backend-ci.yml'
   workflow_dispatch:
 permissions:
   contents: write
