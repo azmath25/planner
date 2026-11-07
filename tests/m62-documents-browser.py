@@ -42,7 +42,9 @@ def run(browser,width):
 
  # Autosave debounces ordinary title changes without another click.
  p.get_by_label('Document title').fill('Autosaved research plan')
+ p.evaluate("window.__editorBeforeAutosave=document.querySelector('.df-document-editor [contenteditable=true]')")
  p.wait_for_function('window.__docMock.updates.length===2',timeout=8500)
+ assert p.evaluate("window.__editorBeforeAutosave===document.querySelector('.df-document-editor [contenteditable=true]')"),'Autosave remounted editor'
  assert p.evaluate('window.__docMock.items.find(x=>x.id===window.__docMock.seed).title')=='Autosaved research plan'
  p.wait_for_function('window.__documentDirty===false')
 
@@ -86,6 +88,19 @@ def run(browser,width):
  p.get_by_role('button',name='Recently Deleted').click()
  p.get_by_role('button',name='Restore').click()
  p.wait_for_function('window.__docMock.items.some(x=>x.parentId===window.__docMock.seed&&x.deletedAt===null)')
+ # M8.1: a committed creation loses its HTTP reply. A retry must reuse the
+ # same UUID and never create a duplicate document.
+ p.evaluate('window.__docMock.failNextCreateAfterCommit=true')
+ before=p.evaluate('window.__docMock.creations.length')
+ p.get_by_role('button',name='New document').click()
+ p.get_by_role('button',name='Retry creation').wait_for(timeout=8500)
+ attempt=p.evaluate('window.__docMock.creations.at(-1).id')
+ assert p.evaluate('(id)=>window.__docMock.items.filter(x=>x.id===id).length',attempt)==1
+ p.get_by_role('button',name='Retry creation').click()
+ p.wait_for_function('(count)=>window.__docMock.creations.length===count+2',before)
+ assert p.evaluate('(id)=>window.__docMock.creations.at(-1).id===id',attempt)
+ assert p.evaluate('(id)=>window.__docMock.items.filter(x=>x.id===id).length',attempt)==1
+ assert p.get_by_label('Document title').input_value()=='Untitled document'
  assert not errors,errors
  assert p.evaluate('document.documentElement.scrollWidth<=window.innerWidth+4'),f'Horizontal overflow at {width}px'
  p.evaluate('window.stopDayframeDocuments()')
