@@ -21,7 +21,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=18;i++){
+ for(let i=1;i<=20;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -35,9 +35,9 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all eighteen staged migrations execute without dependency errors',async()=>{
+test('all twenty staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,18);
+ assert.equal(rows.length,20);
  assert.equal(rows[11].version,'0012_weekly_targets');
  assert.equal(rows[12].version,'0013_quick_notes');
  assert.equal(rows[13].version,'0014_quick_note_reminders');
@@ -45,6 +45,8 @@ test('all eighteen staged migrations execute without dependency errors',async()=
  assert.equal(rows[15].version,'0016_private_documents');
  assert.equal(rows[16].version,'0017_workspace_pins');
  assert.equal(rows[17].version,'0018_completion_insights_index');
+ assert.equal(rows[18].version,'0019_task_document_move_guard');
+ assert.equal(rows[19].version,'0020_requeue_notification_preferences');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -776,4 +778,47 @@ test('M7.3 audit-event deadlines and estimates stay owner-scoped and classify mi
  assert.equal(foreign.deadline.completedEvents,1);
  assert.equal(Number(foreign.weeklyTrend.at(-1).recordedMs),0);
  assert.equal(foreign.history.some(x=>x.taskId===ta),false);
+});
+
+test('M8.1 linked private docs prevent inconsistent cross-workspace task moves',async()=>{
+ const owner='m81-task-document-owner';
+ const original='e8111111-1111-4111-8111-111111111111';
+ const target='e8222222-2222-4222-8222-222222222222';
+ const task='e8333333-3333-4333-8333-333333333333';
+ const doc='e8444444-4444-4444-8444-444444444444';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Source','custom'),($3,$2,'Destination','custom')",[original,owner,target]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Task with document')",[task,owner,original]);
+ await pool.query("INSERT INTO dayframe.documents(id,owner_user_id,workspace_id,task_id,title,blocks) VALUES($1,$2,$3,$4,'Private notes','[]'::jsonb)",[doc,owner,original,task]);
+ const move="SELECT dayframe.move_task_subtree($1,$2,$3,$4::uuid,$5)";
+ await assert.rejects(pool.query(move,[owner,task,target,null,1]),error=>error.code==='DF001');
+ const unchanged=(await pool.query("SELECT workspace_id::text AS workspace FROM dayframe.tasks WHERE id=$1",[task])).rows[0];
+ assert.equal(unchanged.workspace,original);
+ assert.equal((await pool.query("SELECT workspace_id::text AS workspace FROM dayframe.documents WHERE id=$1",[doc])).rows[0].workspace,original);
+ await pool.query("UPDATE dayframe.documents SET deleted_at=now(),revision=revision+1 WHERE id=$1",[doc]);
+ assert.equal((await pool.query(move,[owner,task,target,null,1])).rows.length,1);
+ assert.equal((await pool.query("SELECT workspace_id::text AS workspace FROM dayframe.tasks WHERE id=$1",[task])).rows[0].workspace,target);
+ await assert.rejects(pool.query("UPDATE dayframe.documents SET deleted_at=NULL,revision=revision+1 WHERE id=$1",[doc]),
+  error=>error.code==='23514');
+ await assert.rejects(pool.query(move,['another-owner',task,original,null,2]),
+  error=>error.code==='40001');
+});
+test('M8.1 changing quiet-hours or account timezone invalidates only unsent own outbox',async()=>{
+ const owner='m81-push-preference-owner',other='m81-push-preference-other';
+ const w='e8555555-5555-4555-8555-555555555555';
+ const t='e8666666-6666-4666-8666-666666666666';
+ const n='e8777777-7777-4777-8777-777777777777';
+ const endpoint='https://fcm.googleapis.com/fcm/send/m81-quiet-owner';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Push','custom')",[w,owner]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Quiet task')",[t,owner,w]);
+ await pool.query("INSERT INTO dayframe.quick_notes(id,owner_user_id,workspace_id,title,content) VALUES($1,$2,$3,'Quiet note','')",[n,owner,w]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'UTC'),($2,'UTC')",[owner,other]);
+ await pool.query("INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($1,$2)",[endpoint,owner]);
+ await pool.query("INSERT INTO dayframe.notification_deliveries(owner_user_id,task_id,kind,source_day,source_time,send_after,endpoint,status) VALUES($1,$2,'reminder','2026-11-07','09:00',now(),$3,'pending'),($1,$2,'reminder','2026-11-08','09:00',now(),$3,'delivered')",[owner,t,endpoint]);
+ await pool.query("INSERT INTO dayframe.note_notification_deliveries(owner_user_id,note_id,source_day,source_time,send_after,endpoint,status) VALUES($1,$2,'2026-11-07','09:00',now(),$3,'retry')",[owner,n,endpoint]);
+ await pool.query("UPDATE dayframe.notification_preferences SET quiet_start='22:00',quiet_end='07:00' WHERE owner_user_id=$1",[owner]);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM dayframe.notification_deliveries WHERE owner_user_id=$1 AND status='pending'",[owner])).rows[0].n,0);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM dayframe.note_notification_deliveries WHERE owner_user_id=$1 AND status='retry'",[owner])).rows[0].n,0);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM dayframe.notification_deliveries WHERE owner_user_id=$1 AND status='delivered'",[owner])).rows[0].n,1);
+ await pool.query("UPDATE dayframe.notification_preferences SET time_zone='Asia/Baku' WHERE owner_user_id=$1",[owner]);
+ assert.equal((await pool.query("SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1",[other])).rows[0].time_zone,'UTC');
 });
