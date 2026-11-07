@@ -3,7 +3,7 @@ import './build-m42-harness.mjs';
 // Exercise the actual signed-in UI and its M5.1 branch with an in-memory
 // deterministic substitute for authenticated Neon Function responses.
 let source=fs.readFileSync('tests/.harness/m42-app.js','utf8');
-const old=/const timeBackendEnabled\s*=\s*false;/;
+const old=/const timeBackendEnabled\s*=\s*(?:false|true);/;
 if(!old.test(source))throw Error('M5.1 feature gate not found in compiled UI');
 source=source.replace(old,'const timeBackendEnabled = true;');
 const index=source.lastIndexOf('mountApp();');
