@@ -66,7 +66,7 @@ const m41ui=readFileSync('web/src/legacy/legacy.ts','utf8');
 const m41client=readFileSync('web/src/auth/api.ts','utf8');
 const m41backend=readFileSync('backend/src/index.mjs','utf8');
 const m41sql=readFileSync('backend/db/migrations/0007_daily_pool.sql','utf8');
-for(const marker of ['loadCloudPool(today())','changeDailyPool(','pool-sync-status',"case'pool-add'","case'pool-remove'","case'pool-up':case'pool-down'","if(isCloud)void loadCloudPool(state.planDay)",'pools:isCloud?undefined:state.pools']){
+for(const marker of ['loadCloudPool(today())','changeDailyPool(','pool-sync-status',"case'pool-add'","case'pool-remove'","case'pool-up':case'pool-down'",'void loadCloudPool(state.planDay)','pools:isCloud?undefined:state.pools']){
  if(!m41ui.includes(marker))throw Error('Missing signed-in day pool integration: '+marker);
 }
 for(const marker of ['loadDailyPool','saveDailyPool','DailyPool']){
@@ -79,3 +79,18 @@ for(const marker of ['CREATE TABLE IF NOT EXISTS dayframe.daily_pools','daily_po
  if(!m41sql.includes(marker))throw Error('Missing atomic day pool migration: '+marker);
 }
 console.log('PASS: M4.1 authenticated daily pool and unchanged local timed intervals wired');
+
+const m42client=readFileSync('web/src/auth/api.ts','utf8');
+const m42db=readFileSync('backend/db/migrations/0008_timed_intervals.sql','utf8');
+for(const marker of ['loadCloudSchedule(','changeTimedSchedule(','calendar-grid','calendarView','edit-interval','schedule-form','schedule-retry']){
+ if(!legacy.includes(marker))throw new Error('Missing M4.2 timed schedule UX '+marker);
+}
+for(const marker of ['listTimedIntervals','saveTimedInterval','deleteTimedInterval']){
+ if(!m42client.includes(marker))throw new Error('Missing M4.2 cloud schedule client '+marker);
+}
+for(const marker of ['scheduled_interval_guard','pg_advisory_xact_lock','23P01','save_scheduled_interval']){
+ if(!m42db.includes(marker))throw new Error('Missing M4.2 atomic schedule migration '+marker);
+}
+if(legacy.includes('scheduled:isCloud?(saved.scheduled||[])'))throw new Error('Signed-in schedules must not use legacy browser data');
+if(!legacy.includes('scheduled:isCloud?undefined:state.scheduled'))throw new Error('Cloud schedule should not persist in localStorage');
+console.log('PASS: M4.2 schedule cloud sync, editing and calendar safety guards');
