@@ -272,7 +272,7 @@ test('M5.2 nested rollups include every descendant once and preserve all-time wo
   ['e5a66666-6666-4666-8666-666666666666',null,workspace1,6000]
  ])await add(id,task,workspace,ms);
 
- const query=async id=owner=>(await pool.query(TIME_ROLLUPS_SQL,[id])).rows[0];
+ const query=async (id=owner)=>(await pool.query(TIME_ROLLUPS_SQL,[id])).rows[0];
  let snapshot=await query();
  assert.equal(snapshot.accountTotalMs,'21000');
  assert.equal(snapshot.deletedTaskMs,'6000');
