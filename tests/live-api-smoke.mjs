@@ -18,6 +18,20 @@ test('anonymous and forged credentials cannot access user data',async()=>{
   assert.equal((await request(path,{headers:{Authorization:'Bearer deliberately-forged'}})).status,401,path);
  }
 });
+
+test('archived workspace routes reject anonymous or forged tokens',async()=>{
+ const workspaceId='33333333-3333-4333-8333-333333333333';
+ const endpoints=[
+  ['/v1/workspaces/archived','GET'],
+  ['/v1/workspaces/'+workspaceId+'/archive','POST'],
+  ['/v1/workspaces/'+workspaceId+'/restore','POST'],
+ ];
+ for(const [path,method] of endpoints){
+  const init={method,...(method==='POST'?{headers:{'content-type':'application/json'},body:JSON.stringify({revision:1})}:{})};
+  assert.equal((await request(path,init)).status,401,path);
+  assert.equal((await request(path,{...init,headers:{...init.headers,Authorization:'Bearer forged.jwt.value'}})).status,401,path);
+ }
+});
 test('allowed origin preflight and untrusted origin',async()=>{
  const ok=await request('/v1/tasks',{method:'OPTIONS',headers:{Origin:'https://azmath25.github.io','Access-Control-Request-Method':'POST'}});
  assert.equal(ok.status,204);
