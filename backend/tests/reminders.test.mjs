@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHandler,ALERT_LIST_SQL,ALERT_ACTION_SQL,NOTIFICATION_PREF_GET_SQL,NOTIFICATION_PREF_SAVE_SQL,PUSH_SUB_SAVE_SQL,PUSH_SUB_DELETE_SQL,PUSH_SUB_STATUS_SQL} from '../src/index.mjs';
+import {createHandler,ALERT_LIST_SQL,ALERT_ACTION_SQL,NOTIFICATION_PREF_GET_SQL,NOTIFICATION_PREF_SAVE_SQL,NOTIFICATION_QUIET_SAVE_SQL,PUSH_SUB_SAVE_SQL,PUSH_SUB_DELETE_SQL,PUSH_SUB_STATUS_SQL} from '../src/index.mjs';
 
 const TASK='66666666-6666-4666-8666-666666666666';
 const record={taskId:TASK,title:'Research notes',kind:'reminder',day:'2026-11-07',time:'09:00',dueAt:'2026-11-07T05:00:00.000Z',revision:null,acknowledgedAt:null,snoozedUntil:null};
@@ -98,4 +98,44 @@ test('M4.3 push enrollment is owner scoped and rejects untrusted push hosts',asy
  assert.ok(calls.some(x=>x.sql===PUSH_SUB_SAVE_SQL&&x.args[0]==='alice'));
  assert.ok(calls.some(x=>x.sql===PUSH_SUB_STATUS_SQL&&x.args[0]==='bob'));
  assert.equal(calls.length,7);
+});
+
+test('M6.1c quiet-hour preferences require both times and derive owner from token',async()=>{
+ const calls=[];
+ const api=createHandler({
+  verifyToken:async token=>{if(token!=='alice')throw Error('Invalid token');return token;},
+  query:async(sql,args)=>{
+   calls.push({sql,args});
+   if(sql===NOTIFICATION_QUIET_SAVE_SQL)return {rows:[{quietStart:args[2],quietEnd:args[3]}]};
+   if(sql===NOTIFICATION_PREF_GET_SQL)return {rows:[{timeZone:'Asia/Baku',
+    quietStart:'22:00',quietEnd:'07:00'}]};
+   throw Error('Unexpected SQL');
+  }
+ });
+ const send=(body,token='alice')=>api.fetch(new Request(
+  'https://invalid.example/v1/notification-preferences/quiet-hours',{
+   method:'PUT',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
+   body:JSON.stringify(body)
+  }));
+ for(const invalid of [
+  {timeZone:'Asia/Baku',quietStart:'22:00',quietEnd:null},
+  {timeZone:'Asia/Baku',quietStart:'22:00',quietEnd:'22:00'},
+  {timeZone:'Asia/Baku',quietStart:'25:00',quietEnd:'07:00'},
+  {timeZone:'Invalid/Place',quietStart:'22:00',quietEnd:'07:00'}
+ ])assert.equal((await send(invalid)).status,400);
+ assert.equal(calls.length,0);
+ assert.equal((await send({timeZone:'Asia/Baku',quietStart:'22:00',
+  quietEnd:'07:00',owner_user_id:'bob'})).status,200);
+ assert.deepEqual(calls[0],{sql:NOTIFICATION_QUIET_SAVE_SQL,args:[
+  'alice','Asia/Baku','22:00','07:00']});
+ const disabled=await send({timeZone:'Asia/Baku',quietStart:null,quietEnd:null});
+ assert.equal(disabled.status,200);
+ assert.deepEqual((await disabled.json()),{quietStart:null,quietEnd:null});
+ assert.equal((await send({timeZone:'Asia/Baku',quietStart:null,quietEnd:null},'forged')).status,401);
+ const preferences=await api.fetch(new Request('https://invalid.example/v1/notification-preferences',{
+  headers:{authorization:'Bearer alice'}
+ }));
+ assert.equal(preferences.status,200);
+ const data=await preferences.json();
+ assert.equal(data.quietStart,'22:00');assert.equal(data.quietEnd,'07:00');
 });
