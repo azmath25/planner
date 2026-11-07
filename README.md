@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M4.3: reminder core implemented and deployed.** Neon now stores tasks, untimed daily pools, fixed-time blocks, alert acknowledgments/snoozes and opted-in push registrations. A five-minute Neon trigger sends generic browser-push alerts to permitted devices. Real device delivery acceptance remains pending. M5 synchronized time tracking is a future milestone. The mobile website is the first product; Android is deliberately later.
+**M5.1: authenticated time sessions implemented and deployed.** Neon now owns the running/paused timer, server timestamps and saved direct-task time totals, alongside workspaces, tasks, day plans and opted-in reminders. M4.3 browser push was confirmed on one real browser; device-by-device acceptance remains open. M5.2 rollups and M5.3 targets are future milestones. The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -23,9 +23,17 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
 
-**Saved in Neon:** workspaces, active tasks, private task images, each date's untimed daily pool and fixed-time scheduled blocks, reminder actions, notification preferences, and optional browser-push subscriptions. **Still device-local:** daily capacity preference, quick notes, workspace photos and timer sessions. Browser push requires explicit user permission and supported platform; real delivery on a user device remains to be tested. Use **Profile → Refresh saved data** for updated tasks/workspaces. Do not rely on local timer sessions as permanent records.
+**Saved in Neon:** workspaces, tasks and private task images, untimed daily pools, scheduled blocks, reminder actions/push registrations, and M5.1 server-clock time sessions with direct task totals. **Still device-local:** daily capacity, quick notes, workspace photos and *older* browser-only timer history. No automatic import of previous local sessions or already-running local timers was performed, to avoid duplicate time. The user confirmed receiving a browser reminder; additional devices and Safari still need testing. Use **Profile → Refresh saved data** to reload account data.
 
-## M4.3 — Reminders (deployed, live-device acceptance pending)
+## M5.1 — Time Sessions (deployed, real-device acceptance pending)
+
+Sign in and select **Start** on any open task. Dayframe creates a server-timestamped session in Neon; **Pause** and **Resume** exclude inactive time, and **Stop** saves the time without completing the task. There is **only one running or paused session per account**. Starting another task asks permission to stop the previous session, and the switch is saved atomically.
+
+Open Dayframe on another signed-in device or reload the page to recover the current timer. The browser uses server timestamps to display elapsed time without frequent API calls; it refreshes on focus/visibility and periodically while visible. Completing, archiving or deleting a task, or archiving its workspace, closes its active session without losing the record.
+
+Task details show **directly recorded time for that task only**; nested/workspace/global time rollups and historical membership decisions are deferred to M5.2. Previously saved browser-only stopwatch records are not imported automatically into Neon, and no browser-local records were deleted by this release. See [M5.1 checkpoint](docs/CHECKPOINT_M5.1.md) and [M1–M4 deep audit](docs/AUDIT_M1_M4_DEEP_2026-11-07.md).
+
+## M4.3 — Reminders (browser notification confirmed; wider-device checks pending)
 
 Sign in, then open **Home → Reminder inbox** to see reminders and hard deadlines due or approaching within 48 hours. **Acknowledge** an alert to dismiss that occurrence, or **Snooze 1 hour** to defer it; neither changes the underlying task's hard deadline or soft reminder.
 
