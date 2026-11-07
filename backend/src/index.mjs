@@ -20,7 +20,7 @@ const NOTE_FIELDS=[
  'color','pinned','reminder::text AS reminder',
  'to_char(reminder_time,\'HH24:MI\') AS "reminderTime"',
  'converted_task_id::text AS "convertedTaskId"',
- 'converted_at AS "convertedAt"','revision',
+ 'converted_at AS "convertedAt"','deleted_at AS "deletedAt"','revision',
  'created_at AS "createdAt"','updated_at AS "updatedAt"'
 ].join(',');
 export const NOTES_LIST_SQL="SELECT "+NOTE_FIELDS+" FROM dayframe.quick_notes n "+
@@ -28,6 +28,11 @@ export const NOTES_LIST_SQL="SELECT "+NOTE_FIELDS+" FROM dayframe.quick_notes n 
  "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=n.workspace_id "+
  "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
  "ORDER BY n.pinned DESC,n.updated_at DESC,n.id DESC LIMIT $2 OFFSET $3";
+export const NOTES_TRASH_SQL="SELECT "+NOTE_FIELDS+" FROM dayframe.quick_notes n "+
+ "WHERE n.owner_user_id=$1 AND n.deleted_at IS NOT NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=n.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "ORDER BY n.deleted_at DESC,n.id DESC LIMIT $2 OFFSET $3";
 export const NOTE_BY_ID_SQL="SELECT "+NOTE_FIELDS+
  " FROM dayframe.quick_notes WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL";
 export const NOTE_INSERT_SQL="INSERT INTO dayframe.quick_notes "+
@@ -46,6 +51,12 @@ export const NOTE_DELETE_SQL="UPDATE dayframe.quick_notes SET "+
  "deleted_at=now(),updated_at=now(),revision=revision+1 "+
  "WHERE owner_user_id=$1 AND id=$2 AND revision=$3 AND deleted_at IS NULL "+
  "RETURNING id::text AS id";
+export const NOTE_RESTORE_SQL="UPDATE dayframe.quick_notes n SET "+
+ "deleted_at=NULL,updated_at=now(),revision=n.revision+1 "+
+ "WHERE n.owner_user_id=$1 AND n.id=$2 AND n.revision=$3 AND n.deleted_at IS NOT NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=n.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "RETURNING "+NOTE_FIELDS;
 export const NOTE_CONVERT_SQL="SELECT dayframe.convert_quick_note($1,$2,$3,$4,$5) AS task_id";
 
 const TASK_FIELDS=[
@@ -695,6 +706,22 @@ return {async fetch(req){
         return json({day,revision:Number(rows[0].revision),taskIds:ids},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
+    }
+    if(path==='/v1/notes/trash'&&req.method==='GET'){
+      const params=new URL(req.url).searchParams;
+      const limit=Number(params.get('limit')??100),offset=Number(params.get('offset')??0);
+      if(!Number.isSafeInteger(limit)||limit<1||limit>200||
+       !Number.isSafeInteger(offset)||offset<0||offset>1000000)
+        throw fail(400,'Invalid note pagination');
+      const {rows}=await query(NOTES_TRASH_SQL,[uid,limit+1,offset]);
+      return json({notes:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
+    const noteRestore=/^\/v1\/notes\/([a-f0-9-]{36})\/restore$/i.exec(path);
+    if(noteRestore&&req.method==='POST'){
+      const id=uuid(noteRestore[1],'note ID'),rev=revision(await readBody(req,1500));
+      const {rows}=await query(NOTE_RESTORE_SQL,[uid,id,rev]);
+      if(!rows.length)throw fail(409,'Deleted note changed or its workspace is unavailable');
+      return json({note:rows[0]},200,hdr);
     }
     if(path==='/v1/notes'&&req.method==='GET'){
       const params=new URL(req.url).searchParams;
