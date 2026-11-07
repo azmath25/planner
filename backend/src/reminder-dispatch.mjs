@@ -74,7 +74,7 @@ const ELIGIBLE_SQL=`
   AND (CASE WHEN d.kind='reminder' THEN t.reminder ELSE t.deadline END)=d.source_day
   AND COALESCE((CASE WHEN d.kind='reminder' THEN t.reminder_time ELSE t.deadline_time END),'09:00'::time)=d.source_time
   AND a.acknowledged_at IS NULL
-  AND COALESCE(a.snoozed_until,((d.source_day+d.source_time) AT TIME ZONE p.time_zone))=d.send_after
+  AND dayframe.defer_push_quiet_hours(COALESCE(a.snoozed_until,((d.source_day+d.source_time) AT TIME ZONE p.time_zone)),p.time_zone,p.quiet_start,p.quiet_end)=d.send_after
   AND d.send_after<=now()`;
 async function claim(limit=BATCH){
  const client=await db().connect();
@@ -149,7 +149,7 @@ export const NOTE_ELIGIBLE_SQL=`
   AND n.reminder=d.source_day
   AND COALESCE(n.reminder_time,'09:00'::time)=d.source_time
   AND a.acknowledged_at IS NULL
-  AND COALESCE(a.snoozed_until,((d.source_day+d.source_time) AT TIME ZONE p.time_zone))=d.send_after
+  AND dayframe.defer_push_quiet_hours(COALESCE(a.snoozed_until,((d.source_day+d.source_time) AT TIME ZONE p.time_zone)),p.time_zone,p.quiet_start,p.quiet_end)=d.send_after
   AND d.send_after<=now()`;
 async function claimNotes(limit=BATCH){
  const client=await db().connect();
