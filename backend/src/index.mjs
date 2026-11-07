@@ -74,6 +74,11 @@ export const DAY_POOL_PUT_SQL="SELECT dayframe.replace_daily_pool($1,$2::date,$3
 
 // M4.3 in-app alert inbox: date/time in a verified IANA zone, never a hard-deadline mutation.
 // A missing clock time is interpreted as 09:00 in the chosen zone.
+// M5.1: only Neon owns the stopwatch. The database transition function
+// serializes all updates per account and takes authoritative timestamps.
+export const TIME_ACTIVE_SQL="SELECT dayframe.time_session_snapshot(s) AS session "+
+ "FROM dayframe.time_sessions s WHERE s.owner_user_id=$1 AND s.state IN ('running','paused') LIMIT 1";
+export const TIME_TRANSITION_SQL="SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,$6) AS session";
 export const ALERT_LIST_SQL =
  "WITH occurrences AS ("+
  "SELECT t.id::text AS \"taskId\",t.title,kind.kind, "+
@@ -330,6 +335,33 @@ return {async fetch(req){
         return json({removed:true},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'PUT,DELETE,OPTIONS'});
+    }
+    if(path==='/v1/time-session'){
+      if(req.method==='GET'){
+        const {rows}=await query(TIME_ACTIVE_SQL,[uid]);
+        return json({session:rows[0]?.session??null},200,hdr);
+      }
+      if(req.method==='POST'){
+        const body=await readBody(req,3000);
+        const action=body.action;
+        if(!['start','pause','resume','stop','switch'].includes(action))throw fail(400,'Invalid time action');
+        const sessionId=uuid(body.sessionId,'session');
+        const taskId=action==='start'||action==='switch'?uuid(body.taskId,'task'):null;
+        const previousId=action==='switch'?uuid(body.previousId,'previous session'):null;
+        const rev=action==='start'?0:body.revision;
+        if(!Number.isSafeInteger(rev)||rev<(action==='start'?0:1)||rev>2147483647)
+          throw fail(400,'Invalid session revision');
+        if(action==='switch'&&sessionId===previousId)throw fail(400,'Switch requires a new session');
+        try{
+          const {rows}=await query(TIME_TRANSITION_SQL,[uid,action,sessionId,taskId,rev,previousId]);
+          if(!rows[0]?.session)throw fail(503,'Time session unavailable');
+          return json({session:rows[0].session},action==='start'||action==='switch'?201:200,hdr);
+        }catch(error){
+          if(error?.code==='40001')throw fail(409,'Timer changed on another device or the task is unavailable. Refresh timer and retry.');
+          throw error;
+        }
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,POST,OPTIONS'});
     }
     if(path==='/v1/alerts'){
       if(req.method==='GET'){
