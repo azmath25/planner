@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import pg from 'pg';
 import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL,DOCUMENT_INSERT_SQL,DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_DETAIL_SQL} from '../backend/src/index.mjs';
 import {NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL} from '../backend/src/reminder-dispatch.mjs';
+import {TIME_PERIOD_REPORT_SQL} from '../backend/src/time-period-report.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -622,4 +623,72 @@ test('M7.1 workspace pins are owner-isolated, default off, and revision-fenced',
  assert.equal(done.pinned,true);assert.equal(done.revision,2);
  await pool.query('UPDATE dayframe.workspaces SET archived_at=now() WHERE id=$1',[w]);
  assert.equal((await pool.query(sql,[a,w,2,false])).rows.length,0);
+});
+
+test('M7.2 period report splits midnight segments in account timezone and isolates owners',async()=>{
+ const owner='m72-period-owner',other='m72-period-other';
+ const ws='e7111111-1111-4111-8111-111111111111';
+ const task='e7222222-2222-4222-8222-222222222222';
+ const segmentSession='e7333333-3333-4333-8333-333333333333';
+ const legacySession='e7444444-4444-4444-8444-444444444444';
+ const plan='e7555555-5555-4555-8555-555555555555';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Period research','custom')",[ws,owner]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,long_term) VALUES($1,$2,$3,'Long-term proof',true)",[task,owner,ws]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku')",[owner]);
+ await pool.query("INSERT INTO dayframe.time_sessions(id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,started_at,accumulated_ms,state,ended_at,end_reason) "+
+  "VALUES($1,$2,$3,'Long-term proof',$4,'2026-11-06 19:30:00+00',3600000,'stopped','2026-11-06 20:30:00+00','stopped')",
+  [segmentSession,owner,task,ws]);
+ await pool.query("INSERT INTO dayframe.time_session_segments(session_id,started_at,ended_at,duration_ms) "+
+  "VALUES($1,'2026-11-06 19:30:00+00','2026-11-06 20:30:00+00',3600000)",[segmentSession]);
+ await pool.query("INSERT INTO dayframe.time_sessions(id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,started_at,accumulated_ms,state,ended_at,end_reason) "+
+  "VALUES($1,$2,NULL,'Older record',$3,'2026-11-07 10:00:00+00',300000,'stopped','2026-11-07 10:05:00+00','stopped')",
+  [legacySession,owner,ws]);
+ await pool.query("INSERT INTO dayframe.scheduled_intervals(id,owner_user_id,task_id,plan_day,start_minute,end_minute,time_zone) "+
+  "VALUES($1,$2,$3,'2026-11-07',600,660,'Asia/Baku')",[plan,owner,task]);
+ const query=(period,day,id=owner)=>pool.query(TIME_PERIOD_REPORT_SQL,[id,period,day]);
+ const day7=(await query('day','2026-11-07')).rows[0];
+ assert.equal(day7.timeZone,'Asia/Baku');
+ assert.equal(day7.startDay,'2026-11-07');
+ assert.equal(day7.endDayExclusive,'2026-11-08');
+ assert.equal(Number(day7.accountRecordedMs),1800000);
+ assert.equal(Number(day7.accountLegacyEstimatedMs),300000);
+ assert.equal(Number(day7.accountPlannedMinutes),60);
+ const w=day7.workspaces.find(row=>row.workspaceId===ws);
+ assert.equal(Number(w.recordedMs),1800000);
+ assert.equal(Number(w.legacyEstimatedMs),300000);
+ assert.equal(Number(w.plannedMinutes),60);
+ assert.equal(Number(day7.longTermTasks.find(t=>t.taskId===task).recordedMs),1800000);
+ const day6=(await query('day','2026-11-06')).rows[0];
+ assert.equal(Number(day6.accountRecordedMs),1800000);
+ assert.equal(Number(day6.accountLegacyEstimatedMs),0);
+ assert.equal(Number(day6.accountPlannedMinutes),0);
+ const week=(await query('week','2026-11-07')).rows[0];
+ assert.equal(week.startDay,'2026-11-02');
+ assert.equal(week.endDayExclusive,'2026-11-09');
+ assert.equal(Number(week.accountRecordedMs),3600000);
+ assert.equal(Number(week.accountLegacyEstimatedMs),300000);
+ const month=(await query('month','2026-11-07')).rows[0];
+ assert.equal(month.startDay,'2026-11-01');
+ assert.equal(month.endDayExclusive,'2026-12-01');
+ assert.equal(Number(month.accountRecordedMs),3600000);
+ const foreign=(await query('day','2026-11-07',other)).rows[0];
+ assert.equal(Number(foreign.accountRecordedMs),0);
+ assert.equal(Number(foreign.accountLegacyEstimatedMs),0);
+ assert.equal(foreign.longTermTasks.length,0);
+});
+test('M7.2 spring DST day boundary is an IANA-zone calendar day, not fixed 24 hours',async()=>{
+ const owner='m72-berlin';
+ const ws='e7666666-6666-4666-8666-666666666666';
+ const session='e7777777-7777-4777-8777-777777777777';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Berlin','custom')",[ws,owner]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Europe/Berlin')",[owner]);
+ await pool.query("INSERT INTO dayframe.time_sessions(id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,started_at,accumulated_ms,state,ended_at,end_reason) "+
+  "VALUES($1,$2,NULL,'DST segment',$3,'2026-03-29 00:30:00+00',3600000,'stopped','2026-03-29 01:30:00+00','stopped')",[session,owner,ws]);
+ await pool.query("INSERT INTO dayframe.time_session_segments(session_id,started_at,ended_at,duration_ms) "+
+  "VALUES($1,'2026-03-29 00:30:00+00','2026-03-29 01:30:00+00',3600000)",[session]);
+ const report=(await pool.query(TIME_PERIOD_REPORT_SQL,[owner,'day','2026-03-29'])).rows[0];
+ assert.equal(report.startDay,'2026-03-29');
+ assert.equal(report.endDayExclusive,'2026-03-30');
+ assert.equal(Number(report.accountRecordedMs),3600000);
+ assert.equal(Number(report.accountLegacyEstimatedMs),0);
 });
