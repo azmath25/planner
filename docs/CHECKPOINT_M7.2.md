@@ -21,7 +21,8 @@
 - `backend/tests/time-period-report.test.mjs`: authentication, owner-derived SQL arguments, date/period validation, no accidental POST or arbitrary owner.
 - `tests/timeReports.test.mjs`: parser reconciliation, numeric precision and shape rejection.
 - `tests/build-m72-harness.mjs` and `tests/m72-period-browser.py`: isolated signed-in report UI, date/period changes, historical-gap text, responsive widths.
-- `tests/deep-postgres-regression.mjs` still needs targeted M7.2 actual segment boundary/DST/legacy tests and must be run against the disposable `audit:...@127.0.0.1:5432/dayframe_audit` database only.
+- `tests/m72-reports-browser.py` adds an overlapping authored variant with 390px coverage and checks for removal of fake rates. Both are unrun; consolidate redundant browser checks before the final suite to avoid duplicate work.
+- `tests/deep-postgres-regression.mjs` now includes **authored, unexecuted** M7.2 segment-boundary, Asia/Baku midnight split, spring Europe/Berlin DST, legacy separation, long-term and owner-isolation checks. Run only against the disposable `audit:...@127.0.0.1:5432/dayframe_audit` database.
 
 ## Unresolved validation and product boundaries
 
