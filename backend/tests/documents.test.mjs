@@ -147,3 +147,14 @@ test('M6.3b JSON export is owner-only, private, no-store and bounded to a single
  assert.deepEqual(calls.at(-1),{sql:DOCUMENT_DETAIL_SQL,args:['alice',ID]});
  assert.equal((await request('/v1/documents/'+ID+'/export','POST','alice',{any:'thing'})).status,405);
 });
+
+test('M6.3c document media endpoints remain disabled even with authentication',async()=>{
+ const {request,calls}=setup();
+ assert.equal((await request('/v1/documents/'+ID+'/attachments','POST','alice',{
+  name:'malware.svg',body:'<script>alert(1)</script>'
+ })).status,415);
+ assert.equal((await request('/v1/documents/'+ID+'/attachments','POST',null,{
+  name:'malware.svg'
+ })).status,401);
+ assert.equal(calls.length,0,'Do not touch the DB for unsupported binary uploads');
+});
