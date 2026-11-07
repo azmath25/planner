@@ -13,6 +13,41 @@ export const BOOTSTRAP_SQL="INSERT INTO dayframe.workspaces(owner_user_id,name,k
 const WORKSPACE_FIELDS='id::text AS id,name,kind,subtitle,color,cover,revision,created_at AS "createdAt",archived_at AS "archivedAt"';
 export const LIST_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id";
 export const ARCHIVED_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC,id DESC";
+
+/* M6.1 Quick Notes: only JWT-owner owned rows are ever returned. */
+const NOTE_FIELDS=[
+ 'id::text AS id','workspace_id::text AS workspace','title','content',
+ 'color','pinned','reminder::text AS reminder',
+ 'to_char(reminder_time,\'HH24:MI\') AS "reminderTime"',
+ 'converted_task_id::text AS "convertedTaskId"',
+ 'converted_at AS "convertedAt"','revision',
+ 'created_at AS "createdAt"','updated_at AS "updatedAt"'
+].join(',');
+export const NOTES_LIST_SQL="SELECT "+NOTE_FIELDS+" FROM dayframe.quick_notes n "+
+ "WHERE n.owner_user_id=$1 AND n.deleted_at IS NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=n.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "ORDER BY n.pinned DESC,n.updated_at DESC,n.id DESC LIMIT $2 OFFSET $3";
+export const NOTE_BY_ID_SQL="SELECT "+NOTE_FIELDS+
+ " FROM dayframe.quick_notes WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL";
+export const NOTE_INSERT_SQL="INSERT INTO dayframe.quick_notes "+
+ "(id,owner_user_id,workspace_id,title,content,color,pinned,reminder,reminder_time) "+
+ "SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9 FROM dayframe.workspaces w "+
+ "WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
+ "ON CONFLICT(id) DO NOTHING RETURNING "+NOTE_FIELDS;
+export const NOTE_UPDATE_SQL="UPDATE dayframe.quick_notes n SET "+
+ "workspace_id=$3,title=$4,content=$5,color=$6,pinned=$7,reminder=$8,reminder_time=$9,"+
+ "revision=n.revision+1,updated_at=now() WHERE n.owner_user_id=$1 AND n.id=$2 "+
+ "AND n.revision=$10 AND n.deleted_at IS NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w "+
+ "WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "RETURNING "+NOTE_FIELDS;
+export const NOTE_DELETE_SQL="UPDATE dayframe.quick_notes SET "+
+ "deleted_at=now(),updated_at=now(),revision=revision+1 "+
+ "WHERE owner_user_id=$1 AND id=$2 AND revision=$3 AND deleted_at IS NULL "+
+ "RETURNING id::text AS id";
+export const NOTE_CONVERT_SQL="SELECT dayframe.convert_quick_note($1,$2,$3,$4,$5) AS task_id";
+
 const TASK_FIELDS=[
   'id::text AS id','workspace_id::text AS workspace','parent_id::text AS parent',
   'title','notes','status','priority','estimate_minutes AS estimate',
@@ -411,6 +446,24 @@ function workspaceBody(body){
   return [name,subtitle,color,cover];
 }
 function revision(body){const rev=Number(body.revision);if(!Number.isSafeInteger(rev)||rev<1)throw fail(400,'Invalid revision');return rev;}
+function noteBody(body){
+ const workspace=uuid(body.workspace,'note workspace');
+ const title=str(body.title,120,'note title',{required:true});
+ const content=str(body.content??'',8000,'note content');
+ const color=body.color??'cream';
+ if(!['cream','lilac','green','blue'].includes(color))throw fail(400,'Invalid note color');
+ const pinned=body.pinned??false;
+ if(typeof pinned!=='boolean')throw fail(400,'Invalid note pin');
+ const reminder=date(body.reminder,'note reminder');
+ const reminderTime=clock(body.reminderTime,reminder,'note reminder time');
+ return [workspace,title,content,color,pinned,reminder,reminderTime];
+}
+function matchesNote(row,args){
+ const [workspace,title,content,color,pinned,reminder,reminderTime]=args;
+ return row.workspace===workspace&&row.title===title&&row.content===content&&
+  row.color===color&&row.pinned===pinned&&
+  (row.reminder||null)===reminder&&(row.reminderTime||null)===reminderTime;
+}
 function matchesTask(existing,args){
   const [workspace,title,notes,status,priority,estimate,long,deadline,deadlineTime,reminder,reminderTime,parent,pinned,tags]=args;
   const nullable=value=>value===''||value==null?null:value;
@@ -642,6 +695,54 @@ return {async fetch(req){
         return json({day,revision:Number(rows[0].revision),taskIds:ids},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
+    }
+    if(path==='/v1/notes'&&req.method==='GET'){
+      const params=new URL(req.url).searchParams;
+      const limit=Number(params.get('limit')??100),offset=Number(params.get('offset')??0);
+      if(!Number.isSafeInteger(limit)||limit<1||limit>200||
+       !Number.isSafeInteger(offset)||offset<0||offset>1000000)
+        throw fail(400,'Invalid note pagination');
+      const {rows}=await query(NOTES_LIST_SQL,[uid,limit+1,offset]);
+      return json({notes:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
+    if(path==='/v1/notes'&&req.method==='POST'){
+      const body=await readBody(req);
+      const id=uuid(body.id,'note ID'),args=noteBody(body);
+      const {rows}=await query(NOTE_INSERT_SQL,[uid,id,...args]);
+      if(rows.length)return json({note:rows[0]},201,hdr);
+      const existing=await query(NOTE_BY_ID_SQL,[uid,id]);
+      if(existing.rows.length&&matchesNote(existing.rows[0],args))
+        return json({note:existing.rows[0]},200,hdr);
+      throw fail(409,'Note ID already used or workspace unavailable');
+    }
+    const noteConvert=/^\/v1\/notes\/([a-f0-9-]{36})\/convert$/i.exec(path);
+    if(noteConvert&&req.method==='POST'){
+      const id=uuid(noteConvert[1],'note ID'),body=await readBody(req,1500);
+      const taskId=uuid(body.taskId,'converted task ID'),rev=revision(body);
+      const estimate=body.estimate??30;
+      if(!Number.isSafeInteger(estimate)||estimate<1||estimate>100000)
+        throw fail(400,'Invalid converted task estimate');
+      try{await query(NOTE_CONVERT_SQL,[uid,id,rev,taskId,estimate]);}
+      catch(error){if(error?.code==='40001'||error?.code==='23505')
+        throw fail(409,'Note changed, was converted or task ID reused. Refresh notes.');throw error;}
+      const {rows}=await query(TASK_BY_ID,[uid,taskId]);
+      if(!rows.length)throw fail(409,'Converted task unavailable');
+      const note=await query(NOTE_BY_ID_SQL,[uid,id]);
+      return json({task:rows[0],note:note.rows[0]},200,hdr);
+    }
+    const notePath=/^\/v1\/notes\/([a-f0-9-]{36})$/i.exec(path);
+    if(notePath&&req.method==='PATCH'){
+      const id=uuid(notePath[1],'note ID'),body=await readBody(req),
+        args=noteBody(body),rev=revision(body);
+      const {rows}=await query(NOTE_UPDATE_SQL,[uid,id,...args,rev]);
+      if(!rows.length)throw fail(409,'Note changed or workspace unavailable. Refresh notes.');
+      return json({note:rows[0]},200,hdr);
+    }
+    if(notePath&&req.method==='DELETE'){
+      const id=uuid(notePath[1],'note ID'),rev=revision(await readBody(req,1500));
+      const {rows}=await query(NOTE_DELETE_SQL,[uid,id,rev]);
+      if(!rows.length)throw fail(409,'Note changed on another device. Refresh notes.');
+      return json({deleted:true},200,hdr);
     }
     if(path==='/v1/tasks'&&req.method==='GET'){
       const params=new URL(req.url).searchParams;
