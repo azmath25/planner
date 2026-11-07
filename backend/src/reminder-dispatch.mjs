@@ -119,6 +119,86 @@ export async function dispatchDue({sql,send,privateKey,vapid=makeVapidAuthorizat
  }
  return {claimed:rows.length,delivered,expired,retrying};
 }
+
+// M6.1a Quick Note deliveries use the existing scheduler/transport but a separate,
+// owner-scoped outbox. Task deliveries and their legacy claim semantics remain intact.
+export const NOTE_CLAIM_SQL=`
+WITH selected AS (
+ SELECT id FROM dayframe.note_notification_deliveries
+ WHERE attempts<6 AND next_attempt_at<=now()
+ AND (status IN ('pending','retry') OR
+     (status='sending' AND claimed_at<now()-interval '3 minutes'))
+ ORDER BY next_attempt_at,id
+ FOR UPDATE SKIP LOCKED LIMIT $1
+)
+UPDATE dayframe.note_notification_deliveries d SET
+ status='sending',attempts=d.attempts+1,claimed_at=now()
+ FROM selected WHERE d.id=selected.id
+ RETURNING d.id,d.owner_user_id,d.note_id,d.source_day,
+ d.source_time,d.send_after,d.endpoint,d.attempts`;
+export const NOTE_ELIGIBLE_SQL=`
+ SELECT 1 FROM dayframe.note_notification_deliveries d
+ JOIN dayframe.push_subscriptions s ON s.endpoint=d.endpoint AND s.owner_user_id=d.owner_user_id
+ JOIN dayframe.quick_notes n ON n.id=d.note_id AND n.owner_user_id=d.owner_user_id
+ JOIN dayframe.workspaces w ON w.id=n.workspace_id AND w.owner_user_id=n.owner_user_id
+ JOIN dayframe.notification_preferences p ON p.owner_user_id=d.owner_user_id
+ LEFT JOIN dayframe.note_alert_actions a ON a.owner_user_id=d.owner_user_id
+  AND a.note_id=d.note_id AND a.source_day=d.source_day AND a.source_time=d.source_time
+ WHERE d.id=$1 AND d.status='sending' AND n.deleted_at IS NULL
+  AND w.deleted_at IS NULL AND w.archived_at IS NULL
+  AND n.reminder=d.source_day
+  AND COALESCE(n.reminder_time,'09:00'::time)=d.source_time
+  AND a.acknowledged_at IS NULL
+  AND COALESCE(a.snoozed_until,((d.source_day+d.source_time) AT TIME ZONE p.time_zone))=d.send_after
+  AND d.send_after<=now()`;
+async function claimNotes(limit=BATCH){
+ const client=await db().connect();
+ try{
+  await client.query('BEGIN');
+  const {rows}=await client.query(NOTE_CLAIM_SQL,[limit]);
+  await client.query('COMMIT');
+  return rows;
+ }catch(e){await client.query('ROLLBACK');throw e;}
+ finally{client.release();}
+}
+export async function dispatchDueNotes({sql,send,privateKey,vapid=makeVapidAuthorization}={}){
+ const query=sql??((statement,params)=>db().query(statement,params));
+ const push=send??((endpoint,authorization)=>fetch(endpoint,{
+   method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
+   headers:{Authorization:authorization,TTL:'3600',Urgency:'normal'}
+ }));
+ if(!sql)await query('SELECT dayframe.enqueue_due_note_push($1)',[250]);
+ const rows=sql?(await query(NOTE_CLAIM_SQL,[BATCH])).rows:await claimNotes();
+ let delivered=0,expired=0,retrying=0;
+ for(const {id,endpoint,attempts} of rows){
+  try{
+   const valid=await query(NOTE_ELIGIBLE_SQL,[id]);
+   if(!valid.rows.length||!isApprovedPushEndpoint(endpoint)){
+    await query("UPDATE dayframe.note_notification_deliveries SET status='expired' WHERE id=$1 AND status='sending'",[id]);
+    expired++;continue;
+   }
+   // Generic empty push: NEVER include note title, content, account or task data.
+   const response=await push(endpoint,vapid(endpoint,privateKey??process.env.VAPID_PRIVATE_KEY));
+   if(response.ok){
+    await query("UPDATE dayframe.note_notification_deliveries SET status='delivered',sent_at=now(),last_status=$2 WHERE id=$1 AND status='sending'",[id,response.status]);
+    delivered++;continue;
+   }
+   if(response.status===404||response.status===410){
+    await query('DELETE FROM dayframe.push_subscriptions WHERE endpoint=$1',[endpoint]);
+    expired++;continue;
+   }
+   const backoff=Math.min(3600,60*2**Math.min(attempts,6));
+   await query("UPDATE dayframe.note_notification_deliveries SET status=CASE WHEN attempts>=6 THEN 'expired' ELSE 'retry' END,next_attempt_at=now()+($2*interval '1 second'),last_status=$3 WHERE id=$1 AND status='sending'",[id,backoff,response.status]);
+   retrying++;
+  }catch(e){
+   const backoff=Math.min(3600,60*2**Math.min(attempts,6));
+   await query("UPDATE dayframe.note_notification_deliveries SET status=CASE WHEN attempts>=6 THEN 'expired' ELSE 'retry' END,next_attempt_at=now()+($2*interval '1 second') WHERE id=$1 AND status='sending'",[id,backoff]);
+   retrying++;
+  }
+ }
+ return {claimed:rows.length,delivered,expired,retrying};
+}
+
 export default {async fetch(request){
  if(new URL(request.url).pathname!=='/dispatch'||request.method!=='POST')
   return Response.json({error:'Not found'},{status:404});
@@ -139,6 +219,7 @@ export default {async fetch(request){
   return Response.json({error:'Invalid schedule event'},{status:403});
  try{
   const result=await dispatchDue();
-  return Response.json({ok:true,...result});
+  const notes=await dispatchDueNotes();
+  return Response.json({ok:true,...result,notes});
  }catch(e){console.error('Dayframe reminder dispatch failed',e instanceof Error?e.name:'Unknown');return Response.json({error:'Delivery unavailable'},{status:503});}
 }};
