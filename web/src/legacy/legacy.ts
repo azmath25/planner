@@ -167,7 +167,7 @@ else if(state.modal==='media'){
  title=`${m.slot==='cover'?'Cover':'Profile'} image · ${label}`;
  body=`<div class="media-modal"><div class="media-preview ${m.slot==='avatar'?'avatar-preview':''} ${current?'has-photo':''}"${photoStyle(m.kind,m.id,m.slot)}>${current?'':icon('image')}</div><p class="form-hint">JPEG, PNG or WebP · up to 5 MB. Images are resized and kept only in this browser for the design preview.</p><label class="btn media-file-label" for="media-file">${icon('upload')} Choose an image</label><input id="media-file" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden" aria-label="Upload ${m.slot} image" />${m.slot==='cover'?`<div class="field-wrap"><label class="form-label" for="media-position">Vertical photo position</label><input class="media-position" type="range" id="media-position" min="0" max="100" value="${Number(state.mediaPos[mediaKey(m.kind,m.id,m.slot)]??50)}" /></div>`:''}<div class="modal-footer">${current?`<button class="btn danger" data-action="remove-image">Remove image</button>`:''}<button class="btn secondary" data-action="close">Close</button></div></div>`;
 }
-else if(state.modal==='delete-task'){title='Move task to Trash?';body=`<p class="subtitle">This demo will remove <strong>${escapeHTML(t?.title||'the task')}</strong> and its scheduled entries from local sample data. The live app will use recoverable Trash and require another confirmation for permanent deletion.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Keep task</button><button class="btn danger" data-action="confirm-delete-task">Confirm removal</button></div>`}
+else if(state.modal==='delete-task'){title='Move task to Trash?';body=`<p class="subtitle">Move <strong>${escapeHTML(t?.title||'the task')}</strong> to recoverable Trash? This removes it from your active task lists and local day plan, not permanently from your account.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Keep task</button><button class="btn danger" data-action="confirm-delete-task">Confirm removal</button></div>`}
 else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">The selected quick note will be removed from this browser's demo data. This action requires confirmation.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
 else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">This clears your local demo changes and restores the original example tasks and notes. No online data is involved.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
 return `<div class="modal-backdrop" data-backdrop="true"><section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
@@ -299,6 +299,32 @@ trackListener('submit',async e=>{e.preventDefault();const form=e.target;const da
   finally{state.cloudBusy=false;if(saveButton)saveButton.disabled=false;}
  }else if(existing)Object.assign(existing,entry);
  else state.tasks.unshift({id:newId(),spent:0,status:'open',priority:'medium',parent:null,...entry});
+ state.modal=null;state.modalTask=null;persist();render();
+}
+if(form.id==='workspace-form'){
+ if(!isCloud||state.cloudBusy)return;
+ const existing=state.modal==='workspace-edit'?workspaces.find(w=>w.id===state.modalTask):null;
+ if(existing&&existing.kind==='general')return;
+ const entry={
+  name:String(data.get('name')||'').trim(),subtitle:String(data.get('subtitle')||'').trim(),
+  color:String(data.get('color')||'#85a99d'),cover:String(data.get('cover')||'general')
+ };
+ if(!entry.name)return;
+ state.cloudBusy=true;
+ const button=form.querySelector('button[type="submit"]');if(button)button.disabled=true;
+ try{
+  if(existing){
+   const updated=await cloudApi.updateWorkspace(existing.serverId,{...entry,revision:existing.revision});
+   Object.assign(existing,localWorkspace(updated));
+  }else{
+   const created=await cloudApi.createWorkspace(entry);
+   const w=localWorkspace(created);
+   workspaces.push(w);
+   state.viewWorkspace=w.id;
+   state.page='workspace';
+  }
+ }catch(err){saveError(err);return;}
+ finally{state.cloudBusy=false;if(button)button.disabled=false;}
  state.modal=null;state.modalTask=null;persist();render();
 }
 if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
