@@ -585,7 +585,7 @@ test('M6.2a documents are owner-scoped; hierarchy cannot cross workspace or form
  assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[other,'b9333333-3333-4333-8333-333333333333',wa,null,null,'Foreign workspace',blocks])).rows.length,0);
  assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,child,wa,null,root,'Child',blocks])).rows.length,1);
  await assert.rejects(pool.query(DOCUMENT_UPDATE_SQL,[owner,root,wa,null,child,'Root',blocks,1]),err=>err.code==='23514');
- await assert.rejects(pool.query(DOCUMENT_UPDATE_SQL,[owner,child,wb,null,root,'Child',blocks,1]),err=>err.code==='23514');
+ assert.equal((await pool.query(DOCUMENT_UPDATE_SQL,[owner,child,wb,null,root,'Child',blocks,1])).rows.length,0,'Wrong-account workspace cannot be selected');
  assert.equal((await pool.query(DOCUMENT_DELETE_SQL,[owner,root,1])).rows.length,0,'Non-leaf parent cannot be removed');
  assert.equal((await pool.query(DOCUMENT_DELETE_SQL,[owner,child,1])).rows.length,1);
  assert.equal((await pool.query(DOCUMENT_DELETE_SQL,[owner,root,1])).rows.length,1);
@@ -602,6 +602,6 @@ test('M6.2a attached documents reject cross-owner and wrong-workspace tasks',asy
  const blocks='[]';
  assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,doc,wa,tb,null,'Should not attach',blocks])).rows.length,0);
  assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,doc,wa,null,null,'Safe doc',blocks])).rows.length,1);
- assert.equal((await pool.query(DOCUMENT_UPDATE_SQL,[owner,doc,wa,tb,null,'Unsafe',blocks,1])).rows.length,0);
+ await assert.rejects(pool.query(DOCUMENT_UPDATE_SQL,[owner,doc,wa,tb,null,'Unsafe',blocks,1]),err=>err.code==='23514');
  assert.equal((await pool.query(DOCUMENT_DETAIL_SQL,[other,doc])).rows.length,0);
 });
