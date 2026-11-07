@@ -853,7 +853,7 @@ else if(state.modal==='permanent-task'){
  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Keep task</button>
  <button type="submit" class="btn danger">Permanently delete</button></div></form>`;
 }
-else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">${isCloud?'The note will be removed from your account list (recoverable later).':'The selected note will be removed from this browser\'s demo data.'} This action requires confirmation.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
+else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">${isCloud?'The note will be removed from your account list (recoverable later).':'The selected note will be removed from this browser\'s demo data.'} This action requires confirmation.</p>${state.noteError?`<p role="alert" class="tiny">${escapeHTML(state.noteError)}</p>`:''}<div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
 else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">${isCloud?'This clears browser-local preferences, quick notes, workspace photos and older device-only timer history. It does NOT delete your saved Neon tasks, schedules, reminders or time sessions.':'This clears local demo changes and restores sample data. No online data is involved.'}</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
 return `<div class="modal-backdrop" data-backdrop="true"><section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
 function parseClock(s){const [h,m]=s.split(':').map(Number);return h*60+m}
@@ -1086,7 +1086,38 @@ case'archive-workspace':{
  if(!isCloud||!workspaces.some(w=>w.id===id&&w.kind==='custom'))break;
  state.modal='archive-workspace';state.modalTask=id;render();break;
 }case'modal-task':state.modal='task';state.modalTask=id||null;state.subtaskParent=null;render();break;
-case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;state.scheduleEditId=null;state.scheduleError='';render();break;
+case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':
+ state.noteError='';state.modal='note';state.modalTask=id||null;render();break;
+case'edit-note':{
+ if(!state.notes.some(n=>n.id===id)||state.noteBusy)break;
+ state.noteError='';state.modal='note-edit';state.modalTask=id;render();break;
+}
+case'convert-note':{
+ const n=state.notes.find(x=>x.id===id);
+ if(!n||n.convertedAt||state.noteBusy)break;
+ state.noteError='';state.modal='note-convert';state.modalTask=id;render();break;
+}
+case'refresh-notes':if(isCloud)void loadCloudNotes();break;
+case'toggle-note-pin':{
+ const n=state.notes.find(x=>x.id===id);
+ if(!n||state.noteBusy)break;
+ if(!isCloud){
+  n.pinned=!n.pinned;persist();render();break;
+ }
+ state.noteBusy=true;state.noteError='';render();
+ try{
+  const result=await cloudApi.updateQuickNote(n.id,{
+   ...remoteQuickNote(n),pinned:!n.pinned,revision:n.revision
+  });
+  if(!disposed)upsertQuickNote(result);
+ }catch(err){
+  if(!disposed){state.noteError=err instanceof Error?err.message:'Could not update note';
+   void loadCloudNotes();}
+ }finally{
+  state.noteBusy=false;if(!disposed)render();
+ }
+ break;
+}case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;state.scheduleEditId=null;state.scheduleError='';render();break;
 case'edit-interval':{
  const slot=state.scheduled.find(x=>x.id===id);
  if(!slot||state.scheduleBusy)break;
@@ -1245,7 +1276,28 @@ case'restore-task':{
  }catch(err){saveError(err);return;}
  finally{state.cloudBusy=false;}
  persist();render();break;
-}case'delete-note':state.modal='delete-note';state.modalTask=id;render();break;case'confirm-delete-note':state.notes=state.notes.filter(n=>n.id!==state.modalTask);state.modal=null;persist();render();break;case'reset':state.modal='reset';render();break;case'confirm-reset':localStorage.removeItem(STORAGE);location.reload();break;default:break}});
+}case'delete-note':{
+ if(state.noteBusy)break;
+ state.noteError='';state.modal='delete-note';state.modalTask=id;render();break;
+}
+case'confirm-delete-note':{
+ if(state.noteBusy)break;
+ const n=state.notes.find(x=>x.id===state.modalTask);
+ if(!n){state.modal=null;render();break;}
+ if(isCloud){
+  state.noteBusy=true;state.noteError='';render();
+  try{
+   await cloudApi.deleteQuickNote(n.id,n.revision);
+   if(!disposed){state.notes=state.notes.filter(x=>x.id!==n.id);state.modal=null;}
+  }catch(err){
+   if(!disposed){state.noteError=err instanceof Error?err.message:'Note could not be deleted';
+    void loadCloudNotes();}
+  }finally{state.noteBusy=false;if(!disposed)render();}
+ }else{
+  state.notes=state.notes.filter(x=>x.id!==n.id);state.modal=null;persist();render();
+ }
+ break;
+}case'reset':state.modal='reset';render();break;case'confirm-reset':localStorage.removeItem(STORAGE);location.reload();break;default:break}});
 trackListener('submit',async e=>{e.preventDefault();const form=e.target;const data=new FormData(form);
 if(form.id==='weekly-goal-form'){
  if(!isCloudTime||state.weekSaving||state.weekLoading)return;
