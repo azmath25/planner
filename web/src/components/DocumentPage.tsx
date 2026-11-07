@@ -191,8 +191,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   draftVersion.current++;setTitle(newTitle);setDirty(true);
   setValidation(''); // New input gets a fresh validation pass.
  };
- const create=async(child:boolean)=>{
-  if(busy||!canDiscard())return;
+ const create=async(child:boolean,retry=false)=>{
+  if(busy||(!retry&&!canDiscard())||(retry&&!pendingCreate))return;
   const parent=child?active:null;
   const workspace=parent?.workspace||
    (filterWorkspace!=='all'?filterWorkspace:workspaces[0]?.id);
@@ -356,7 +356,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   {pendingCreate&&<div className="info-banner" role="alert">
     A document creation response is uncertain.
     <button type="button" className="btn small secondary" disabled={busy}
-      onClick={()=>void create(false)}>Retry creation</button>
+      onClick={()=>void create(false,true)}>Retry creation</button>
    </div>}
   <div className="df-doc-grid">
    <aside className="card df-doc-library" aria-label="Document folders">
