@@ -3,6 +3,7 @@
 // for an untrusted push service: the SW shows a generic alert and opens the inbox.
 import crypto from 'node:crypto';
 import pg from 'pg';
+import { secureDatabaseConnectionUrl } from './db-url.mjs';
 
 export const VAPID_PUBLIC_KEY='BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8';
 const BATCH=40;
@@ -37,7 +38,7 @@ export function makeVapidAuthorization(endpoint,privateKey,nowSeconds=Math.floor
 function db(){
  if(!process.env.DATABASE_URL)throw Error('Database not configured');
  if(!pool){
-  pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:3});
+  pool=new pg.Pool({connectionString:secureDatabaseConnectionUrl(process.env.DATABASE_URL),max:3});
   pool.on('error',()=>console.error('Reminder database pool disconnected'));
  }
  return pool;
