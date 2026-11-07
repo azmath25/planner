@@ -26,7 +26,7 @@ function Dayframe({userId,snapshot,displayName,email,onSignOut,onRefresh}:{
 }){
  useEffect(()=>{
   // Neon owns workspaces, tasks, the untimed daily pool and timed intervals.
-  // Capacity, quick notes, workspace images, and timer sessions remain local.
+  // Quick Notes and timer sessions are account-backed; capacity and workspace photos are browser-local.
   const dispose=mountLegacyDayframe('dayframe.user-preview.'+encodeURIComponent(userId),snapshot,{
    name:displayName,email,onSignOut,onRefresh
   });
