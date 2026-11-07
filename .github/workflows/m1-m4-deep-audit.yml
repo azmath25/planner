@@ -1,0 +1,75 @@
+name: Dayframe M1-M4 Deep Audit Gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/deep-postgres-regression.mjs'
+      - '.github/workflows/m1-m4-deep-audit.yml'
+permissions:
+  contents: read
+jobs:
+  postgres-integrity:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: auditpass
+          POSTGRES_DB: dayframe_audit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U audit -d dayframe_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      PG_AUDIT_URL: postgres://audit:auditpass@127.0.0.1:5432/dayframe_audit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: Real PostgreSQL migration, ownership and concurrency regressions
+        run: node --test tests/deep-postgres-regression.mjs
+      - name: Server API and worker regressions
+        run: npm run test:api
+  frontend-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run test:source
+      - run: npm run test:time
+      - run: npm run build
+      - run: npm run check:dist
+  browser-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm install --no-audit --no-fund
+      - run: pip install playwright
+      - run: python -m playwright install chromium --with-deps
+      - name: M3 task lifecycle and workspace archive
+        run: |
+          python tests/m3-browser.py
+          python tests/workspace-archive-browser.py
+      - name: M4 daily plans, timed blocks and reminder inbox
+        run: |
+          python tests/m4-daily-pool-browser.py
+          python tests/m42-timed-browser.py
+          python tests/m43-reminders-browser.py
+      - name: M1 visual controls and local timer regression
+        run: |
+          python tests/appearance.py
+          python tests/timer-browser.py
