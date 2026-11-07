@@ -513,7 +513,67 @@ function archivedWorkspacesPage(){
 }
 function workspacesPage(){return `${titleHead('All your worlds','Workspaces','General is always here. Build dedicated spaces for everything else.')}<div class="info-banner">${icon('layers')} Home and the day planner always combine tasks from every workspace.</div>${workspaceCards()}<div class="section"><div class="card"><h2>Why separate workspaces?</h2><p class="subtitle">Each workspace has its own tasks, quick notes, documents, time reports and eventual profile or cover images. Long-term tasks live inside workspaces and have their own scoped reports too.</p><div style="margin-top:15px"><button class="btn secondary small" data-action="modal-workspace">${icon('plus')} Create workspace</button>${isCloud?`<button class="btn secondary small" data-action="nav" data-page="workspace-archive">${icon('folder')} Archived workspaces</button>`:''}</div></div></div>`}
 function workspacePage(){const w=workspace(state.viewWorkspace);return `<div style="margin-bottom:13px"><button class="btn ghost small" data-action="nav" data-page="workspaces">${icon('back')} All workspaces</button></div>${coverFrame('workspace',w.id,w.cover,'folder')}<div class="detail-options media-toolbar">${photoButton('workspace',w.id,'cover','Edit cover')}${photoButton('workspace',w.id,'avatar','Edit avatar')}${w.kind==='custom'?`<button class="btn secondary small" data-action="modal-workspace-edit" data-id="${escapeHTML(w.id)}">${icon('edit')} Edit workspace</button>`:''}${isCloud&&w.kind==='custom'?`<button type="button" class="btn secondary small" data-action="archive-workspace" data-id="${escapeHTML(w.id)}">${icon('folder')} Archive</button>`:''}</div>${titleHead('Workspace',escapeHTML(w.name),escapeHTML(w.subtitle),`<button type="button" class="btn" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button>`)}<div class="metrics" style="margin:0 0 19px"><div class="card metric"><div class="metric-label">Open tasks</div><div class="metric-value">${state.tasks.filter(t=>t.workspace===w.id&&t.status==='open').length}</div></div><div class="card metric"><div class="metric-label">Notes</div><div class="metric-value">${state.notes.filter(n=>n.workspace===w.id).length}</div></div><div class="card metric"><div class="metric-label">Recorded time</div><div class="metric-value" data-current-workspace-time>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(workspaceTimeMs(w))}</div><div class="metric-note">${isCloudTime?'Historical sessions originally recorded here':'Direct time spent on tasks here'}</div></div></div>${weekWorkspaceBlock(w)}<div class="dash-grid"><div class="card"><div class="card-title"><h2>Workspace tasks</h2><button type="button" class="btn small secondary" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button></div>${state.tasks.filter(t=>t.workspace===w.id).map(t=>taskRow(t)).join('')||'<p class="tiny">No tasks in this workspace yet. Use Add task to create the first one.</p>'}</div><div class="card"><div class="card-title"><h2>Workspace notes</h2><button class="text-link" data-action="modal-note" data-id="${w.id}">Quick note</button></div>${state.notes.filter(n=>n.workspace===w.id).map(n=>`<div class="alert-row"><div class="document-icon">${icon('note')}</div><div><strong>${escapeHTML(n.title)}</strong><p>${escapeHTML(n.content.slice(0,90))}</p></div></div>`).join('')||'<p class="tiny">No notes yet.</p>'}<p class="banner-note">Rich documents and cover image uploads are specified for later milestones.</p></div></div>`}
-function notesPage(){const visibleNotes=state.notes.filter(n=>workspaces.some(w=>w.id===n.workspace));return `${titleHead('Capture thoughts','Notes & documents','Quick things to remember, and bigger ideas worth keeping.',`<button class="btn" data-action="modal-note">${icon('plus')} Quick note</button>`)}<div class="section-head"><h2>Quick notes</h2><span class="pill gray">${visibleNotes.length} notes</span></div><div class="note-grid">${visibleNotes.map(n=>`<article class="note ${n.color}"><div style="display:flex;justify-content:space-between"><h3>${escapeHTML(n.title)}</h3>${n.pinned?icon('pin'):''}</div><p>${escapeHTML(n.content)}</p><div class="note-foot"><span>${escapeHTML(workspace(n.workspace).name)}</span><button data-action="delete-note" data-id="${n.id}" class="mini-btn" title="Remove note with confirmation" aria-label="Delete ${escapeHTML(n.title)}">${icon('trash')}</button></div></article>`).join('')}</div><div class="section"><div class="section-head"><h2>Rich documents</h2><span class="pill gray">BlockNote integration · M6.2</span></div><div class="card"><div class="document-row"><div class="document-icon">${icon('file')}</div><div style="flex:1"><strong>Research journal</strong><p>Research workspace · Conceptual document</p></div>${icon('arrow')}</div><div class="document-row"><div class="document-icon">${icon('file')}</div><div style="flex:1"><strong>Ideas & references</strong><p>Long-term task · Conceptual document</p></div>${icon('arrow')}</div><p class="banner-note">Rich documents are visual placeholders in M1.1; the editor, autosave, and attachments are not active yet.</p></div></div>`}
+function notesPage(){
+ const workspaceNotes=state.notes.filter(n=>workspaces.some(w=>w.id===n.workspace));
+ const query=state.noteSearch.trim().toLocaleLowerCase();
+ const notes=workspaceNotes.filter(n=>(state.noteFilter==='all'||state.noteFilter==='pinned'&&n.pinned||
+  state.noteFilter===n.workspace)&&(!query||[n.title,n.content,workspace(n.workspace).name]
+  .some(value=>String(value||'').toLocaleLowerCase().includes(query))));
+ const header=titleHead('Capture thoughts','Notes & documents',
+  isCloud?'Quick notes saved to your Dayframe account.':'Quick notes in your local preview.',
+  `<button class="btn" data-action="modal-note" ${state.noteBusy?'disabled':''}>${icon('plus')} Quick note</button>`);
+ const filters=`<div class="filters" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:15px">
+  <label class="field-wrap" style="flex:1;min-width:160px"><span class="form-label">Search notes</span>
+   <input class="field" id="note-search" type="search" autocomplete="off"
+    value="${escapeHTML(state.noteSearch)}" placeholder="Title or content"/></label>
+  <label class="field-wrap" style="min-width:130px"><span class="form-label">Workspace or pins</span>
+   <select class="field" id="note-filter"><option value="all">All workspaces</option>
+    <option value="pinned" ${state.noteFilter==='pinned'?'selected':''}>Pinned notes</option>
+    ${workspaces.map(w=>`<option value="${escapeHTML(w.id)}" ${state.noteFilter===w.id?'selected':''}>${escapeHTML(w.name)}</option>`).join('')}
+   </select></label>
+   ${isCloud?`<button type="button" class="btn small secondary" data-action="refresh-notes" ${state.noteLoading||state.noteBusy?'disabled':''}>Refresh</button>`:''}
+ </div>`;
+ const cards=notes.map(n=>{
+  const color=['cream','lilac','green','blue'].includes(n.color)?n.color:'cream';
+  const disabled=state.noteBusy?'disabled':'';
+  const converted=n.convertedAt?'<span class="pill gray">Converted to task</span>':'';
+  const canView=n.convertedTaskId&&findTask(n.convertedTaskId);
+  const reminder=n.reminder?`<small>Reminder saved: ${escapeHTML(n.reminder)}${n.reminderTime?' '+escapeHTML(n.reminderTime):''} · notification delivery not yet active</small>`:'';
+  return `<article class="note ${color}">
+   <div style="display:flex;gap:8px;align-items:flex-start;justify-content:space-between">
+    <h3>${escapeHTML(n.title)}</h3>
+    <button type="button" data-action="toggle-note-pin" data-id="${escapeHTML(n.id)}"
+     class="mini-btn" ${disabled} aria-pressed="${Boolean(n.pinned)}"
+     aria-label="${n.pinned?'Unpin':'Pin'} ${escapeHTML(n.title)}">${icon('pin')} ${n.pinned?'Pinned':'Pin'}</button>
+   </div>
+   <p style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHTML(n.content)}</p>
+   ${reminder}<div>${converted}</div>
+   <div class="note-foot" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <span style="margin-right:auto">${escapeHTML(workspace(n.workspace).name)}</span>
+    <button type="button" class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}"
+     ${disabled} aria-label="Edit ${escapeHTML(n.title)}">${icon('edit')} Edit</button>
+    ${canView?`<button type="button" class="mini-btn" data-action="detail" data-id="${escapeHTML(n.convertedTaskId)}">Open task</button>`:''}
+    ${!n.convertedAt?`<button type="button" class="mini-btn" data-action="convert-note" data-id="${escapeHTML(n.id)}"
+     ${disabled} aria-label="Convert ${escapeHTML(n.title)} to task">To task</button>`:''}
+    <button type="button" data-action="delete-note" data-id="${escapeHTML(n.id)}"
+     class="mini-btn" ${disabled} title="Remove note with confirmation"
+     aria-label="Delete ${escapeHTML(n.title)}">${icon('trash')}</button>
+   </div>
+  </article>`;
+ }).join('');
+ return `${header}
+ <div class="section-head"><h2>Quick notes</h2><span class="pill gray">${workspaceNotes.length} notes</span></div>
+ ${filters}
+ ${state.noteError?`<div class="info-banner" role="alert">${escapeHTML(state.noteError)}
+  <button type="button" class="btn small secondary" data-action="refresh-notes">Retry</button></div>`:''}
+ ${isCloud&&state.noteLoading&&!state.noteLoaded?'<p class="subtitle" role="status">Loading account notes…</p>':''}
+ ${!state.noteLoading&&state.noteLoaded&&notes.length===0?'<div class="card"><p>No notes match your selection. Create one or change the filter.</p></div>':''}
+ <div class="note-grid">${cards}</div>
+ <div class="section"><div class="section-head"><h2>Rich documents</h2>
+  <span class="pill gray">M6.2 planned</span></div>
+  <div class="card"><p class="subtitle">Task and workspace documents will be available with M6.2. Quick notes are plain text for now.</p></div>
+ </div>`;
+}
 function weeklyReportsPanel(){
  if(!isCloudTime)return '';
  const week=state.timeWeek;
@@ -675,7 +735,60 @@ else if(state.modal==='workspace-create'||state.modal==='workspace-edit'){
  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button>
  <button type="submit" class="btn">${w?'Save workspace':'Create workspace'}</button></div></form>`;
 }
-else if(state.modal==='note'){title='Capture a quick note';body=`<form id="note-form"><div class="field-wrap"><label class="form-label" for="ntitle">Title *</label><input class="field" name="title" id="ntitle" required maxlength="120" placeholder="Something worth remembering" autofocus/></div><div class="field-wrap"><label class="form-label" for="ncontent">Your note</label><textarea class="field" id="ncontent" name="content" rows="5" placeholder="A quick thought, idea, or reminder..."></textarea></div><div class="field-wrap"><label class="form-label" for="nworkspace">Workspace</label><select class="field" name="workspace" id="nworkspace">${workspaces.map(w=>`<option value="${w.id}" ${state.modalTask===w.id?'selected':''}>${escapeHTML(w.name)}</option>`).join('')}</select></div><div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button><button type="submit" class="btn">Save note</button></div></form>`}
+else if(state.modal==='note'||state.modal==='note-edit'){
+ const n=state.modal==='note-edit'?state.notes.find(x=>x.id===state.modalTask):null;
+ const selected=n?.workspace||(workspaces.some(w=>w.id===state.modalTask)?state.modalTask:'general');
+ title=n?'Edit quick note':'Capture a quick note';
+ body=`<form id="note-form">
+  <div class="field-wrap"><label class="form-label" for="ntitle">Title *</label>
+   <input class="field" name="title" id="ntitle" required maxlength="120"
+    value="${escapeHTML(n?.title||'')}" placeholder="Something worth remembering" autofocus/></div>
+  <div class="field-wrap"><label class="form-label" for="ncontent">Your note</label>
+   <textarea class="field" id="ncontent" name="content" maxlength="8000" rows="6"
+    placeholder="A quick thought, idea or reminder…">${escapeHTML(n?.content||'')}</textarea></div>
+  <div class="form-grid">
+   <div class="field-wrap"><label class="form-label" for="nworkspace">Workspace</label>
+    <select class="field" name="workspace" id="nworkspace">
+     ${workspaces.map(w=>`<option value="${escapeHTML(w.id)}"
+       ${selected===w.id?'selected':''}>${escapeHTML(w.name)}</option>`).join('')}
+    </select></div>
+   <div class="field-wrap"><label class="form-label" for="ncolor">Color</label>
+    <select class="field" name="color" id="ncolor">
+     ${[['cream','Cream'],['lilac','Lilac'],['green','Green'],['blue','Blue']]
+       .map(([value,label])=>`<option value="${value}"
+         ${(n?.color||'cream')===value?'selected':''}>${label}</option>`).join('')}
+    </select></div>
+  </div>
+  <div class="field-wrap"><label><input type="checkbox" name="pinned" ${n?.pinned?'checked':''}/>
+   Pin this note</label></div>
+  <div class="form-grid">
+   <div class="field-wrap"><label class="form-label" for="nreminder">Reminder date (optional)</label>
+    <input class="field" type="date" id="nreminder" name="reminder"
+     value="${escapeHTML(n?.reminder||'')}"/></div>
+   <div class="field-wrap"><label class="form-label" for="nremindertime">Reminder time (optional)</label>
+    <input class="field" type="time" id="nremindertime" name="reminderTime"
+     value="${escapeHTML(n?.reminderTime||'')}"/></div>
+  </div>
+  <small class="form-hint">Reminder dates are saved, but note notification delivery is not active yet.</small>
+  ${state.noteError?`<p class="tiny" role="alert">${escapeHTML(state.noteError)}</p>`:''}
+  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button>
+   <button type="submit" class="btn" ${state.noteBusy?'disabled':''}>${n?'Save changes':'Save note'}</button></div>
+ </form>`;
+}
+else if(state.modal==='note-convert'){
+ const n=state.notes.find(x=>x.id===state.modalTask);
+ title='Convert note to task';
+ body=n?`<form id="note-convert-form">
+  <p>Convert “<strong>${escapeHTML(n.title)}</strong>” to an ordinary task
+   in ${escapeHTML(workspace(n.workspace).name)}. The note is kept.</p>
+  <div class="field-wrap"><label class="form-label" for="converted-estimate">Estimated minutes</label>
+   <input class="field" type="number" id="converted-estimate" name="estimate"
+    value="30" min="1" max="100000" required/></div>
+  ${state.noteError?`<p class="tiny" role="alert">${escapeHTML(state.noteError)}</p>`:''}
+  <div class="modal-footer"><button class="btn secondary" type="button" data-action="close">Cancel</button>
+   <button class="btn" type="submit" ${state.noteBusy?'disabled':''}>Create task</button></div>
+ </form>`:'<p>Note no longer available.</p>';
+}
 else if(state.modal==='create'){title='What would you like to add?';body=`<div style="display:grid;gap:10px"><button class="btn secondary" style="justify-content:flex-start" data-action="modal-task">${icon('list')} Task or long-term task</button><button class="btn secondary" style="justify-content:flex-start" data-action="modal-note">${icon('note')} Quick note</button><button class="btn secondary" style="justify-content:flex-start" data-action="nav" data-page="plan">${icon('calendar')} Plan the day</button></div>`}
 else if(state.modal==='plan-add'){title='Choose a task for your day';const ids=new Set([...poolForDay(state.planDay),...(isCloud?[]:state.scheduled.filter(x=>x.day===state.planDay).map(x=>x.taskId))]);body=`<div style="display:grid;gap:9px;max-height:50vh;overflow:auto">${openTasks().filter(t=>!ids.has(t.id)).map(t=>`<button class="btn secondary" style="justify-content:space-between;text-align:left;white-space:normal" data-action="pool-add" data-id="${t.id}"><span>${escapeHTML(t.title)}<br><small style="opacity:.6">${escapeHTML(workspace(t.workspace).name)} · ${minsText(t.estimate)}</small></span>${icon('plus')}</button>`).join('')||'<p class="tiny">Every open task is already selected. Create a new task to add more.</p>'}</div>`}
 else if(state.modal==='schedule'){
@@ -740,7 +853,7 @@ else if(state.modal==='permanent-task'){
  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Keep task</button>
  <button type="submit" class="btn danger">Permanently delete</button></div></form>`;
 }
-else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">The selected quick note will be removed from this browser's demo data. This action requires confirmation.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
+else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">${isCloud?'The note will be removed from your account list (recoverable later).':'The selected note will be removed from this browser\'s demo data.'} This action requires confirmation.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
 else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">${isCloud?'This clears browser-local preferences, quick notes, workspace photos and older device-only timer history. It does NOT delete your saved Neon tasks, schedules, reminders or time sessions.':'This clears local demo changes and restores sample data. No online data is involved.'}</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
 return `<div class="modal-backdrop" data-backdrop="true"><section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
 function parseClock(s){const [h,m]=s.split(':').map(Number);return h*60+m}
