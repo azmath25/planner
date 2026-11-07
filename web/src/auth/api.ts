@@ -122,6 +122,11 @@ export const cloudApi={
  async setNotificationTimeZone(timeZone:string):Promise<void>{
   await call('/v1/notification-preferences',{method:'PUT',body:{timeZone}});
  },
+ async isPushRegistered(endpoint:string):Promise<boolean>{
+  const result=await call<{registered:boolean}>('/v1/push-subscription/status',{method:'POST',body:{endpoint}});
+  if(typeof result.registered!=='boolean')throw new Error('Invalid push subscription state');
+  return result.registered;
+ },
  async savePushSubscription(endpoint:string):Promise<void>{
   await call('/v1/push-subscription',{method:'PUT',body:{endpoint}});
  },
