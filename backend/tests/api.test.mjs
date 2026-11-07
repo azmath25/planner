@@ -301,7 +301,7 @@ test('M1-M4 deep audit: task Trash and restore require the revision observed by 
  assert.match(trashSql.sql,/root.revision=\$3/);
  assert.equal(queries.some(q=>q.sql.startsWith('SELECT revision FROM dayframe.tasks')),false);
  assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:12})).status,200);
- const restoreSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('deleted_at='));
+ const restoreSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('deleted_at= CASE'));
  assert.ok(restoreSql);
  assert.deepEqual(restoreSql.args,['alice',TASK,12,false]);
  assert.match(restoreSql.sql,/root.revision=\$3/);
