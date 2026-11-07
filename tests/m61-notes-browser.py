@@ -52,6 +52,18 @@ def run(browser,width):
  note_id=p.evaluate("() => window.__mockDb.notes.find(n=>n.title==='Saved to my account').id")
  assert 'account reminder; browser push requires permission' in p.locator('.content').inner_text()
 
+ # A lost response after the server commit must reuse the same create ID.
+ p.locator('button[data-action="modal-note"]').first.click()
+ p.locator('#note-form [name="title"]').fill('Retry note')
+ p.locator('#note-form button[type="submit"]').click()
+ p.get_by_text('Connection lost after save').wait_for()
+ assert p.evaluate("() => window.__mockDb.notes.filter(n=>n.title==='Retry note').length")==1
+ p.locator('#note-form button[type="submit"]').click()
+ p.wait_for_function("() => !document.querySelector('#note-form')")
+ attempts=p.evaluate("() => window.__mockDb.noteCreateCalls.filter(x=>x.title==='Retry note')")
+ assert len(attempts)==2 and attempts[0]['id']==attempts[1]['id'],attempts
+ assert p.evaluate("() => window.__mockDb.notes.filter(n=>n.title==='Retry note').length")==1
+
  p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').click()
  p.locator('#note-form [name="content"]').fill('Updated account note')
  p.locator('#note-form button[type="submit"]').click()
