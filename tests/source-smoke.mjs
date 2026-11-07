@@ -51,7 +51,7 @@ if(!readFileSync('web/src/styles.css','utf8').includes('@media(max-width:480px){
 console.log('PASS: Workspace archive, restore and mobile controls wired with General protection');
 
 const m3=readFileSync('web/src/legacy/legacy.ts','utf8'),m3client=readFileSync('web/src/auth/api.ts','utf8'),m3backend=readFileSync('backend/src/index.mjs','utf8');
-for(const marker of ['#task-sort','task-priority','task-tags',"case'cancel-task'","case'add-subtask'","case'confirm-archive-task'","case'unarchive-task'","case'modal-permanent-task'","move-task-form",'loadTaskMedia']){
+for(const marker of ['id="task-sort"','task-priority','task-tags',"case'cancel-task'","case'add-subtask'","case'confirm-archive-task'","case'unarchive-task'","case'modal-permanent-task'","move-task-form",'loadTaskMedia']){
  if(!m3.includes(marker))throw new Error('M3 task control missing: '+marker);
 }
 for(const marker of ['archiveTask','moveTask','taskEvents','permanentlyDeleteTask','getTaskMedia','saveTaskMedia']){
