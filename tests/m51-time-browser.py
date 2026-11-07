@@ -47,6 +47,7 @@ def run(browser,width):
  p.wait_for_function("() => document.querySelector('.global-timer [data-action=resume]')!==null")
  p.locator('.global-timer [data-action="resume"]').click()
  p.wait_for_function("() => window.__mockDb.sessionRecords.get(window.__mockDb.activeTimeId)?.state==='running'")
+ nav(p,'tasks',width)
  p.locator(f'.task-row [data-action="start"][data-id="{SECOND}"]').first.click()
  p.wait_for_function("() => window.__mockDb.sessionRecords.get(window.__mockDb.activeTimeId)?.taskId==='"+SECOND+"'")
  assert len([x for x in p.evaluate("() => [...window.__mockDb.sessionRecords.values()].map(s=>s.state)") if x in ['running','paused']])==1
