@@ -1209,6 +1209,7 @@ return {async fetch(req){
     return json({error:'Method not allowed'},405,hdr);
   }catch(error){
     if(error?.status)return json({error:error.message},error.status,hdr);
+    if(error?.code==='DF001')return json({error:'Move blocked: this task has linked private documents. Reassign or delete them before moving the task.'},409,hdr);
     if(error?.code==='23P01')return json({error:'This time overlaps another scheduled block. Choose a free interval.'},409,hdr);
     if(error?.code==='40001')return json({error:'This schedule was changed elsewhere. Refresh and try again.'},409,hdr);
     if(['23503','23505'].includes(error?.code))return json({error:'Task unavailable or schedule conflict'},409,hdr);
