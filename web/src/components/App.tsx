@@ -25,8 +25,8 @@ function Dayframe({userId,snapshot,displayName,email,onSignOut,onRefresh}:{
  onSignOut:()=>Promise<void>;onRefresh:()=>void;
 }){
  useEffect(()=>{
-  // Cloud tasks/workspaces are the only source of truth for these records.
-  // Plans, quick notes, images, and timer sessions remain labeled local previews.
+  // Neon owns workspaces, tasks, the untimed daily pool and timed intervals.
+  // Capacity, quick notes, workspace images, and timer sessions remain local.
   const dispose=mountLegacyDayframe('dayframe.user-preview.'+encodeURIComponent(userId),snapshot,{
    name:displayName,email,onSignOut,onRefresh
   });
