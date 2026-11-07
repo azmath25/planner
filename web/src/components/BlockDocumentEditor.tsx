@@ -1,4 +1,3 @@
-import { createRoot } from 'react-dom/client';
 import {
  BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, defaultStyleSpecs
 } from '@blocknote/core';
@@ -34,7 +33,7 @@ type EditorProps={
  blocks:unknown[];
  onEdit:(blocks:unknown[],error:string|null)=>void;
 };
-function Editor({blocks,onEdit}:EditorProps){
+export function BlockDocumentEditor({blocks,onEdit}:EditorProps){
  // Types are rechecked at the browser boundary and again by the server.
  // The cast is limited to the BlockNote JSON interchange boundary.
  const editor=useCreateBlockNote({
@@ -55,15 +54,4 @@ function Editor({blocks,onEdit}:EditorProps){
    }
   }}
  />;
-}
-// This mounts only on the Documents page; the React root is always disposed
-// when the legacy page is redrawn, the user logs out or account identity changes.
-export function mountBlockDocumentEditor(
- node:HTMLElement,
- props:EditorProps
-):()=>void{
- assertDocumentBlocks(props.blocks);
- const root=createRoot(node);
- root.render(<Editor {...props}/>);
- return ()=>root.unmount();
 }
