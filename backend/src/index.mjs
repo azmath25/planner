@@ -61,11 +61,11 @@ async function runSql(sql,args){
   if(!pool){pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:4});pool.on('error',()=>console.error('Dayframe database pool disconnected'));}
   return pool.query(sql,args);
 }
-async function readBody(req){
+async function readBody(req,maxChars=25000){
   if(!String(req.headers.get('content-type')||'').toLowerCase().startsWith('application/json')) throw fail(415,'Expected JSON');
-  if(Number(req.headers.get('content-length')||0)>25000) throw fail(413,'Request too large');
+  if(Number(req.headers.get('content-length')||0)>maxChars) throw fail(413,'Request too large');
   const text=await req.text();
-  if(text.length>25000) throw fail(413,'Request too large');
+  if(text.length>maxChars) throw fail(413,'Request too large');
   let data;try{data=JSON.parse(text)}catch{throw fail(400,'Invalid JSON');}
   if(!data||Array.isArray(data)||typeof data!=='object') throw fail(400,'Invalid JSON object');
   return data;
@@ -210,6 +210,52 @@ return {async fetch(req){
       const existing=await query(TASK_BY_ID,[uid,id]);
       if(existing.rows.length&&matchesTask(existing.rows[0],args))return json({task:existing.rows[0]},200,hdr);
       throw fail(409,'Task id already exists or workspace unavailable');
+    }
+    const mediaPath=/^\\/v1\\/tasks\\/([a-f0-9-]{36})\\/media(?:\\/(cover|avatar))?$/i.exec(path);
+    if(mediaPath){
+      const id=uuid(mediaPath[1],'task id'),slot=mediaPath[2]||null;
+      const owned=" FROM dayframe.task_media m JOIN dayframe.tasks t ON t.id=m.task_id AND t.owner_user_id=m.owner_user_id "+
+        "JOIN dayframe.workspaces w ON w.id=t.workspace_id AND w.owner_user_id=$1 "+
+        "WHERE m.owner_user_id=$1 AND m.task_id=$2 AND t.deleted_at IS NULL AND t.archived_at IS NULL AND w.deleted_at IS NULL AND w.archived_at IS NULL";
+      if(!slot&&req.method==='GET'){
+        const {rows}=await query("SELECT m.slot,m.mime,encode(m.image_bytes,'base64') AS base64,m.focal_y AS \"focalY\""+owned,[uid,id]);
+        return json({images:rows.map(row=>({slot:row.slot,data:'data:'+row.mime+';base64,'+row.base64,focalY:row.focalY}))},200,hdr);
+      }
+      if(slot&&req.method==='PUT'){
+        const body=await readBody(req,265000);
+        if(typeof body.data!=='string')throw fail(400,'Invalid image data');
+        const match=/^data:(image\\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.data);
+        if(!match)throw fail(400,'Invalid supported image');
+        const bytes=Buffer.from(match[2],'base64');
+        if(bytes.length<16||bytes.length>180000||bytes.toString('base64')!==match[2])throw fail(413,'Image must be under 180 KB');
+        const mime=match[1],focal=Number(body.focalY??50);
+        if(!Number.isInteger(focal)||focal<0||focal>100)throw fail(400,'Invalid image position');
+        const isPng=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71;
+        const isJpeg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255;
+        const isWebp=bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP';
+        if(!({ 'image/png':isPng,'image/jpeg':isJpeg,'image/webp':isWebp})[mime])throw fail(400,'Image content does not match file type');
+        const sql="INSERT INTO dayframe.task_media(task_id,owner_user_id,slot,mime,image_bytes,focal_y) "+
+          "SELECT t.id,$1,$3,$4,decode($5,'base64'),$6 FROM dayframe.tasks t JOIN dayframe.workspaces w ON w.id=t.workspace_id AND w.owner_user_id=$1 "+
+          "WHERE t.id=$2 AND t.owner_user_id=$1 AND t.deleted_at IS NULL AND t.archived_at IS NULL AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
+          "ON CONFLICT(task_id,slot) DO UPDATE SET mime=EXCLUDED.mime,image_bytes=EXCLUDED.image_bytes,focal_y=EXCLUDED.focal_y,updated_at=now() "+
+          "WHERE dayframe.task_media.owner_user_id=EXCLUDED.owner_user_id RETURNING slot";
+        const {rows}=await query(sql,[uid,id,slot,mime,match[2],focal]);
+        if(!rows.length)throw fail(404,'Task not found or unavailable');
+        return json({saved:true,slot},200,hdr);
+      }
+      if(slot&&req.method==='PATCH'){
+        const body=await readBody(req),focal=Number(body.focalY);
+        if(!Number.isInteger(focal)||focal<0||focal>100)throw fail(400,'Invalid image position');
+        const {rows}=await query("UPDATE dayframe.task_media m SET focal_y=$4,updated_at=now() FROM dayframe.tasks t WHERE m.task_id=$2 AND m.owner_user_id=$1 AND m.slot=$3 AND t.id=m.task_id AND t.owner_user_id=$1 AND t.deleted_at IS NULL AND t.archived_at IS NULL RETURNING m.slot",[uid,id,slot,focal]);
+        if(!rows.length)throw fail(404,'Image not found');
+        return json({saved:true},200,hdr);
+      }
+      if(slot&&req.method==='DELETE'){
+        const {rows}=await query("DELETE FROM dayframe.task_media m USING dayframe.tasks t WHERE m.task_id=$2 AND m.owner_user_id=$1 AND m.slot=$3 AND t.id=m.task_id AND t.owner_user_id=$1 RETURNING m.slot",[uid,id,slot]);
+        if(!rows.length)throw fail(404,'Image not found');
+        return json({removed:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,hdr);
     }
     const taskAction=/^\/v1\/tasks\/([a-f0-9-]{36})\/(archive|unarchive|move|events|permanent)$/i.exec(path);
     if(taskAction){
