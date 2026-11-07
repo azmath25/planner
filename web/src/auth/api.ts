@@ -79,9 +79,18 @@ export const cloudApi={
   await call('/v1/tasks/'+encodeURIComponent(id),{method:'DELETE'});
  },
  async listTrash():Promise<CloudTask[]>{
-  const data=await call<{tasks:CloudTask[]}>('/v1/tasks/trash');
-  if(!Array.isArray(data.tasks)||!data.tasks.every(verifyTask))throw new Error('Invalid Trash response.');
-  return data.tasks;
+  const tasks:CloudTask[]=[];
+  let offset:number|null=0;
+  let page=0;
+  while(offset!==null){
+   if(++page>1000)throw new Error('Too many Trash pages. Please contact support.');
+   const result:{tasks:unknown[];nextOffset:number|null}=await call('/v1/tasks/trash?limit=100&offset='+offset);
+   if(!Array.isArray(result.tasks)||!result.tasks.every(verifyTask))throw new Error('Invalid Trash response.');
+   tasks.push(...result.tasks);
+   if(result.nextOffset!==null&&(!Number.isSafeInteger(result.nextOffset)||result.nextOffset<=offset))throw new Error('Invalid Trash pagination.');
+   offset=result.nextOffset;
+  }
+  return tasks;
  },
  async restoreTask(id:string):Promise<CloudTask>{
   return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/restore',{method:'POST'})).task;
