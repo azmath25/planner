@@ -69,14 +69,42 @@ const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask abou
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
-notes:isCloud?(saved.notes||[]).filter(n=>workspaces.some(w=>w.id===n.workspace)):(saved.notes||initialNotes()),
+notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',notePendingConversion:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
 const remainingUnscheduled=(task,day)=>Math.max(0,task.estimate-(isCloudTime?taskTimeMs(task)/60000:task.spent)-state.scheduled.filter(s=>s.taskId===task.id&&s.day===day).reduce((sum,s)=>sum+parseClock(s.end)-parseClock(s.start),0));
-const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:state.notes,pools:isCloud?undefined:state.pools,scheduled:isCloud?undefined:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:isCloudTime?(saved.timer??undefined):state.timer,sessions:isCloudTime?(Array.isArray(saved.sessions)?saved.sessions:[]):state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
+const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:isCloud?undefined:state.notes,pools:isCloud?undefined:state.pools,scheduled:isCloud?undefined:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:isCloudTime?(saved.timer??undefined):state.timer,sessions:isCloudTime?(Array.isArray(saved.sessions)?saved.sessions:[]):state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
+const localQuickNote=note=>({...note,workspace:localWorkspaceId(note.workspace)});
+const remoteQuickNote=note=>({
+ workspace:serverWorkspaceId(note.workspace),title:note.title,
+ content:note.content||'',color:note.color||'cream',
+ pinned:Boolean(note.pinned),reminder:note.reminder||null,
+ reminderTime:note.reminderTime||null
+});
+async function loadCloudNotes(){
+ if(!isCloud||disposed||state.noteLoading||state.noteBusy)return;
+ state.noteLoading=true;state.noteError='';
+ try{
+  const notes=await cloudApi.listQuickNotes();
+  if(disposed)return;
+  state.notes=notes.map(localQuickNote);
+  state.noteLoaded=true;
+ }catch(err){
+  if(!disposed)state.noteError=err instanceof Error?err.message:'Quick Notes unavailable';
+ }finally{
+  state.noteLoading=false;
+  if(!disposed&&['notes','workspace','home'].includes(state.page))render();
+ }
+}
+const upsertQuickNote=note=>{
+ const existing=state.notes.findIndex(n=>n.id===note.id);
+ if(existing<0)state.notes.unshift(localQuickNote(note));
+ else state.notes[existing]=localQuickNote(note);
+};
+
 const poolLoaded=new Set(),poolPending=new Set();let disposed=false;
 async function loadCloudPool(day){
  if(!isCloud||disposed||poolPending.has(day))return;
@@ -739,6 +767,7 @@ function navigate(page){
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
  if(isCloud&&page==='home')void loadCloudAlerts();
+ if(isCloud&&['notes','workspace'].includes(page))void loadCloudNotes();
  if(isCloudTime&&(page==='workspace'||page==='reports'))void loadCloudWeek();
  if(isCloud&&page==='plan')void loadCloudSchedule(state.planDay,state.planDay);
  if(isCloud&&page==='calendar'){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
@@ -974,7 +1003,7 @@ case'calendar-open-day':{
  const day=b.dataset.day;
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))break;
  state.planDay=day;navigate('plan');if(isCloud)void loadCloudPool(day);break;
-}case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();if(isCloudTime)void loadCloudWeek();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
+}case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();if(isCloudTime)void loadCloudWeek();if(isCloud)void loadCloudNotes();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
  state.taskTab=b.dataset.value;render();
  if(state.taskTab==='history'&&isCloud){
   state.taskEventsBusy=true;state.taskEvents=[];render();
@@ -1350,6 +1379,7 @@ const onStorage=(event)=>{
 };
 window.addEventListener('storage',onStorage);
 render();
+if(isCloud)void loadCloudNotes();
 if(isCloud)void loadCloudPool(today());
 if(isCloud)void loadCloudAlerts();
 if(isCloudTime)void loadCloudTime();
