@@ -1095,6 +1095,7 @@ function render(){
  if(documentPageCleanup){
   documentPageCleanup();documentPageCleanup=null;
   documentPageMounted=false;documentPageDirty=false;
+  window.dispatchEvent(new CustomEvent('dayframe:draft-state',{detail:{dirty:false}}));
  }
  const currentDocumentSerial=++documentPageSerial;
  const view=state.page==='task-archive'?archivedTasksPage():state.page==='workspace-archive'?archivedWorkspacesPage():state.page==='profile'?profilePage():state.page==='home'?home():state.page==='tasks'?tasksPage():state.page==='trash'?trashPage():state.page==='plan'?plan():state.page==='workspaces'?workspacesPage():state.page==='workspace'?workspacePage():state.page==='notes'?notesPage():state.page==='documents'?
@@ -1114,7 +1115,10 @@ function render(){
     initialWorkspaceId:state.documentWorkspaceId,
     initialTaskId:state.documentTaskId,
     initialTaskName:findTask(state.documentTaskId)?.title||null
-   },dirty=>{documentPageDirty=dirty;});
+   },dirty=>{
+    documentPageDirty=dirty;
+    window.dispatchEvent(new CustomEvent('dayframe:draft-state',{detail:{dirty}}));
+   });
    documentPageMounted=true;
   }).catch(error=>{
    if(disposed||currentDocumentSerial!==documentPageSerial||!root)return;
