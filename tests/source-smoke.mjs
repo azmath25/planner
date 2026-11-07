@@ -15,7 +15,14 @@ const react = readFileSync('web/src/components/App.tsx', 'utf8');
 if (!react.includes('mountLegacyDayframe(')) throw new Error('React compatibility mount missing');
 console.log('PASS: React sources present and existing Dayframe screens preserved');
 const auth = readFileSync('web/src/components/App.tsx','utf8');
-if (!auth.includes('authClient.useSession()') || !auth.includes('loadGeneralWorkspace')) throw new Error('Auth gate or general bootstrap missing');
+if (!auth.includes('authClient.useSession()') || !auth.includes('loadCloudSnapshot')) throw new Error('Auth gate or cloud bootstrap missing');
 const api = readFileSync('backend/src/index.mjs','utf8');
 if (!api.includes('jwtVerify(') || !api.includes('owner_user_id=$1')) throw new Error('Backend verified identity and owner filter missing');
-console.log('PASS: M2.2 auth and user-scoped workspace integration present');
+const client=readFileSync('web/src/auth/api.ts','utf8');
+for(const marker of ['loadCloudSnapshot','createWorkspace','createTask','updateTask','trashTask','restoreTask']){
+  if(!client.includes(marker))throw new Error('Missing persistent API client '+marker);
+}
+for(const marker of ['cloud.tasks.map(localTask)','cloudApi.updateTask','cloudApi.createWorkspace','cloudApi.trashTask','case\x27restore-task\x27']){
+  if(!legacy.includes(marker))throw new Error('Missing cloud UI integration '+marker);
+}
+console.log('PASS: M2.3 authenticated tasks, workspaces and recoverable Trash integration present');
