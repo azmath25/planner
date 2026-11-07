@@ -7,7 +7,7 @@ import subprocess
 subprocess.run(['node','tests/build-workspace-archive-harness.mjs'],cwd=ROOT,check=True)
 HTML='<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="app"></div></body></html>'
 PROJECT='33333333-3333-4333-8333-333333333333'
-GENERAL='11111111-1111-4111-8111-111111111111'
+GENERAL_UI='general'
 TASK='44444444-4444-4444-8444-444444444444'
 
 def run(browser,width):
@@ -24,7 +24,7 @@ def run(browser,width):
  assert 'Make space for what matters' in page.locator('h1').inner_text()
 
  # General cannot show an Archive action; test both screen sizes.
- page.locator(f'[data-action="workspace"][data-id="{GENERAL}"]').first.click()
+ page.locator(f'[data-action="workspace"][data-id="{GENERAL_UI}"]').first.click()
  assert page.locator('[data-action="archive-workspace"]').count()==0
  if width<760:
   page.locator('.mobile-nav [data-page="tasks"]').click()
