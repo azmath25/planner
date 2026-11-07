@@ -26,3 +26,7 @@ for(const marker of ['cloud.tasks.map(localTask)','cloudApi.updateTask','cloudAp
   if(!legacy.includes(marker))throw new Error('Missing cloud UI integration '+marker);
 }
 console.log('PASS: M2.3 authenticated tasks, workspaces and recoverable Trash integration present');
+const authScreen=readFileSync('web/src/components/AuthScreen.tsx','utf8');
+if(!authScreen.includes('onPreview')||!react.includes('LocalPreview'))throw new Error('Safari login escape hatch missing');
+if(!client.includes("credentials:'include'")||!client.includes("'/token'"))throw new Error('Uncached managed Auth token fallback missing');
+console.log('PASS: Local demo is available without bypassing Neon authentication');
