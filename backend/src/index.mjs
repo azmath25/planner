@@ -34,6 +34,17 @@ const TASK_UPDATE="UPDATE dayframe.tasks t SET title=$4,notes=$5,status=$6,prior
 "WHERE t.owner_user_id=$1 AND t.id=$2 AND t.workspace_id=$3 AND t.revision=$17 AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
 "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
 "AND ($14::uuid IS NULL OR EXISTS(SELECT 1 FROM dayframe.tasks parent WHERE parent.id=$14 AND parent.workspace_id=$3 AND parent.owner_user_id=$1 AND parent.deleted_at IS NULL AND parent.archived_at IS NULL)) RETURNING "+TASK_FIELDS;
+const TASK_SUBTREE="WITH RECURSIVE subtree AS (SELECT root.id,ARRAY[root.id] AS path FROM dayframe.tasks root "+
+"JOIN dayframe.workspaces w ON w.id=root.workspace_id AND w.owner_user_id=$1 WHERE root.owner_user_id=$1 AND root.id=$2 AND root.revision=$3 "+
+"AND w.deleted_at IS NULL AND w.archived_at IS NULL AND ";
+const TASK_DESCENDANTS=" UNION ALL SELECT child.id,s.path||child.id FROM dayframe.tasks child JOIN subtree s ON child.parent_id=s.id "+
+"WHERE child.owner_user_id=$1 AND NOT child.id=ANY(s.path)) ";
+function taskSubtreeUpdate(field,rootCondition,childCondition,queryResult){
+ return TASK_SUBTREE+rootCondition+TASK_DESCENDANTS+
+ ",changed AS (UPDATE dayframe.tasks t SET "+field+"= "+(field==='archived_at'?"CASE WHEN $4::boolean THEN now() ELSE NULL END":"CASE WHEN $4::boolean THEN now() ELSE NULL END")+
+ ",revision=t.revision+1,updated_at=now() FROM subtree s WHERE t.id=s.id AND t.owner_user_id=$1 "+childCondition+" RETURNING t.*) "+
+ (queryResult==='rows'?"SELECT "+TASK_FIELDS+" FROM changed":"SELECT id::text AS id FROM changed");
+}
 const TASK_HISTORY="SELECT e.event_id::text AS id,e.event_type AS type,e.before_state AS before,e.after_state AS after,e.created_at AS \"createdAt\" FROM dayframe.task_events e "+
 "WHERE e.owner_user_id=$1 AND e.task_id=$2 AND EXISTS(SELECT 1 FROM dayframe.tasks t WHERE t.id=e.task_id AND t.owner_user_id=$1) ORDER BY e.event_id DESC LIMIT $3";
 
@@ -209,17 +220,14 @@ return {async fetch(req){
         const {rows}=await query(TASK_HISTORY,[uid,id,limit]);
         return json({events:rows},200,hdr);
       }
-      if(action==='archive'&&req.method==='POST'){
-        const rev=revision(await readBody(req));
-        const {rows}=await query("UPDATE dayframe.tasks t SET archived_at=now(),revision=revision+1,updated_at=now() WHERE t.id=$2 AND t.owner_user_id=$1 AND t.revision=$3 AND t.deleted_at IS NULL AND t.archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS,[uid,id,rev]);
-        if(!rows.length)throw fail(409,'Task changed or unavailable');
-        return json({task:rows[0]},200,hdr);
-      }
-      if(action==='unarchive'&&req.method==='POST'){
-        const rev=revision(await readBody(req));
-        const {rows}=await query("UPDATE dayframe.tasks t SET archived_at=NULL,revision=revision+1,updated_at=now() WHERE t.id=$2 AND t.owner_user_id=$1 AND t.revision=$3 AND t.deleted_at IS NULL AND t.archived_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS,[uid,id,rev]);
-        if(!rows.length)throw fail(409,'Task changed or unavailable');
-        return json({task:rows[0]},200,hdr);
+      if((action==='archive'||action==='unarchive')&&req.method==='POST'){
+        const rev=revision(await readBody(req)),archive=action==='archive';
+        const sql=taskSubtreeUpdate('archived_at',archive?'root.deleted_at IS NULL AND root.archived_at IS NULL':'root.deleted_at IS NULL AND root.archived_at IS NOT NULL',
+          'AND t.deleted_at IS NULL','rows');
+        const {rows}=await query(sql,[uid,id,rev,archive]);
+        const root=rows.find(row=>row.id===id);
+        if(!root)throw fail(409,'Task changed or unavailable');
+        return json({task:root,affected:rows.length},200,hdr);
       }
       if(action==='move'&&req.method==='POST'){
         const body=await readBody(req),rev=revision(body);
@@ -252,16 +260,24 @@ return {async fetch(req){
     }
     if(tm&&req.method==='DELETE'){
       const id=uuid(tm[1],'task id');
-      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING id",[uid,id]);
+      const sql=TASK_SUBTREE+"root.deleted_at IS NULL AND root.archived_at IS NULL"+TASK_DESCENDANTS+
+        ",changed AS (UPDATE dayframe.tasks t SET deleted_at=now(),revision=t.revision+1,updated_at=now() FROM subtree s WHERE t.id=s.id AND t.owner_user_id=$1 AND t.deleted_at IS NULL RETURNING t.id) SELECT id::text AS id FROM changed";
+      const revCheck=await query("SELECT revision FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL",[uid,id]);
+      if(!revCheck.rows.length)throw fail(404,'Task not found');
+      const {rows}=await query(sql,[uid,id,revCheck.rows[0].revision]);
       if(!rows.length)throw fail(404,'Task not found');
       return json({deleted:true},200,hdr);
     }
     const restore=/^\/v1\/tasks\/([a-f0-9-]{36})\/restore$/i.exec(path);
     if(restore&&req.method==='POST'){
       const id=uuid(restore[1],'task id');
-      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=NULL,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING "+TASK_FIELDS,[uid,id]);
-      if(!rows.length)throw fail(404,'Task not found');
-      return json({task:rows[0]},200,hdr);
+      const revCheck=await query("SELECT revision FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NOT NULL",[uid,id]);
+      if(!revCheck.rows.length)throw fail(404,'Task not found');
+      const sql=taskSubtreeUpdate('deleted_at','root.deleted_at IS NOT NULL','AND t.deleted_at IS NOT NULL','rows');
+      const {rows}=await query(sql,[uid,id,revCheck.rows[0].revision,false]);
+      const root=rows.find(row=>row.id===id);
+      if(!root)throw fail(409,'Task changed or workspace unavailable');
+      return json({task:root,affected:rows.length},200,hdr);
     }
     if(['GET','POST','PATCH','DELETE'].includes(req.method))return json({error:'Not found'},404,hdr);
     return json({error:'Method not allowed'},405,hdr);
