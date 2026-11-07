@@ -19,14 +19,23 @@ const TASK_FIELDS=[
   "to_char(deadline_time,'HH24:MI') AS \"deadlineTime\"",
   'reminder::text AS reminder',
   "to_char(reminder_time,'HH24:MI') AS \"reminderTime\"",
-  'revision','created_at AS "createdAt"','updated_at AS "updatedAt"'
+  'revision','pinned','tags','archived_at AS "archivedAt"','completed_at AS "completedAt"','cancelled_at AS "cancelledAt"',
+  'created_at AS "createdAt"','updated_at AS "updatedAt"'
 ].join(',');
-const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
+const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
+const TASK_ARCHIVED="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) ORDER BY archived_at DESC,id DESC LIMIT $2 OFFSET $3";
 const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) ORDER BY deleted_at DESC,id DESC LIMIT $2 OFFSET $3";
-const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL)";
-const TASK_INSERT="INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,notes,status,priority,estimate_minutes,long_term,deadline,deadline_time,reminder,reminder_time,parent_id) "+
-"SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
-const TASK_UPDATE="UPDATE dayframe.tasks t SET workspace_id=$3,title=$4,notes=$5,status=$6,priority=$7,estimate_minutes=$8,long_term=$9,deadline=$10,deadline_time=$11,reminder=$12,reminder_time=$13,parent_id=$14,revision=t.revision+1,updated_at=now() WHERE t.owner_user_id=$1 AND t.id=$2 AND t.revision=$15 AND t.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces current_w WHERE current_w.id=t.workspace_id AND current_w.owner_user_id=$1 AND current_w.deleted_at IS NULL AND current_w.archived_at IS NULL) AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING "+TASK_FIELDS;
+const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL)";
+const TASK_INSERT="INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,notes,status,priority,estimate_minutes,long_term,deadline,deadline_time,reminder,reminder_time,parent_id,pinned,tags) "+
+"SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
+"AND ($14::uuid IS NULL OR EXISTS(SELECT 1 FROM dayframe.tasks parent WHERE parent.id=$14 AND parent.workspace_id=w.id AND parent.owner_user_id=$1 AND parent.deleted_at IS NULL AND parent.archived_at IS NULL)) "+
+"ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
+const TASK_UPDATE="UPDATE dayframe.tasks t SET title=$4,notes=$5,status=$6,priority=$7,estimate_minutes=$8,long_term=$9,deadline=$10,deadline_time=$11,reminder=$12,reminder_time=$13,parent_id=$14,pinned=$15,tags=$16,revision=t.revision+1,updated_at=now() "+
+"WHERE t.owner_user_id=$1 AND t.id=$2 AND t.workspace_id=$3 AND t.revision=$17 AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
+"AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+"AND ($14::uuid IS NULL OR EXISTS(SELECT 1 FROM dayframe.tasks parent WHERE parent.id=$14 AND parent.workspace_id=$3 AND parent.owner_user_id=$1 AND parent.deleted_at IS NULL AND parent.archived_at IS NULL)) RETURNING "+TASK_FIELDS;
+const TASK_HISTORY="SELECT e.event_id::text AS id,e.event_type AS type,e.before_state AS before,e.after_state AS after,e.created_at AS \"createdAt\" FROM dayframe.task_events e "+
+"WHERE e.owner_user_id=$1 AND e.task_id=$2 AND EXISTS(SELECT 1 FROM dayframe.tasks t WHERE t.id=e.task_id AND t.owner_user_id=$1) ORDER BY e.event_id DESC LIMIT $3";
 
 let jwks,pool;
 async function verifyNeonToken(token) {
@@ -80,7 +89,12 @@ function taskBody(body){
   if(typeof body.long!=='boolean'&&body.long!==undefined)throw fail(400,'Invalid long-term flag');
   const hard=date(body.deadline,'deadline'),rem=date(body.reminder,'reminder');
   const parent=body.parent==null?null:uuid(body.parent,'parent task');
-  return [workspace,title,notes,status,priority,estimate,Boolean(body.long),hard,clock(body.deadlineTime,hard,'deadline time'),rem,clock(body.reminderTime,rem,'reminder time'),parent];
+  const pinned=body.pinned??false;
+  if(typeof pinned!=='boolean')throw fail(400,'Invalid pin');
+  const tags=body.tags??[];
+  if(!Array.isArray(tags)||tags.length>8||tags.some(tag=>typeof tag!=='string'||tag.length<1||tag.length>30||!/^[\\p{L}\\p{N} _-]+$/u.test(tag)))throw fail(400,'Invalid tags');
+  if(new Set(tags.map(tag=>tag.toLocaleLowerCase())).size!==tags.length)throw fail(400,'Duplicate tags');
+  return [workspace,title,notes,status,priority,estimate,Boolean(body.long),hard,clock(body.deadlineTime,hard,'deadline time'),rem,clock(body.reminderTime,rem,'reminder time'),parent,pinned,tags];
 }
 function workspaceBody(body){
   const name=str(body.name,120,'workspace name',{required:true});
@@ -92,13 +106,14 @@ function workspaceBody(body){
 }
 function revision(body){const rev=Number(body.revision);if(!Number.isSafeInteger(rev)||rev<1)throw fail(400,'Invalid revision');return rev;}
 function matchesTask(existing,args){
-  const [workspace,title,notes,status,priority,estimate,long,deadline,deadlineTime,reminder,reminderTime,parent]=args;
+  const [workspace,title,notes,status,priority,estimate,long,deadline,deadlineTime,reminder,reminderTime,parent,pinned,tags]=args;
   const nullable=value=>value===''||value==null?null:value;
   return existing.workspace===workspace&&existing.title===title&&existing.notes===notes&&
     existing.status===status&&existing.priority===priority&&Number(existing.estimate)===estimate&&
     existing.long===long&&nullable(existing.deadline)===deadline&&
     nullable(existing.deadlineTime)===deadlineTime&&nullable(existing.reminder)===reminder&&
-    nullable(existing.reminderTime)===reminderTime&&nullable(existing.parent)===parent;
+    nullable(existing.reminderTime)===reminderTime&&nullable(existing.parent)===parent&&
+    Boolean(existing.pinned)===pinned&&JSON.stringify(existing.tags||[])===JSON.stringify(tags);
 }
 function authHeaders(request){
   const trusted=request.headers.get('origin')===ORIGIN;
