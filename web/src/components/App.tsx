@@ -39,6 +39,22 @@ function Dayframe({userId,snapshot}:{userId:string;snapshot:CloudSnapshot}){
  },[userId,snapshot]);
  return <div id="app" data-react-host="dayframe"/>;
 }
+// Local demonstration works even when the browser cannot retain a
+// third-party Neon Auth session. It never calls an authenticated data API.
+function LocalPreview({onExit}:{onExit:()=>void}){
+ useEffect(()=>{
+  const dispose=mountLegacyDayframe('dayframe.local-only-preview.1');
+  return ()=>dispose();
+ },[]);
+ return <div className="authed-app">
+  <div className="account-topbar" role="status">
+   <span className="account-identity"><strong>Local demonstration</strong> · No account data</span>
+   <span className="account-local-notice">Preview items stay only in this browser</span>
+   <button type="button" className="account-signout" onClick={onExit}>Return to sign in</button>
+  </div>
+  <div id="app" data-react-host="local-preview"/>
+ </div>;
+}
 function SignedIn({userId,displayName}:{userId:string;displayName:string}){
  const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null);
  const [error,setError]=useState('');
@@ -81,10 +97,15 @@ function SignedIn({userId,displayName}:{userId:string;displayName:string}){
  </div>;
 }
 export function App(){
+ const [localPreview,setLocalPreview]=useState(false);
  const session=authClient.useSession();
  return <ErrorBoundary>
-  {session.isPending?<main className="auth-page" aria-live="polite"><div className="auth-card"><h1>Opening Dayframe…</h1><p>Restoring your account session.</p></div></main>
-  :!session.data?.user?<AuthScreen/>
-  :<SignedIn key={session.data.user.id} userId={session.data.user.id} displayName={session.data.user.name||session.data.user.email||'Account'}/>}
+  {session.data?.user
+    ? <SignedIn key={session.data.user.id} userId={session.data.user.id} displayName={session.data.user.name||session.data.user.email||'Account'}/>
+    : localPreview
+      ? <LocalPreview onExit={()=>setLocalPreview(false)}/>
+      : session.isPending
+        ? <main className="auth-page" aria-live="polite"><div className="auth-card"><h1>Opening Dayframe…</h1><p>Restoring your account session.</p></div></main>
+        : <AuthScreen onPreview={()=>setLocalPreview(true)}/>}
  </ErrorBoundary>;
 }
