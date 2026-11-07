@@ -88,7 +88,7 @@ export const TIME_TRANSITION_SQL="SELECT dayframe.transition_time_session($1,$2,
  * explicitly returned as legacyEstimatedMs, assigned to session-start week.
  * Current fixed plans are schedules, not immutable past commitments.
  */
-export const TIME_WEEK_SQL=\`
+export const TIME_WEEK_SQL=`
 WITH
 clock AS (
  SELECT COALESCE(
@@ -183,7 +183,7 @@ SELECT b.zone AS "timeZone",to_char(b.week_day,'YYYY-MM-DD') AS "weekStart",
  COALESCE((SELECT SUM(legacy_ms)::bigint FROM workspace_rows),0)::text AS "accountLegacyEstimatedMs",
  COALESCE((SELECT SUM(planned_minutes)::bigint FROM workspace_rows),0)::text AS "accountPlannedMinutes"
 FROM bounds b
-\`;
+`;
 
 export const TIME_WEEK_TARGET_SQL=
  "INSERT INTO dayframe.weekly_workspace_targets AS current "+
