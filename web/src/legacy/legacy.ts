@@ -480,7 +480,7 @@ function profilePage(){
   <div class="profile-identity"><div class="profile-avatar profile-avatar-large" aria-hidden="true">${escapeHTML(accountInitials)}</div>
   <div><div class="eyebrow">${isCloud?'Signed in':'Local preview'}</div><h2>${escapeHTML(accountName)}</h2>
   ${accountEmail?`<p class="profile-email">${escapeHTML(accountEmail)}</p>`:''}</div></div>
-  <div class="profile-data-note"><strong>${subtitle}</strong><p>${isCloud?'Workspaces, tasks and untimed daily pools are saved in Neon. Timed intervals, notes, workspace photos and timer sessions remain on this device.':'Changes in this preview stay in this browser and are not attached to an account.'}</p></div>
+  <div class="profile-data-note"><strong>${subtitle}</strong><p>${isCloud?'Workspaces, tasks, untimed daily pools and scheduled time blocks are saved in Neon. Capacity, quick notes, workspace photos and timer sessions remain on this device. Reminders are not delivered yet.':'Changes in this preview stay in this browser and are not attached to an account.'}</p></div>
   <div class="profile-actions">
   ${isCloud&&typeof account.onRefresh==='function'?`<button type="button" class="btn secondary" data-action="account-refresh">${icon('refresh')} Refresh saved data</button>`:''}
   <button type="button" class="btn secondary" data-action="account-sign-out">${icon('back')} ${isCloud?'Sign out':'Return to sign in'}</button>
