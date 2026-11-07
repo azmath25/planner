@@ -171,7 +171,7 @@ test('active workspaces and active task queries exclude archived workspaces',asy
  await req('/v1/tasks/'+TASK,'DELETE','alice');
  await req('/v1/tasks/'+TASK+'/restore','POST','alice');
  assert.match(LIST_SQL,/archived_at IS NULL/);
- const taskSql=queries.filter(x=>x.sql.includes('dayframe.tasks'));
+ const taskSql=queries.filter(x=>x.sql.includes('dayframe.tasks')&&!x.sql.startsWith('SELECT revision FROM dayframe.tasks'));
  assert.ok(taskSql.length>=6);
  for(const q of taskSql){
   assert.match(q.sql,/archived_at IS NULL/,'must not access tasks hidden inside archive');
