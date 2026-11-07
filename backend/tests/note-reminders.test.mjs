@@ -96,7 +96,7 @@ test('M6.1a valid note push contains no title/body and is sent at most once per 
  const endpoint='https://web.push.apple.com/synthetic';
  const sent=[];let statusWrites=0;
  const sql=async(statement)=>{
-  if(statement===NOTE_CLAIM_SQL)return {rows:[{id:20,endpoint,attempts:1}]};
+  if(statement===NOTE_CLAIM_SQL)return {rows:[{id:20,owner_user_id:'alice',endpoint,attempts:1}]};
   if(statement===NOTE_ELIGIBLE_SQL)return {rows:[{'?column?':1}]};
   if(statement===PUSH_QUIET_SQL)return {rows:[{not_before:new Date(0)}]};
   if(statement.includes("status='delivered'")){statusWrites++;return {rows:[]};}
@@ -112,7 +112,7 @@ test('M6.1a valid note push contains no title/body and is sent at most once per 
 test('M6.1a retryable push response uses exponential backoff',async()=>{
  let retries=0;const endpoint='https://fcm.googleapis.com/fcm/send/synthetic';
  const sql=async(statement)=>{
-  if(statement===NOTE_CLAIM_SQL)return {rows:[{id:21,endpoint,attempts:2}]};
+  if(statement===NOTE_CLAIM_SQL)return {rows:[{id:21,owner_user_id:'alice',endpoint,attempts:2}]};
   if(statement===NOTE_ELIGIBLE_SQL)return {rows:[{'?column?':1}]};
   if(statement===PUSH_QUIET_SQL)return {rows:[{not_before:new Date(0)}]};
   if(statement.includes("status=CASE WHEN attempts>=6")){retries++;return {rows:[]};}
