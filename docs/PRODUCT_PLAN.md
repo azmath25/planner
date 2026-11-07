@@ -3,7 +3,7 @@
 **Status:** v1.1 specification, 2026-11-06  
 **Project:** Standalone personal time, task and knowledge management platform  
 **Delivery sequence:** Mobile-first website on GitHub Pages + Neon first; Android/Google Play second.  
-**Implementation status (2026-11-07):** M4.3 reminder core is deployed: Neon-backed alert actions, in-app alerts, opt-in web push and five-minute scheduled delivery; real-device push acceptance remains open. M4.1 daily pools and M4.2 timed intervals are stored in Neon. Available-hours preference and timer sessions remain local.
+**Implementation status (2026-11-07):** M5.1 server-backed time sessions are deployed: one active running/paused session per account, atomic transitions, server-clock elapsed time, recovery and direct task totals. Previous device-only timer history was not imported. M4.1/M4.2 planning and M4.3 reminders are deployed; one real browser received a push. M1–M4 dependency-security and broader device acceptance findings remain open. Available-hours preference, quick notes and workspace photos are local. M5.2 nested/workspace/global rollups are not started.
 
 ## 1. Product vision
 
@@ -119,6 +119,6 @@ A user can create a reminder-only task without deadline; create a hard-deadline 
 
 ## 12. Current checkpoint
 
-**Current release checkpoint:** M4.3 — owner-scoped reminder inbox, persistent acknowledge/snooze, user-opted-in browser push and scheduled delivery are deployed. See `docs/CHECKPOINT_M4.3.md`; actual device notifications and cross-account/browser acceptance remain unverified. M4.1/M4.2 day planning and timed scheduling remain deployed; M5 sessions are not included. See `docs/AUDIT_M1_M4_2026-11-07.md` for the source-based audit. Historical M1.2 checkpoint details remain below.
+**Current release checkpoint:** M5.1 — Neon owns start/pause/resume/stop/switch time sessions with server timestamps, one-active-session database guard and recovery across signed-in devices. See `docs/CHECKPOINT_M5.1.md`. The user confirmed M4.3 browser notification delivery. M1–M4 source-and-security findings remain documented in `docs/AUDIT_M1_M4_DEEP_2026-11-07.md`, including dependency advisories and incomplete Safari/multi-account acceptance. M5.2 rollups and M5.3 targets are not implemented. Historical M1.2 checkpoint details remain below.
 
 M1.2 visual design milestone: six coherent themes, six optional accent colors, comfortable/compact layout, three cover styles, avatar and cover photo preview for tasks and workspaces with client-side image size/type checks, compression and focal-position adjustment. These appearance controls are deliberately confined to Settings or entity detail views to keep the mobile daily interface clean. Uploaded images are disposable browser-local preview data only (no remote uploads). Use GitHub Pages **branch deployment from `main` / `(root)`**, not a `gh-pages` branch or an Actions deployment workflow. The user explicitly requested GitHub to retain only one branch (`main`); all obsolete branches were deleted. No Neon mutations, real notifications or production uploads. The static demo is not a production application.
