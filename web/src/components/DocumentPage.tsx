@@ -421,8 +421,9 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         onClick={()=>void exportSaved()}>Download saved JSON</button>
        <button type="button" className="btn small secondary" disabled={busy||dirty}
         onClick={()=>void remove()}>Delete</button>
-       <button type="button" className="btn small" disabled={busy||!dirty||!!validation}
-        onClick={()=>{setAutoSavePaused(false);void save();}}>Save changes</button>
+       <button type="button" className="btn small"
+        disabled={busy||!dirty||!!validation||conflict||autoSavePaused}
+        onClick={()=>void save()}>Save changes</button>
       </div>
       <p className="tiny" role="status" aria-live="polite">
        {busy?'Saving…':conflict?'Conflict — local draft preserved':autoSavePaused?'Autosave paused — use Retry save':validation?'Cannot autosave: '+validation:dirty?'Unsaved — autosave scheduled':'Saved'}
