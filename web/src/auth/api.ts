@@ -397,15 +397,26 @@ export const cloudApi={
   return response.session;
  },
 
- async notificationPreferences():Promise<{timeZone:string|null;publicKey:string}>{
-  const data=await call<{timeZone:string|null;publicKey:string}>('/v1/notification-preferences');
+ async notificationPreferences():Promise<{timeZone:string|null;quietStart:string|null;quietEnd:string|null;publicKey:string}>{
+  const data=await call<{timeZone:string|null;quietStart:string|null;quietEnd:string|null;publicKey:string}>('/v1/notification-preferences');
+  const clock=(value:string|null)=>value===null||typeof value==='string'&&/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
   if((data.timeZone!==null&&typeof data.timeZone!=='string')||
+   !clock(data.quietStart)||!clock(data.quietEnd)||
+   (data.quietStart===null)!==(data.quietEnd===null)||
    typeof data.publicKey!=='string'||!/^[-_A-Za-z0-9]+$/.test(data.publicKey))
    throw new Error('Invalid notification settings');
   return data;
  },
  async setNotificationTimeZone(timeZone:string):Promise<void>{
   await call('/v1/notification-preferences',{method:'PUT',body:{timeZone}});
+ },
+ async setNotificationQuietHours(quietStart:string|null,quietEnd:string|null,timeZone:string):Promise<void>{
+  const valid=(v:string|null)=>v===null||/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v);
+  if(!valid(quietStart)||!valid(quietEnd)||(quietStart===null)!==(quietEnd===null)||
+   (quietStart!==null&&quietStart===quietEnd))throw new Error('Invalid quiet hours');
+  await call('/v1/notification-preferences/quiet-hours',{
+   method:'PUT',body:{quietStart,quietEnd,timeZone}
+  });
  },
  async isPushRegistered(endpoint:string):Promise<boolean>{
   const result=await call<{registered:boolean}>('/v1/push-subscription/status',{method:'POST',body:{endpoint}});
