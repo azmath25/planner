@@ -52,6 +52,25 @@ On Tasks or any task detail, press **Start**. The current task then appears in a
 
 Quick check: `npm run test:time`. Browser regression: `python tests/timer-browser.py` (requires local Chromium and Playwright; generates an ephemeral test harness).
 
+## Login status and Safari limitation
+
+Managed Neon Auth is enabled for the Dayframe project, and the live sign-in
+endpoint and GitHub Pages CORS preflight pass. **That does not prove a browser
+session is usable.** The default GitHub Pages domain and the separate Neon Auth
+domain are cross-site. Some browsers, notably Safari, can block the cookie
+required by the direct `@neondatabase/auth` client.
+
+The sign-in UI now verifies the restored session and shows an explicit error
+instead of appearing to log in successfully. The service connection, source
+bundle, Pages publication and API JWT checks are verified, but **real-user
+Safari sign-in remains unresolved**.
+
+A production solution must move auth calls behind an approved same-site
+proxy/first-party domain or use an equally secure, supported hosting setup.
+Do not disable JWT checking, send credentials to unrelated sites, or rely on
+turning off cross-site tracking protections. See
+[`docs/CHECKPOINT_M2.3.md`](docs/CHECKPOINT_M2.3.md).
+
 ## GitHub Pages, one branch
 
 The repo retains exactly one branch: `main`. In **Settings → Pages**, use **Deploy from a branch → main → /(root)**. GitHub Actions runs `npm run build`, verifies assets and then commits Vite's built `index.html` and `assets/` to **main itself**. GitHub Pages does not automatically publish bot-authored commits; the milestone deployment is finalized by a separate human/app-authored `main` commit after CI verification. The Pages source never changes to GitHub Actions; no `gh-pages` branch is needed.
