@@ -1,7 +1,7 @@
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import { mountLegacyDayframe } from '../legacy/legacy';
 import { authClient } from '../auth/client';
-import { loadCloudSnapshot, type CloudSnapshot } from '../auth/api';
+import { cloudApi, loadCloudSnapshot, type CloudSnapshot } from '../auth/api';
 import { AuthScreen } from './AuthScreen';
 import { getDemoStorageStatus } from '../domain/storage';
 
@@ -72,6 +72,19 @@ function SignedIn({userId,displayName,email}:{userId:string;displayName:string;e
   if(signingOut)return;
   setSigningOut(true);
   try{
+   // Unregister only THIS device before revoking the session. Leaving its
+   // endpoint subscribed could show the previous user's alerts after logout
+   // on a shared browser. Failure must never trap a user in a signed-in state.
+   try{
+    if('serviceWorker' in navigator){
+     const registration=await navigator.serviceWorker.getRegistration(new URL('./',document.baseURI).pathname);
+     const subscription=await registration?.pushManager?.getSubscription();
+     if(subscription){
+      try{await cloudApi.removePushSubscription(subscription.endpoint);}
+      finally{await subscription.unsubscribe();}
+     }
+    }
+   }catch(error){console.warn('Could not finish browser push cleanup during sign-out',error instanceof Error?error.name:'Unknown');}
    const result=await authClient.signOut();
    if(result.error)throw new Error(result.error.message||'Sign out failed. Please retry.');
    // Ensure the profile no longer displays account data if the session SDK
