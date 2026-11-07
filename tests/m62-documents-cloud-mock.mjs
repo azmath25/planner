@@ -14,9 +14,25 @@ const seed={
 const items=[seed];
 const updates=[];
 const creations=[];
+const searches=[];
+const exports=[];
 function get(id){return items.find(d=>d.id===id);}
 function missing(){throw Object.assign(Error('Document unavailable or changed'),{status:409});}
 export const cloudApi={
+ async searchDocuments(q,filters={}){
+  searches.push({q,filters:clone(filters)});
+  return clone(items.filter(d=>!d.deletedAt&&
+   (!filters.workspace||d.workspace===filters.workspace)&&
+   (!filters.taskId||d.taskId===filters.taskId)&&
+   (d.title.toLowerCase().includes(q.toLowerCase())||
+    JSON.stringify(d.blocks).toLowerCase().includes(q.toLowerCase())))
+   .map(({blocks,...meta})=>meta));
+ },
+ async exportDocument(id){
+  const item=get(id);if(!item||item.deletedAt)missing();
+  exports.push(id);
+  return {schema:'dayframe.document.export.v1',exportedAt:now,document:clone(item)};
+ },
  async listDocuments(){
   return clone(items.filter(d=>!d.deletedAt).map(({blocks,...meta})=>meta));
  },
@@ -60,4 +76,4 @@ export const cloudApi={
   item.deletedAt=null;item.revision++;return clone(item);
  }
 };
-Object.assign(window,{__docMock:{items,updates,creations,workspace:WORKSPACE,seed:SEED}});
+Object.assign(window,{__docMock:{items,updates,creations,searches,exports,workspace:WORKSPACE,seed:SEED}});
