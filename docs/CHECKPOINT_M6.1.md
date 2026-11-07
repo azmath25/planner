@@ -15,11 +15,23 @@
 6. **Reminders:** date/time can be saved but the UI **explicitly states that note notification delivery is not yet active**. No silent claims of push alerts.
 7. **Authored regression tests (not run):** `backend/tests/quick-notes.test.mjs`; additions to `tests/deep-postgres-regression.mjs` requiring disposable Postgres and migration 0013; `tests/build-m61-harness.mjs` and `tests/m61-notes-browser.py` for account-mock CRUD, conversion and responsive widths.
 
+## Additional M6.1 safety slice — Recoverable notes (2026-11-07)
+
+This slice is **committed only on the feature branch**. No production database migration, API function deployment, or public-site publication occurred.
+
+- Added `GET /v1/notes/trash` and `POST /v1/notes/{id}/restore`. Both require the authenticated account and enforce workspace ownership. Restore uses optimistic revision checks and is allowed only when the workspace is active.
+- Added `deletedAt` in the API's typed note representation and a **Recently Deleted** view with a Restore action. Deleted notes stay in server storage; a successful restore returns them to **My notes**, rather than creating a duplicate.
+- Note-to-task conversion now uses the note's UUID as the default converted-task UUID. It is stable even after a browser reload, allowing the database's idempotent conversion function to return the original task after an uncertain response. This does **not** trigger an automatic retry.
+- Expanded staged API, disposable PostgreSQL and responsive browser test coverage for restore, account isolation and deterministic conversion.
+- Sanity-only: checked JavaScript parsing of the modified legacy frontend, backend entry point and browser harness. **TypeScript compilation, database migration tests, Playwright and live authentication were not executed; all remain in the final integrated verification gate.**
+
+**Remaining M6.1 work:** note notification delivery/quiet-hour behavior and tests, account-switch handling, secure reminder inbox experience, creation retry after uncertain POST, and integration sign-off. Notes with archived workspaces are hidden from active/deleted lists until the workspace is restored. No live notification behavior is claimed.
+
 ## Remaining M6.1 before completion
 
 - Implement note reminder delivery in the existing server-owned notification pipeline, including timezone/quiet-hour semantics, acknowledgements/snoozes or a clearly separate UX, idempotency and retry rules; then remove the 'not yet active' label.
-- Provide a practical restore/Trash UI for soft-deleted notes or explicitly defer it to M6.3 without pretending deleted notes are directly recoverable now.
-- Review pending conversion retry UX across page reload, failed HTTP responses, and deleted/archive workspaces.
+- **Staged:** deleted-note restore/Trash UI and owner-scoped endpoints are implemented; still require integrated browser and PostgreSQL verification.
+- **Partially addressed:** conversion retry uses a deterministic task UUID after reload; still test uncertain responses, account switching and deleted/archive workspaces.
 - Add browser regression checks for stale revision, account switching and unexpected offline/network failures.
 - **Only during final integrated release gate:** production TypeScript/Vite build, API unit tests, all 13 migrations on disposable Postgres, browser matrix and authenticated integration. Tests in this checkpoint are **written, not claimed passed**. GitHub Actions budget issue is deferred until then; local syntax sanity reviews do not replace the full suite.
 
