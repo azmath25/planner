@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
- assertDocumentBlocks,emptyDocumentBlocks
+ assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON
 } from '../web/src/domain/documentBlocks.ts';
 const good=(text='Text')=>[{
  id:'block_1',type:'paragraph',
@@ -30,4 +30,13 @@ test('M6.2b browser size and depth checks reject oversized documents',()=>{
  let deep=good();
  for(let i=0;i<7;i++)deep=[{id:'node_'+i,type:'paragraph',props:{},content:[],children:deep}];
  assert.throws(()=>assertDocumentBlocks(deep));
+});
+
+test('M6.3a canonical equality ignores postgres JSONB key reordering',()=>{
+ const a={id:'one',type:'paragraph',props:{textColor:'default',textAlignment:'left'},
+  content:[{text:'Draft',styles:{italic:true,bold:false},type:'text'}],children:[]};
+ const b={children:[],content:[{type:'text',styles:{bold:false,italic:true},text:'Draft'}],
+  props:{textAlignment:'left',textColor:'default'},type:'paragraph',id:'one'};
+ assert.equal(canonicalDocumentJSON(a),canonicalDocumentJSON(b));
+ assert.notEqual(canonicalDocumentJSON(a),canonicalDocumentJSON({...b,content:[]}));
 });
