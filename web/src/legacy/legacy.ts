@@ -6,7 +6,7 @@
 import { getElapsedMs, startTimer, pauseTimer, resumeTimer, finishSession, formatElapsed, restoreTimer, recordedMs } from '../domain/timeTracking';
 import { cloudApi } from '../auth/api';
 
-export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cloud = null) {
+export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cloud: any = null) {
  const isCloud=Boolean(cloud);
  const localWorkspace=w=>({
   id:w.kind==='general'?'general':w.id,serverId:w.id,kind:w.kind,name:w.name,
