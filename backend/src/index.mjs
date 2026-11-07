@@ -9,8 +9,9 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const json=(body,status,headers)=>Response.json(body,{status,headers:{...headers,'content-type':'application/json; charset=utf-8'}});
 const fail=(code,msg)=>Object.assign(new Error(msg),{status:code});
 export const BOOTSTRAP_SQL="INSERT INTO dayframe.workspaces(owner_user_id,name,kind) VALUES($1,'General','general') ON CONFLICT (owner_user_id) WHERE kind = 'general' DO NOTHING";
-const WORKSPACE_FIELDS="id::text AS id,name,kind,subtitle,color,cover,revision,created_at AS \"createdAt\"";
-export const LIST_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id";
+const WORKSPACE_FIELDS='id::text AS id,name,kind,subtitle,color,cover,revision,created_at AS "createdAt",archived_at AS "archivedAt"';
+export const LIST_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id";
+export const ARCHIVED_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC,id DESC";
 const TASK_FIELDS=[
   'id::text AS id','workspace_id::text AS workspace','parent_id::text AS parent',
   'title','notes','status','priority','estimate_minutes AS estimate',
@@ -20,12 +21,12 @@ const TASK_FIELDS=[
   "to_char(reminder_time,'HH24:MI') AS \"reminderTime\"",
   'revision','created_at AS "createdAt"','updated_at AS "updatedAt"'
 ].join(',');
-const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
-const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC LIMIT $2 OFFSET $3";
-const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL";
+const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
+const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) ORDER BY deleted_at DESC,id DESC LIMIT $2 OFFSET $3";
+const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL)";
 const TASK_INSERT="INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,notes,status,priority,estimate_minutes,long_term,deadline,deadline_time,reminder,reminder_time,parent_id) "+
-"SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
-const TASK_UPDATE="UPDATE dayframe.tasks t SET workspace_id=$3,title=$4,notes=$5,status=$6,priority=$7,estimate_minutes=$8,long_term=$9,deadline=$10,deadline_time=$11,reminder=$12,reminder_time=$13,parent_id=$14,revision=t.revision+1,updated_at=now() WHERE t.owner_user_id=$1 AND t.id=$2 AND t.revision=$15 AND t.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS;
+"SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
+const TASK_UPDATE="UPDATE dayframe.tasks t SET workspace_id=$3,title=$4,notes=$5,status=$6,priority=$7,estimate_minutes=$8,long_term=$9,deadline=$10,deadline_time=$11,reminder=$12,reminder_time=$13,parent_id=$14,revision=t.revision+1,updated_at=now() WHERE t.owner_user_id=$1 AND t.id=$2 AND t.revision=$15 AND t.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces current_w WHERE current_w.id=t.workspace_id AND current_w.owner_user_id=$1 AND current_w.deleted_at IS NULL AND current_w.archived_at IS NULL) AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING "+TASK_FIELDS;
 
 let jwks,pool;
 async function verifyNeonToken(token) {
@@ -126,16 +127,31 @@ return {async fetch(req){
       if(path==='/v1/me')return json({user:{id:uid},generalWorkspace:rows.find(x=>x.kind==='general')},200,hdr);
       return json({workspaces:rows},200,hdr);
     }
+    if(path==='/v1/workspaces/archived'&&req.method==='GET'){
+      const {rows}=await query(ARCHIVED_SQL,[uid]);
+      return json({workspaces:rows},200,hdr);
+    }
     if(path==='/v1/workspaces'&&req.method==='POST'){
       const [name,subtitle,color,cover]=workspaceBody(await readBody(req));
       const {rows}=await query("INSERT INTO dayframe.workspaces(owner_user_id,kind,name,subtitle,color,cover) VALUES($1,'custom',$2,$3,$4,$5) RETURNING "+WORKSPACE_FIELDS,[uid,name,subtitle,color,cover]);
       return json({workspace:rows[0]},201,hdr);
     }
+    const wa=/^\/v1\/workspaces\/([a-f0-9-]{36})\/(archive|restore)$/i.exec(path);
+    if(wa&&req.method==='POST'){
+      const id=uuid(wa[1],'workspace'),rev=revision(await readBody(req));
+      const archive=wa[2]==='archive';
+      const sql=archive
+        ? "UPDATE dayframe.workspaces SET archived_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NULL AND revision=$3 RETURNING "+WORKSPACE_FIELDS
+        : "UPDATE dayframe.workspaces SET archived_at=NULL,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NOT NULL AND revision=$3 RETURNING "+WORKSPACE_FIELDS;
+      const {rows}=await query(sql,[uid,id,rev]);
+      if(!rows.length)throw fail(409,'Workspace changed, unavailable or protected');
+      return json({workspace:rows[0]},200,hdr);
+    }
     const wm=/^\/v1\/workspaces\/([a-f0-9-]{36})$/i.exec(path);
     if(wm&&req.method==='PATCH'){
       const id=uuid(wm[1],'workspace'),body=await readBody(req);
       const [name,subtitle,color,cover]=workspaceBody(body),rev=revision(body);
-      const {rows}=await query("UPDATE dayframe.workspaces SET name=$3,subtitle=$4,color=$5,cover=$6,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND revision=$7 RETURNING "+WORKSPACE_FIELDS,[uid,id,name,subtitle,color,cover,rev]);
+      const {rows}=await query("UPDATE dayframe.workspaces SET name=$3,subtitle=$4,color=$5,cover=$6,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NULL AND revision=$7 RETURNING "+WORKSPACE_FIELDS,[uid,id,name,subtitle,color,cover,rev]);
       if(!rows.length)throw fail(409,'Workspace changed or unavailable');
       return json({workspace:rows[0]},200,hdr);
     }
@@ -171,14 +187,14 @@ return {async fetch(req){
     }
     if(tm&&req.method==='DELETE'){
       const id=uuid(tm[1],'task id');
-      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NULL RETURNING id",[uid,id]);
+      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING id",[uid,id]);
       if(!rows.length)throw fail(404,'Task not found');
       return json({deleted:true},200,hdr);
     }
     const restore=/^\/v1\/tasks\/([a-f0-9-]{36})\/restore$/i.exec(path);
     if(restore&&req.method==='POST'){
       const id=uuid(restore[1],'task id');
-      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=NULL,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NOT NULL RETURNING "+TASK_FIELDS,[uid,id]);
+      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=NULL,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING "+TASK_FIELDS,[uid,id]);
       if(!rows.length)throw fail(404,'Task not found');
       return json({task:rows[0]},200,hdr);
     }
