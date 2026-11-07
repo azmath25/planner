@@ -92,7 +92,7 @@ function taskBody(body){
   const pinned=body.pinned??false;
   if(typeof pinned!=='boolean')throw fail(400,'Invalid pin');
   const tags=body.tags??[];
-  if(!Array.isArray(tags)||tags.length>8||tags.some(tag=>typeof tag!=='string'||tag.length<1||tag.length>30||!/^[\\p{L}\\p{N} _-]+$/u.test(tag)))throw fail(400,'Invalid tags');
+  if(!Array.isArray(tags)||tags.length>8||tags.some(tag=>typeof tag!=='string'||tag.length<1||tag.length>30||!/^[\p{L}\p{N} _-]+$/u.test(tag)))throw fail(400,'Invalid tags');
   if(new Set(tags.map(tag=>tag.toLocaleLowerCase())).size!==tags.length)throw fail(400,'Duplicate tags');
   return [workspace,title,notes,status,priority,estimate,Boolean(body.long),hard,clock(body.deadlineTime,hard,'deadline time'),rem,clock(body.reminderTime,rem,'reminder time'),parent,pinned,tags];
 }
@@ -200,7 +200,7 @@ return {async fetch(req){
       if(existing.rows.length&&matchesTask(existing.rows[0],args))return json({task:existing.rows[0]},200,hdr);
       throw fail(409,'Task id already exists or workspace unavailable');
     }
-    const taskAction=/^\\/v1\\/tasks\\/([a-f0-9-]{36})\\/(archive|unarchive|move|events|permanent)$/i.exec(path);
+    const taskAction=/^\/v1\/tasks\/([a-f0-9-]{36})\/(archive|unarchive|move|events|permanent)$/i.exec(path);
     if(taskAction){
       const id=uuid(taskAction[1],'task id'),action=taskAction[2];
       if(action==='events'&&req.method==='GET'){
