@@ -429,6 +429,7 @@ return {async fetch(req){
     if(error?.code==='23P01')return json({error:'This time overlaps another scheduled block. Choose a free interval.'},409,hdr);
     if(error?.code==='40001')return json({error:'This schedule was changed elsewhere. Refresh and try again.'},409,hdr);
     if(['23503','23505'].includes(error?.code))return json({error:'Task unavailable or schedule conflict'},409,hdr);
+    if(error?.code==='23514'&&String(error.message||'').includes('same time zone'))return json({error:'All timed blocks on one date must use the same time zone.'},400,hdr);
     if(['23514','22001','22007','22008'].includes(error?.code))return json({error:'Invalid task or workspace fields'},400,hdr);
     // Never leak SQL, credentials, user identity or data through errors/logs.
     console.error('Dayframe data request failed',error instanceof Error?error.name:'UnknownError');
