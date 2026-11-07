@@ -65,13 +65,55 @@ const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?(saved.notes||[]).filter(n=>workspaces.some(w=>w.id===n.workspace)):(saved.notes||initialNotes()),
-pools:isCloud?(saved.pools||{}):(saved.pools||{[today()]:['t2','t4','t5']}),
+pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?(saved.scheduled||[]):(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:saved.timer||null,sessions:Array.isArray(saved.sessions)?saved.sessions:[],trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
 const remainingUnscheduled=(task,day)=>Math.max(0,task.estimate-task.spent-state.scheduled.filter(s=>s.taskId===task.id&&s.day===day).reduce((sum,s)=>sum+parseClock(s.end)-parseClock(s.start),0));
-const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:state.notes,pools:state.pools,scheduled:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:state.timer,sessions:state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
+const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:state.notes,pools:isCloud?undefined:state.pools,scheduled:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:state.timer,sessions:state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
+const poolLoaded=new Set(),poolPending=new Set();let disposed=false;
+async function loadCloudPool(day){
+ if(!isCloud||disposed||poolPending.has(day))return;
+ poolPending.add(day);delete state.poolErrors[day];render();
+ try{
+  const data=await cloudApi.loadDailyPool(day);
+  if(disposed)return;
+  state.pools[day]=data.taskIds.filter(id=>state.tasks.some(t=>t.id===id&&t.status==='open'));
+  state.poolRevisions[day]=data.revision;poolLoaded.add(day);
+ }catch(e){
+  if(disposed)return;
+  state.poolErrors[day]=e instanceof Error?e.message:'Could not load this day';
+  poolLoaded.delete(day);
+ }finally{poolPending.delete(day);if(!disposed)render();}
+}
+async function changeDailyPool(mutate,day=state.planDay){
+ if(!isCloud){state.pools[day]=mutate([...poolForDay(day)]);persist();render();return true;}
+ if(state.poolBusy||poolPending.has(day)||!poolLoaded.has(day)){
+  if(!poolPending.has(day))state.poolErrors[day]='Load the day before editing its pool.';
+  render();return false;
+ }
+ const before=[...poolForDay(day)],next=mutate([...before]);
+ if(next.length>100||new Set(next).size!==next.length||
+  next.some(id=>!state.tasks.some(t=>t.id===id&&t.status==='open'))){
+  state.poolErrors[day]='Select up to 100 distinct open tasks.';render();return false;
+ }
+ if(before.length===next.length&&before.every((id,i)=>id===next[i]))return true;
+ state.poolBusy=true;delete state.poolErrors[day];render();
+ try{
+  const data=await cloudApi.saveDailyPool(day,state.poolRevisions[day],next);
+  if(disposed)return false;
+  state.pools[day]=data.taskIds;state.poolRevisions[day]=data.revision;persist();return true;
+ }catch(e){
+  if(!disposed){
+   if(e?.status===409){
+    await loadCloudPool(day);
+    state.poolErrors[day]='Pool changed on another device, or a task is no longer open. Saved order was refreshed; review and retry.';
+   }else state.poolErrors[day]=e instanceof Error?e.message:'Could not save pool';
+  }
+  return false;
+ }finally{state.poolBusy=false;if(!disposed)render();}
+}
 const workspace=id=>workspaces.find(w=>w.id===id)||workspaces[0];
 // M3 private task media is fetched only after opening a task; workspace images remain local.
 const mediaKey=(kind,id,slot)=>`${kind}:${id}:${slot}`;
@@ -685,8 +727,10 @@ const onStorage=(event)=>{
 };
 window.addEventListener('storage',onStorage);
 render();
+if(isCloud)void loadCloudPool(today());
 
   return () => {
+    disposed=true;
     clearInterval(timerHandle);
     window.removeEventListener('storage',onStorage);
     for (const [eventName, handler] of listeners) document.removeEventListener(eventName, handler);
