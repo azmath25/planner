@@ -5,6 +5,7 @@
  */
 import { getElapsedMs, startTimer, pauseTimer, resumeTimer, finishSession, formatElapsed, restoreTimer, recordedMs } from '../domain/timeTracking';
 import { cloudApi } from '../auth/api';
+import { periodReportCsv } from '../domain/reportCsv';
 
 export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cloud: any = null, account: any = {}) {
  const accountName=String(account?.name|| (cloud?'Account':'Local demo')).trim()||'Account';
@@ -688,6 +689,8 @@ function signedInReportsPage(){
    <input id="report-anchor" class="field" type="date" value="${escapeHTML(state.reportAnchor)}"/></label>
   <button type="button" class="btn secondary small" data-action="refresh-period"
     ${state.periodLoading?'disabled':''}>Refresh report</button>
+  <button type="button" class="btn secondary small" data-action="export-period-csv"
+    ${!report||state.periodLoading?'disabled':''}>Download CSV</button>
  </div>`;
  const header=titleHead('Account activity','Reports',
   'Saved focus sessions and fixed planned intervals; historical gaps are identified explicitly.');
@@ -1291,6 +1294,20 @@ case'refresh-alerts':void loadCloudAlerts();break;
 case'time-retry':void loadCloudTime();break;
 case'refresh-week':void loadCloudWeek();break;
  case'refresh-period':if(isCloudTime)void loadCloudPeriod();break;
+ case'export-period-csv':{
+  if(!isCloudTime||!state.periodReport||state.periodLoading)break;
+  const report=state.periodReport;
+  const contents=periodReportCsv(report);
+  const blob=new Blob([contents],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  try{
+   const link=document.createElement('a');
+   link.href=url;
+   link.download='dayframe-'+report.period+'-'+report.startDay+'.csv';
+   document.body.appendChild(link);link.click();link.remove();
+  }finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
+  break;
+ }
 case'enable-push':void enableBrowserPush();break;
 case'disable-push':void disableBrowserPush();break;
 case'use-device-zone':void setCurrentNotificationZone();break;
