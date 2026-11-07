@@ -351,7 +351,12 @@ export const NOTE_ALERT_LIST_SQL=
  "ORDER BY \"dueAt\",n.id LIMIT 100";
 export const NOTE_ALERT_ACTION_SQL=
  "SELECT dayframe.update_note_alert($1,$2,$3::date,$4::time,$5,$6,$7::timestamptz) AS revision";
-export const NOTIFICATION_PREF_GET_SQL="SELECT time_zone AS \"timeZone\" FROM dayframe.notification_preferences WHERE owner_user_id=$1";
+export const NOTIFICATION_PREF_GET_SQL="SELECT time_zone AS \"timeZone\",to_char(quiet_start,'HH24:MI') AS \"quietStart\",to_char(quiet_end,'HH24:MI') AS \"quietEnd\" FROM dayframe.notification_preferences WHERE owner_user_id=$1";
+export const NOTIFICATION_QUIET_SAVE_SQL=
+ "INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone,quiet_start,quiet_end) "+
+ "VALUES($1,$2,$3::time,$4::time) "+
+ "ON CONFLICT(owner_user_id) DO UPDATE SET quiet_start=EXCLUDED.quiet_start,quiet_end=EXCLUDED.quiet_end,updated_at=now() "+
+ "RETURNING to_char(quiet_start,'HH24:MI') AS \"quietStart\",to_char(quiet_end,'HH24:MI') AS \"quietEnd\"";
 export const NOTIFICATION_PREF_SAVE_SQL="INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,$2) ON CONFLICT(owner_user_id) DO UPDATE SET time_zone=EXCLUDED.time_zone,updated_at=now() RETURNING time_zone AS \"timeZone\"";
 export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($2,$1) "+
 "ON CONFLICT(endpoint) DO UPDATE SET updated_at=now() WHERE dayframe.push_subscriptions.owner_user_id=EXCLUDED.owner_user_id RETURNING endpoint";
@@ -572,10 +577,21 @@ return {async fetch(req){
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
     }
+    if(path==='/v1/notification-preferences/quiet-hours'){
+      if(req.method!=='PUT')return json({error:'Method not allowed'},405,{...hdr,allow:'PUT,OPTIONS'});
+      const body=await readBody(req,1500);
+      const zone=alertZone(body.timeZone);
+      const start=clock(body.quietStart,'2000-01-01','quiet start');
+      const end=clock(body.quietEnd,'2000-01-01','quiet end');
+      if((start===null)!==(end===null)||(start!==null&&start===end))
+        throw fail(400,'Quiet hours require different start and end times, or both empty');
+      const {rows}=await query(NOTIFICATION_QUIET_SAVE_SQL,[uid,zone,start,end]);
+      return json({quietStart:rows[0].quietStart,quietEnd:rows[0].quietEnd},200,hdr);
+    }
     if(path==='/v1/notification-preferences'){
       if(req.method==='GET'){
         const {rows}=await query(NOTIFICATION_PREF_GET_SQL,[uid]);
-        return json({timeZone:rows[0]?.timeZone??null,publicKey:PUSH_PUBLIC_KEY},200,hdr);
+        return json({timeZone:rows[0]?.timeZone??null,quietStart:rows[0]?.quietStart??null,quietEnd:rows[0]?.quietEnd??null,publicKey:PUSH_PUBLIC_KEY},200,hdr);
       }
       if(req.method==='PUT'){
         const body=await readBody(req);
