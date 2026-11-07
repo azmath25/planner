@@ -1,0 +1,28 @@
+name: Dayframe M5.2 Nested Time & Workspace Add Task
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/build-m52-harness.mjs'
+      - 'tests/m52-rollups-browser.py'
+      - 'web/src/legacy/legacy.ts'
+      - '.github/workflows/m52-rollups-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm install --no-audit --no-fund
+      - run: node tests/build-m52-harness.mjs && node --check tests/.harness/m52-app.js
+      - run: pip install playwright
+      - run: python -m playwright install chromium --with-deps
+      - run: python tests/m52-rollups-browser.py
