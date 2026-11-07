@@ -56,6 +56,12 @@ BEGIN
   END IF;
  END IF;
 
+ -- Moving a parent across workspaces must not strand active child records.
+ IF EXISTS(SELECT 1 FROM dayframe.documents child
+  WHERE child.parent_id=NEW.id AND child.owner_user_id=NEW.owner_user_id
+   AND child.deleted_at IS NULL AND child.workspace_id<>NEW.workspace_id)
+ THEN RAISE EXCEPTION 'Move child documents first' USING ERRCODE='23514'; END IF;
+
  IF NEW.parent_id IS NOT NULL THEN
   SELECT p.workspace_id INTO v_parent_workspace FROM dayframe.documents p
    WHERE p.id=NEW.parent_id AND p.owner_user_id=NEW.owner_user_id
