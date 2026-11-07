@@ -1,15 +1,5 @@
 name: Build Dayframe React website for branch Pages
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'web/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'vite.config.ts'
-      - 'tsconfig.json'
-      - 'scripts/**'
-      - '.github/workflows/build-branch-pages.yml'
   workflow_dispatch:
 permissions:
   contents: write
