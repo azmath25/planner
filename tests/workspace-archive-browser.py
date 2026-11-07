@@ -19,6 +19,8 @@ def run(browser,width):
  getItem:key=>store[key]??null,setItem:(key,value)=>{store[key]=String(value)},removeItem:key=>{delete store[key]}}})}""")
  page.add_style_tag(content=(ROOT/'tests/.harness/archive.css').read_text())
  page.add_script_tag(content=(ROOT/'tests/.harness/archive-app.js').read_text())
+ page.wait_for_timeout(300)
+ assert page.locator('h1').count()>0, f'Failed to mount: {errors}, HTML: {page.locator("body").inner_text()[:500]}, scriptLen: {page.evaluate("() => document.scripts.length")}'
  assert 'Make space for what matters' in page.locator('h1').inner_text()
 
  # General cannot show an Archive action; test both screen sizes.
