@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - 'backend/src/**'
+      - 'backend/tests/**'
+      - 'web/src/**'
       - 'tests/deep-postgres-regression.mjs'
       - 'tests/build-demo-harness.mjs'
       - 'tests/appearance.py'
@@ -50,6 +53,16 @@ jobs:
       - run: npm run test:time
       - run: npm run build
       - run: npm run check:dist
+  dependency-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: Audit high/critical production dependency advisories
+        run: npm audit --omit=dev --audit-level=high
   browser-integrity:
     runs-on: ubuntu-latest
     steps:
