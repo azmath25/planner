@@ -577,7 +577,10 @@ function profilePage(){
   </div>
  </section>`;
 }
-function render(){const view=state.page==='task-archive'?archivedTasksPage():state.page==='workspace-archive'?archivedWorkspacesPage():state.page==='profile'?profilePage():state.page==='home'?home():state.page==='tasks'?tasksPage():state.page==='trash'?trashPage():state.page==='plan'?plan():state.page==='workspaces'?workspacesPage():state.page==='workspace'?workspacePage():state.page==='notes'?notesPage():state.page==='reports'?reportsPage():state.page==='calendar'?calendarPage():state.page==='detail'?taskDetail():settingsPage();layout(view)}
+function render(){const view=state.page==='task-archive'?archivedTasksPage():state.page==='workspace-archive'?archivedWorkspacesPage():state.page==='profile'?profilePage():state.page==='home'?home():state.page==='tasks'?tasksPage():state.page==='trash'?trashPage():state.page==='plan'?plan():state.page==='workspaces'?workspacesPage():state.page==='workspace'?workspacePage():state.page==='notes'?notesPage():state.page==='reports'?reportsPage():state.page==='calendar'?calendarPage():state.page==='detail'?taskDetail():settingsPage();
+ const timeWarning=isCloud&&state.timeError?
+  `<div class="info-banner" role="alert">Server timer unavailable: ${escapeHTML(state.timeError)} <button type="button" class="btn small secondary" data-action="time-retry">Retry timer</button></div>`:'';
+ layout(timeWarning+view)}
 function navigate(page){
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
@@ -601,7 +604,82 @@ function navigate(page){
  }
 }
 function closeModal(){state.modal=null;state.modalTask=null;render()}
+
+function applyCloudTimeSnapshot(session){
+ if(!isCloud||disposed)return;
+ state.timeSession=session&&session.state!=='stopped'?session:null;
+ if(session?.serverNow){
+  const now=Date.parse(session.serverNow);
+  if(Number.isFinite(now)){state.timeServerAt=now;state.timeMonotonicAt=performance.now();}
+ }
+ if(!state.timeSession||!session.taskId){
+  state.timer=null;return;
+ }
+ state.timer={
+  taskId:session.taskId,sessionStartedAt:Date.parse(session.startedAt),
+  startedAt:Date.parse(session.segmentStartedAt||session.startedAt),
+  elapsed:session.accumulatedMs,running:session.state==='running'
+ };
+}
+async function loadCloudTime(){
+ if(!isCloud||disposed||state.timeLoading||state.timeBusy)return;
+ state.timeLoading=true;
+ try{
+  const data=await cloudApi.getTimeState();
+  if(disposed)return;
+  applyCloudTimeSnapshot(data.session);
+  state.timeTaskTotals=data.taskTotals;
+  state.timeLoaded=true;
+  state.timeError='';
+ }catch(err){
+  if(!disposed){state.timeError=err instanceof Error?err.message:'Could not load the saved timer';}
+ }finally{
+  state.timeLoading=false;
+  if(!disposed)render();
+ }
+}
+async function updateCloudTimer(action,id){
+ if(!isCloud||disposed||state.timeBusy||state.timeLoading||!state.timeLoaded)return;
+ const current=state.timeSession;
+ let operation=action,sessionId=current?.id,revision=current?.revision,taskId,previousId;
+ if(action==='start'){
+  const task=findTask(id);
+  if(!task||task.status!=='open')return;
+  if(current?.taskId===id){
+   if(current.state==='paused')operation='resume';
+   else return;
+  }else if(current){
+   const previous=findTask(current.taskId);
+   if(!window.confirm(`Stop and save the session for "${previous?.title||current.taskTitle||'your current task'}" before starting "${task.title}"?`))return;
+   operation='switch';
+   previousId=current.id;
+   taskId=id;
+   sessionId=crypto.randomUUID();
+   revision=current.revision;
+  }else{
+   operation='start';
+   sessionId=crypto.randomUUID();
+   taskId=id;
+   revision=0;
+  }
+ }
+ if(!current&&['pause','resume','stop'].includes(operation))return;
+ state.timeBusy=true;state.timeError='';render();
+ try{
+  const changed=await cloudApi.changeTimeSession(operation,sessionId,revision,taskId,previousId);
+  if(!disposed)applyCloudTimeSnapshot(changed);
+ }catch(err){
+  if(!disposed){
+   state.timeError=err instanceof Error?err.message:'Could not update the timer';
+   saveError(err);
+  }
+ }finally{
+  state.timeBusy=false;
+  if(!disposed)await loadCloudTime();
+ }
+}
 function recordAndStop(reason='stopped'){
+  if(isCloud){void loadCloudTime();return;}
   if(!state.timer)return;
   const entry=finishSession(state.timer,Date.now(),reason,newId());
   const task=findTask(state.timer.taskId);
@@ -656,6 +734,7 @@ async function cancelTask(id){
  task.status='cancelled';persist();render();
 }
 function updateTimer(action,id){
+  if(isCloud){void updateCloudTimer(action,id);return;}
   if(action==='start'){
     const task=findTask(id);
     if(!task||task.status!=='open')return;
@@ -676,6 +755,7 @@ function updateTimer(action,id){
 }
 trackListener('click',async e=>{if(e.target.dataset.backdrop){closeModal();return}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':navigate(b.dataset.page);break;
 case'refresh-alerts':void loadCloudAlerts();break;
+case'time-retry':void loadCloudTime();break;
 case'enable-push':void enableBrowserPush();break;
 case'disable-push':void disableBrowserPush();break;
 case'use-device-zone':void setCurrentNotificationZone();break;
