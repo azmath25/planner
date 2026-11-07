@@ -69,7 +69,7 @@ const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask abou
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
-notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,
+notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
@@ -1116,10 +1116,10 @@ case'archive-workspace':{
  state.modal='archive-workspace';state.modalTask=id;render();break;
 }case'modal-task':state.modal='task';state.modalTask=id||null;state.subtaskParent=null;render();break;
 case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':
- state.noteError='';state.modal='note';state.modalTask=id||null;render();break;
+ state.noteError='';state.notePendingCreate=null;state.modal='note';state.modalTask=id||null;render();break;
 case'edit-note':{
  if(!state.notes.some(n=>n.id===id)||state.noteBusy)break;
- state.noteError='';state.modal='note-edit';state.modalTask=id;render();break;
+ state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;render();break;
 }
 case'convert-note':{
  const n=state.notes.find(x=>x.id===id);
@@ -1495,11 +1495,25 @@ if(form.id==='note-form'){
   if(submit)submit.disabled=true;
   try{
    const remote={...entry,workspace:serverWorkspaceId(entry.workspace)};
+   // Preserve one UUID for retries after an uncertain POST response. A changed
+   // draft must not silently start a second create before reconciliation.
+   const fingerprint=JSON.stringify(remote);
+   let pending=state.notePendingCreate;
+   if(!existing){
+    if(pending&&pending.fingerprint!==fingerprint){
+     showNoteError('The previous save may have succeeded. Restore the original fields and retry, or close this editor and refresh My notes before creating a different note.');
+     return;
+    }
+    if(!pending){
+     pending={id:crypto.randomUUID(),fingerprint};
+     state.notePendingCreate=pending;
+    }
+   }
    const result=existing
     ?await cloudApi.updateQuickNote(existing.id,{...remote,revision:existing.revision})
-    :await cloudApi.createQuickNote({...remote,id:crypto.randomUUID()});
+    :await cloudApi.createQuickNote({...remote,id:pending.id});
    if(disposed)return;
-   upsertQuickNote(result);state.modal=null;state.modalTask=null;
+   upsertQuickNote(result);state.notePendingCreate=null;state.modal=null;state.modalTask=null;
    render();
   }catch(err){
    if(!disposed)showNoteError(err instanceof Error?err.message:'Could not save note');
