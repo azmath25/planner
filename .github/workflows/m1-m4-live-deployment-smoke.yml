@@ -1,0 +1,23 @@
+name: Dayframe Live M1-M4 Deployment Smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-m4-live-deployment-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  deployed-authorization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify current deployed health, real Neon Auth, unauthorized and CORS behavior
+        run: |
+          set -euo pipefail
+          for suite in tests/live-api-smoke.mjs tests/live-auth-smoke.mjs tests/live-m3-smoke.mjs tests/live-m4-daily-pool.mjs tests/live-m42-timed.mjs tests/live-m43-reminders.mjs; do
+            node --test "$suite"
+          done
