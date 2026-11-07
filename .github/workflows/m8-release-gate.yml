@@ -1,0 +1,91 @@
+name: Dayframe M8 Release Gate — manual, no deployment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:source
+      - run: npm run test:time
+      - run: npm run test:documents
+      - run: node --experimental-strip-types --test tests/timeReports.test.mjs tests/timeInsights.test.mjs tests/reportCsv.test.mjs
+      - run: npm run build
+      - run: npm run check:dist
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: auditpass
+          POSTGRES_DB: dayframe_audit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U audit -d dayframe_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      PG_AUDIT_URL: postgres://audit:auditpass@127.0.0.1:5432/dayframe_audit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:api
+      - name: All 20 migrations plus disposable PostgreSQL regressions
+        run: node --test tests/deep-postgres-regression.mjs
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --no-audit --no-fund
+      - run: pip install playwright pillow
+      - run: python -m playwright install chromium --with-deps
+      - name: M1–M7 browser and responsive regression
+        run: |
+          set -e
+          python tests/smoke.py
+          python tests/appearance.py
+          python tests/timer-browser.py
+          python tests/m3-browser.py
+          python tests/workspace-archive-browser.py
+          python tests/m4-daily-pool-browser.py
+          python tests/m42-timed-browser.py
+          python tests/m43-reminders-browser.py
+          python tests/m51-time-browser.py
+          python tests/m52-rollups-browser.py
+          python tests/m53-week-browser.py
+          python tests/m61-notes-browser.py
+          python tests/m62-documents-browser.py
+          python tests/m71-home-browser.py
+          python tests/m72-period-browser.py
+          python tests/m72-reports-browser.py
+          python tests/m73-insights-browser.py
+  dependency-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm audit --omit=dev --audit-level=high
