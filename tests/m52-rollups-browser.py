@@ -11,6 +11,14 @@ GRAND='99999999-9999-4999-8999-999999999999'
 PROJECT='33333333-3333-4333-8333-333333333333'
 GENERAL_ID='11111111-1111-4111-8111-111111111111'
 def nav(p,page,width):
+ if width<760:
+  if page=='workspaces':
+   p.locator('.mobile-nav [data-page="home"]').click()
+   p.locator('.content [data-page="workspaces"]').first.click()
+   return
+  if page=='reports':
+   p.locator('.mobile-top [data-page="reports"]').click()
+   return
  selector='.mobile-nav' if width<760 else '.sidebar'
  p.locator(f'{selector} [data-page="{page}"]').click()
 def task_detail(p,id,width):
