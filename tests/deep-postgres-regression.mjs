@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL} from '../backend/src/index.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -104,4 +104,15 @@ test('due delivery outbox enqueues once, even if the worker repeats',async()=>{
  assert.equal(rows[0].task_id,T_C);
  assert.equal(rows[0].kind,'reminder');
  assert.equal(rows[0].status,'pending');
+});
+
+test('push endpoint cannot be silently transferred between separate owners',async()=>{
+ const endpoint='https://fcm.googleapis.com/fcm/send/dayframe-ephemeral-integration-test';
+ const result=await pool.query(PUSH_SUB_SAVE_SQL,[B,endpoint]);
+ assert.equal(result.rows.length,0);
+ const check=await pool.query('SELECT owner_user_id FROM dayframe.push_subscriptions WHERE endpoint=$1',[endpoint]);
+ assert.equal(check.rows.length,1);
+ assert.equal(check.rows[0].owner_user_id,C);
+ const sameOwner=await pool.query(PUSH_SUB_SAVE_SQL,[C,endpoint]);
+ assert.equal(sameOwner.rows.length,1);
 });
