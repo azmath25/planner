@@ -291,16 +291,18 @@ const taskTimeMs=t=>{
  return raw+segment;
 };
 const timeControls=(task,compact=false)=>{
+  const timerDisabled=isCloud&&(state.timeBusy||state.timeLoading||!state.timeLoaded)?' disabled aria-disabled="true"':'';
   if(task.status==='done'||task.status==='cancelled')return `<button class="btn small secondary" data-action="reopen-task" data-id="${escapeHTML(task.id)}">${icon('refresh')} Reopen</button>`;
   const active=state.timer?.taskId===task.id;
-  if(!active)return `<button class="btn ${compact?'small':''}" data-action="start" data-id="${escapeHTML(task.id)}">${icon('play')} Start</button>`;
-  return `<button class="btn ${compact?'small':''}" data-action="${state.timer.running?'pause':'resume'}">${icon(state.timer.running?'pause':'play')} ${state.timer.running?'Pause':'Resume'}</button><button class="btn secondary ${compact?'small':''}" data-action="stop">${icon('stop')} Stop session</button>`;
+  if(!active)return `<button class="btn ${compact?'small':''}" data-action="start" data-id="${escapeHTML(task.id)}" ${timerDisabled}>${icon('play')} Start</button>`;
+  return `<button class="btn ${compact?'small':''}" data-action="${state.timer.running?'pause':'resume'}" ${timerDisabled}>${icon(state.timer.running?'pause':'play')} ${state.timer.running?'Pause':'Resume'}</button><button class="btn secondary ${compact?'small':''}" data-action="stop" ${timerDisabled}>${icon('stop')} Stop session</button>`;
 };
 function globalTimerBar(){
   if(!state.timer)return '';
   const task=findTask(state.timer.taskId);
+  if(!task&&isCloud)return `<section class="global-timer" aria-label="Recovered server session"><div class="global-timer-task"><strong>${escapeHTML(state.timeSession?.taskTitle||'Saved session')}</strong><small>Task is not in the current list; stop the saved session before starting another.</small></div><time class="global-time-value" data-timer-display>${formatTimer()}</time><button class="btn small secondary" data-action="stop" ${state.timeBusy?'disabled':''}>Stop</button></section>`;
   if(!task)return '';
-  return `<section class="global-timer" aria-label="Current time tracking session"><div class="global-timer-task"><span class="timer-pulse ${state.timer.running?'live':'paused'}"></span><div class="timer-task-name"><button data-action="detail" data-id="${escapeHTML(task.id)}" class="timer-task-link" title="Open task">${escapeHTML(task.title)}</button><small>${state.timer.running?'Counting time':'Paused'} · ${escapeHTML(workspace(task.workspace).name)} · ${isCloud?"saved in Neon · across devices":"local preview"}</small></div></div><time class="global-time-value" data-timer-display>${formatTimer()}</time><div class="global-timer-actions"><button class="timer-compact-button" data-action="${state.timer.running?'pause':'resume'}" aria-label="${state.timer.running?'Pause':'Resume'} timer" title="${state.timer.running?'Pause':'Resume'}">${icon(state.timer.running?'pause':'play')}<span>${state.timer.running?'Pause':'Resume'}</span></button><button class="timer-compact-button" data-action="stop" aria-label="Stop and save session" title="Stop session">${icon('stop')}<span>Stop</span></button><button class="timer-compact-button timer-complete" data-action="finish-task" data-id="${escapeHTML(task.id)}" aria-label="Finish ${escapeHTML(task.title)}" title="Finish task">${icon('check')}<span>Finish</span></button></div></section>`;
+  return `<section class="global-timer" aria-label="Current time tracking session"><div class="global-timer-task"><span class="timer-pulse ${state.timer.running?'live':'paused'}"></span><div class="timer-task-name"><button data-action="detail" data-id="${escapeHTML(task.id)}" class="timer-task-link" title="Open task">${escapeHTML(task.title)}</button><small>${state.timer.running?'Counting time':'Paused'} · ${escapeHTML(workspace(task.workspace).name)} · ${isCloud?"saved in Neon · across devices":"local preview"}</small></div></div><time class="global-time-value" data-timer-display>${formatTimer()}</time><div class="global-timer-actions"><button class="timer-compact-button" data-action="${state.timer.running?'pause':'resume'}" ${isCloud&&state.timeBusy?'disabled':''} aria-label="${state.timer.running?'Pause':'Resume'} timer" title="${state.timer.running?'Pause':'Resume'}">${icon(state.timer.running?'pause':'play')}<span>${state.timer.running?'Pause':'Resume'}</span></button><button class="timer-compact-button" data-action="stop" ${isCloud&&state.timeBusy?'disabled':''} aria-label="Stop and save session" title="Stop session">${icon('stop')}<span>Stop</span></button><button class="timer-compact-button timer-complete" data-action="finish-task" data-id="${escapeHTML(task.id)}" aria-label="Finish ${escapeHTML(task.title)}" title="Finish task">${icon('check')}<span>Finish</span></button></div></section>`;
 }
 const nav=[['home','Home','home'],['plan','Plan your day','calendar'],['tasks','Tasks','list'],['workspaces','Workspaces','folder'],['notes','Notes','note'],['calendar','Calendar','calendar'],['reports','Reports','chart'],['settings','Settings','settings']];
 const navButton=([page,label,ic])=>`<button class="nav-item ${state.page===page?'active':''}" data-action="nav" data-page="${page}" aria-current="${state.page===page?'page':'false'}">${icon(ic)}<span>${label}</span>${page==='tasks'?`<span class="nav-count">${openTasks().length}</span>`:''}</button>`;
@@ -579,7 +581,8 @@ function profilePage(){
 }
 function render(){const view=state.page==='task-archive'?archivedTasksPage():state.page==='workspace-archive'?archivedWorkspacesPage():state.page==='profile'?profilePage():state.page==='home'?home():state.page==='tasks'?tasksPage():state.page==='trash'?trashPage():state.page==='plan'?plan():state.page==='workspaces'?workspacesPage():state.page==='workspace'?workspacePage():state.page==='notes'?notesPage():state.page==='reports'?reportsPage():state.page==='calendar'?calendarPage():state.page==='detail'?taskDetail():settingsPage();
  const timeWarning=isCloud&&state.timeError?
-  `<div class="info-banner" role="alert">Server timer unavailable: ${escapeHTML(state.timeError)} <button type="button" class="btn small secondary" data-action="time-retry">Retry timer</button></div>`:'';
+  `<div class="info-banner" role="alert">Server timer unavailable: ${escapeHTML(state.timeError)} <button type="button" class="btn small secondary" data-action="time-retry">Retry timer</button></div>`
+  :isCloud&&!state.timeLoaded?'<div class="info-banner" role="status">Restoring your saved timer from Neon…</div>':'';
  layout(timeWarning+view)}
 function navigate(page){
  state.modal=null;state.page=page;state.search='';
@@ -1120,7 +1123,7 @@ const timerHandle = setInterval(()=>{
   if(detailMetric){const t=findTask(state.taskId);if(t)detailMetric.textContent=formatElapsed(taskTimeMs(t));}
 },250);
 const onStorage=(event)=>{
-  if(event.key!==STORAGE||!event.newValue)return;
+  if(isCloud||event.key!==STORAGE||!event.newValue)return;
   try{
     const newer=JSON.parse(event.newValue);
     state.tasks=Array.isArray(newer.tasks)?newer.tasks:state.tasks;
@@ -1133,6 +1136,11 @@ window.addEventListener('storage',onStorage);
 render();
 if(isCloud)void loadCloudPool(today());
 if(isCloud)void loadCloudAlerts();
+if(isCloud)void loadCloudTime();
+const onTimeFocus=()=>{if(isCloud&&!document.hidden)void loadCloudTime();};
+window.addEventListener('focus',onTimeFocus);
+document.addEventListener('visibilitychange',onTimeFocus);
+const timeRefreshHandle=isCloud?setInterval(onTimeFocus,45000):null;
 if(isCloud&&alertsBackendEnabled&&'serviceWorker' in navigator&&'Notification' in window&&Notification.permission==='granted'){
  navigator.serviceWorker.getRegistration(new URL('./',document.baseURI).pathname)
   .then(reg=>reg?.pushManager.getSubscription())
@@ -1154,6 +1162,9 @@ if(isCloud)void loadCloudSchedule(today(),today());
   return () => {
     disposed=true;
     clearInterval(timerHandle);
+    if(timeRefreshHandle!==null)clearInterval(timeRefreshHandle);
+    window.removeEventListener('focus',onTimeFocus);
+    document.removeEventListener('visibilitychange',onTimeFocus);
     window.removeEventListener('storage',onStorage);
     for (const [eventName, handler] of listeners) document.removeEventListener(eventName, handler);
     const mount = document.getElementById('app');
