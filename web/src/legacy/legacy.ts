@@ -1832,7 +1832,7 @@ if(e.target.id==='note-search'){
 trackListener('change',async e=>{
  if(e.target.id==='report-anchor'&&isCloudTime){
   const value=e.target.value;
-  if(/^\\d{4}-\\d{2}-\\d{2}$/.test(value)&&value>='2000-01-01'&&value<='2100-12-31'){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(value)&&value>='2000-01-01'&&value<='2100-12-31'){
    state.reportAnchor=value;void loadCloudPeriod();
   }
   return;
