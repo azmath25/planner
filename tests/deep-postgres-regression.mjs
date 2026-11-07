@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL,DOCUMENT_INSERT_SQL,DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_DETAIL_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL,DOCUMENT_INSERT_SQL,DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_DETAIL_SQL,TIME_INSIGHTS_SQL} from '../backend/src/index.mjs';
 import {NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL} from '../backend/src/reminder-dispatch.mjs';
 import {TIME_PERIOD_REPORT_SQL} from '../backend/src/time-period-report.mjs';
 import {TIME_INSIGHTS_SQL} from '../backend/src/time-insights.mjs';
@@ -734,4 +734,47 @@ test('M7.3 date-only deadlines end at next local midnight; late completion measu
  assert.equal(row.deadline.late,1);
  assert.equal(row.deadline.onTime,0);
  assert.equal(row.history[0].deadlineTime,null);
+});
+
+test('M7.3 audit-event deadlines and estimates stay owner-scoped and classify midnight',async()=>{
+ const owner='m73-insights-owner',other='m73-insights-other';
+ const wa='e7111111-1111-4111-8111-111111111111';
+ const wb='e7222222-2222-4222-8222-222222222222';
+ const ta='e7333333-3333-4333-8333-333333333333';
+ const tb='e7444444-4444-4444-8444-444444444444';
+ const tc='e7555555-5555-4555-8555-555555555555';
+ const sa='e7666666-6666-4666-8666-666666666666';
+ const sb='e7777777-7777-4777-8777-777777777777';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Insights A','custom'),($3,$4,'Insights B','custom')",[wa,owner,wb,other]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku'),($2,'Asia/Baku')",[owner,other]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline) VALUES($1,$2,$3,'Tracked task',30,'2026-11-07'),($4,$2,$3,'Unsegmented task',20,'2026-11-07')",[ta,owner,wa,tb]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline) VALUES($1,$2,$3,'Other owner',30,'2026-11-07')",[tc,other,wb]);
+ await pool.query("UPDATE dayframe.tasks SET status='done' WHERE id IN ($1,$2,$3)",[ta,tb,tc]);
+ for(const [o,t,when] of [[owner,ta,'2026-11-07T15:00:00Z'],[owner,tb,'2026-11-07T20:00:00Z'],[other,tc,'2026-11-07T15:00:00Z']]){
+  const result=await pool.query("UPDATE dayframe.task_events SET created_at=$3::timestamptz WHERE owner_user_id=$1 AND task_id=$2 AND event_type='completed' RETURNING event_id",[o,t,when]);
+  assert.equal(result.rows.length,1,'Completion audit snapshot must exist');
+ }
+ // One exact tracked hour and one unknown old 5-minute session for a second
+ // task. The second task must be excluded from estimate comparisons.
+ await pool.query("INSERT INTO dayframe.time_sessions(id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,started_at,accumulated_ms,state,ended_at,end_reason) VALUES($1,$2,$3,'Tracked task',$4,'2026-11-07T12:00:00Z',3600000,'stopped','2026-11-07T13:00:00Z','stopped'),($5,$2,$6,'Unsegmented task',$4,'2026-11-07T12:00:00Z',300000,'stopped','2026-11-07T12:05:00Z','stopped')",[sa,owner,ta,wa,sb,tb]);
+ await pool.query("INSERT INTO dayframe.time_session_segments(session_id,started_at,ended_at,duration_ms) VALUES($1,'2026-11-07T12:00:00Z','2026-11-07T13:00:00Z',3600000)",[sa]);
+ const {rows:[insights]}=await pool.query(TIME_INSIGHTS_SQL,[owner,'day','2026-11-07']);
+ assert.equal(insights.timeZone,'Asia/Baku');
+ assert.equal(insights.deadline.completedEvents,2);
+ assert.equal(insights.deadline.onTime,1);
+ assert.equal(insights.deadline.late,1,'Date-only deadline ends strictly before next local midnight');
+ assert.equal(insights.estimate.measuredTasks,1);
+ assert.equal(insights.estimate.excludedLegacyTasks,1);
+ assert.equal(insights.estimate.untrackedTasks,0);
+ assert.equal(Number(insights.estimate.estimatedMinutes),30);
+ assert.equal(Number(insights.estimate.recordedMs),3600000);
+ assert.equal(Number(insights.estimate.absoluteErrorMs),1800000);
+ assert.equal(insights.weeklyTrend.length,6);
+ assert.equal(insights.weeklyTrend.at(-1).weekStart,'2026-11-02');
+ assert.equal(Number(insights.weeklyTrend.at(-1).recordedMs),3600000);
+ assert.equal(insights.weeklyTrend.at(-1).completedEvents,2);
+ const foreign=(await pool.query(TIME_INSIGHTS_SQL,[other,'day','2026-11-07'])).rows[0];
+ assert.equal(foreign.deadline.completedEvents,1);
+ assert.equal(Number(foreign.weeklyTrend.at(-1).recordedMs),0);
+ assert.equal(foreign.history.some(x=>x.taskId===ta),false);
 });
