@@ -31,7 +31,7 @@ export function validateDocumentBlocks(blocks){
    count++;
    if(count>700||!plain(item)||!BLOCK_TYPES.has(item.type)||
     Object.keys(item).some(key=>!['id','type','props','content','children'].includes(key))||
-    (item.id!==undefined&&!limitedString(item.id,100))||
+    (item.id!==undefined&&(!limitedString(item.id,100)||!/^[A-Za-z0-9_-]+$/.test(item.id)))||
     (item.props!==undefined&&!plain(item.props))||
     !Array.isArray(item.content)||!Array.isArray(item.children))throw fault();
    for(const [key,value] of Object.entries(item.props??{})){
