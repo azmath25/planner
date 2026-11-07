@@ -358,7 +358,7 @@ async function saveCloudTask(task,changes,allowOpenChildren=false){
 }
 async function finishTask(id){
   const task=findTask(id);if(!task||task.status!=='open')return;
-  const openChildren=state.tasks.filter(t=>t.status==='open'&&t.parent===id);
+  const descendants=subtreeIds(id);const openChildren=state.tasks.filter(t=>t.id!==id&&descendants.has(t.id)&&t.status==='open');
   const allowOpenChildren=openChildren.length>0;
   if(allowOpenChildren&&!window.confirm('This task has '+openChildren.length+' open subtasks. Finish the parent and leave those subtasks open?'))return;
   if(isCloud){
