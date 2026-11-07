@@ -2,6 +2,7 @@
 // Ownership is enforced again by composite database foreign keys. Never trust client owner IDs.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import pg from 'pg';
+import { secureDatabaseConnectionUrl } from './db-url.mjs';
 
 const ORIGIN='https://azmath25.github.io';
 const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer',vary:'Origin'};
@@ -159,7 +160,7 @@ async function verifyNeonToken(token) {
 }
 async function runSql(sql,args){
   if(!process.env.DATABASE_URL) throw Error('Missing database configuration');
-  if(!pool){pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:4});pool.on('error',()=>console.error('Dayframe database pool disconnected'));}
+  if(!pool){pool=new pg.Pool({connectionString:secureDatabaseConnectionUrl(process.env.DATABASE_URL),max:4});pool.on('error',()=>console.error('Dayframe database pool disconnected'));}
   return pool.query(sql,args);
 }
 async function readBody(req,maxChars=25000){
