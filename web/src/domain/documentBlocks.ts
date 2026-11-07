@@ -3,7 +3,7 @@
 const safeText=/^[#A-Za-z0-9_-]+$/;
 const allowedBlocks=new Set(['paragraph','heading','bulletListItem','numberedListItem',
  'checkListItem','quote','codeBlock']);
-const allowedProps=new Set(['backgroundColor','textColor','textAlignment','level','checked','language']);
+const allowedProps=new Set(['backgroundColor','textColor','textAlignment','level','checked','isToggleable','language']);
 const allowedStyles=new Set(['bold','italic','underline','strike','code','textColor','backgroundColor']);
 function plain(value:unknown):value is Record<string,unknown>{
  return !!value&&typeof value==='object'&&!Array.isArray(value);
@@ -24,10 +24,10 @@ export function assertDocumentBlocks(value:unknown):asserts value is unknown[]{
    for(const [key,v] of Object.entries(value.props)){
     if(!allowedProps.has(key))throw Error('Unsupported block formatting');
     if(key==='level'&&![1,2,3].includes(v as number))throw Error('Heading level must be 1, 2 or 3');
-    if(key==='checked'&&typeof v!=='boolean')throw Error('Invalid checkbox');
+    if(['checked','isToggleable'].includes(key)&&typeof v!=='boolean')throw Error('Invalid checkbox or toggleable heading');
     if(key==='textAlignment'&&!['left','right','center','justify'].includes(String(v)))
      throw Error('Invalid text alignment');
-    if(!['level','checked','textAlignment'].includes(key)&&
+    if(!['level','checked','isToggleable','textAlignment'].includes(key)&&
      (typeof v!=='string'||v.length>40||!safeText.test(v)))throw Error('Unsupported block property');
    }
    if(value.content.length>300)throw Error('Too much text in one block');
