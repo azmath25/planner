@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/m1-m4-live-deployment-smoke.yml'
+      - 'backend/packaged/dayframeapi.b64'
+      - 'backend/packaged/dayframedue.b64'
+      - 'tests/live-*.mjs'
 permissions:
   contents: read
 jobs:
