@@ -85,6 +85,7 @@ export const ALERT_LIST_SQL =
 export const NOTIFICATION_PREF_GET_SQL="SELECT time_zone AS \"timeZone\" FROM dayframe.notification_preferences WHERE owner_user_id=$1";
 export const NOTIFICATION_PREF_SAVE_SQL="INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,$2) ON CONFLICT(owner_user_id) DO UPDATE SET time_zone=EXCLUDED.time_zone,updated_at=now() RETURNING time_zone AS \"timeZone\"";
 export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($2,$1) ON CONFLICT(endpoint) DO UPDATE SET owner_user_id=EXCLUDED.owner_user_id,updated_at=now()";
+export const PUSH_SUB_STATUS_SQL="SELECT 1 AS registered FROM dayframe.push_subscriptions WHERE owner_user_id=$1 AND endpoint=$2";
 export const PUSH_SUB_DELETE_SQL="DELETE FROM dayframe.push_subscriptions WHERE endpoint=$2 AND owner_user_id=$1 RETURNING endpoint";
 export const PUSH_PUBLIC_KEY='BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8';
 function pushEndpoint(value){
@@ -295,6 +296,13 @@ return {async fetch(req){
         return json({timeZone:rows[0].timeZone,publicKey:PUSH_PUBLIC_KEY},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
+    }
+    if(path==='/v1/push-subscription/status'){
+      if(req.method!=='POST')return json({error:'Method not allowed'},405,{...hdr,allow:'POST,OPTIONS'});
+      const body=await readBody(req,5000);
+      const endpoint=pushEndpoint(body.endpoint);
+      const {rows}=await query(PUSH_SUB_STATUS_SQL,[uid,endpoint]);
+      return json({registered:rows.length>0},200,hdr);
     }
     if(path==='/v1/push-subscription'){
       if(req.method==='PUT'){
