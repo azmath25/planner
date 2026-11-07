@@ -72,6 +72,14 @@ test('create task requires UUID, legitimate workspace and valid form; no owner s
   assert.equal((await req('/v1/tasks','POST','alice',{...task,workspace:'general'})).status,400);
   assert.equal((await req('/v1/tasks','POST','alice',{...task,estimate:0})).status,400);
 });
+test('recoverable Trash is paginated and user-scoped',async()=>{
+ const {req,queries}=make();
+ const result=await req('/v1/tasks/trash?offset=30&limit=50','GET','bob');
+ assert.equal(result.status,200);
+ const q=queries.find(x=>x.sql.includes('FROM dayframe.tasks')&&x.sql.includes('deleted_at IS NOT NULL'));
+ assert.deepEqual(q.args,['bob',51,30]);
+ assert.equal((await req('/v1/tasks/trash?limit=999','GET','bob')).status,400);
+});
 test('task patch uses owner and optimistic revision; task deletion is reversible',async()=>{
   const {req,queries}=make();
   const patch=await req('/v1/tasks/'+TASK,'PATCH','alice',{...task,title:'Revised'});
