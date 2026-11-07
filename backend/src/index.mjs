@@ -51,6 +51,11 @@ function taskSubtreeUpdate(field,rootCondition,childCondition,queryResult){
  ",revision=t.revision+1,updated_at=now() FROM subtree s WHERE t.id=s.id AND t.owner_user_id=$1 "+childCondition+" RETURNING t.*) "+
  (queryResult==='rows'?"SELECT "+TASK_FIELDS+" FROM changed":"SELECT id::text AS id FROM changed");
 }
+// Export the exact statements executed by the API so PostgreSQL regression
+// tests can exercise the production query rather than reimplementing it.
+export const TASK_TRASH_SQL=TASK_SUBTREE+"root.deleted_at IS NULL AND root.archived_at IS NULL"+TASK_DESCENDANTS+
+ ",changed AS (UPDATE dayframe.tasks t SET deleted_at=now(),revision=t.revision+1,updated_at=now() FROM subtree s WHERE t.id=s.id AND t.owner_user_id=$1 AND t.deleted_at IS NULL RETURNING t.id) SELECT id::text AS id FROM changed";
+export const TASK_RESTORE_SQL=taskSubtreeUpdate('deleted_at','root.deleted_at IS NOT NULL','AND t.deleted_at IS NOT NULL','rows');
 const TASK_HISTORY="SELECT e.event_id::text AS id,e.event_type AS type,e.before_state AS before,e.after_state AS after,e.created_at AS \"createdAt\" FROM dayframe.task_events e "+
 "WHERE e.owner_user_id=$1 AND e.task_id=$2 AND EXISTS(SELECT 1 FROM dayframe.tasks t WHERE t.id=e.task_id AND t.owner_user_id=$1) ORDER BY e.event_id DESC LIMIT $3";
 
@@ -514,20 +519,17 @@ return {async fetch(req){
     }
     if(tm&&req.method==='DELETE'){
       const id=uuid(tm[1],'task id'),rev=revision(await readBody(req));
-      const sql=TASK_SUBTREE+"root.deleted_at IS NULL AND root.archived_at IS NULL"+TASK_DESCENDANTS+
-        ",changed AS (UPDATE dayframe.tasks t SET deleted_at=now(),revision=t.revision+1,updated_at=now() FROM subtree s WHERE t.id=s.id AND t.owner_user_id=$1 AND t.deleted_at IS NULL RETURNING t.id) SELECT id::text AS id FROM changed";
       // The caller's previously observed revision belongs in the root CTE.
       // A read-then-delete using the newest server revision silently trashes
       // another device's recent edit.
-      const {rows}=await query(sql,[uid,id,rev]);
+      const {rows}=await query(TASK_TRASH_SQL,[uid,id,rev]);
       if(!rows.some(row=>row.id===id))throw fail(409,'Task changed on another device. Refresh before moving it to Trash.');
       return json({deleted:true},200,hdr);
     }
     const restore=/^\/v1\/tasks\/([a-f0-9-]{36})\/restore$/i.exec(path);
     if(restore&&req.method==='POST'){
       const id=uuid(restore[1],'task id'),rev=revision(await readBody(req));
-      const sql=taskSubtreeUpdate('deleted_at','root.deleted_at IS NOT NULL','AND t.deleted_at IS NOT NULL','rows');
-      const {rows}=await query(sql,[uid,id,rev,false]);
+      const {rows}=await query(TASK_RESTORE_SQL,[uid,id,rev,false]);
       const root=rows.find(row=>row.id===id);
       if(!root)throw fail(409,'Task changed on another device. Refresh Trash before restoring.');
       return json({task:root,affected:rows.length},200,hdr);
