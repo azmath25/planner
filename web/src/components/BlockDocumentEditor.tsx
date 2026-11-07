@@ -31,9 +31,10 @@ const schema=BlockNoteSchema.create({
 });
 type EditorProps={
  blocks:unknown[];
+ readOnly?:boolean;
  onEdit:(blocks:unknown[],error:string|null)=>void;
 };
-export function BlockDocumentEditor({blocks,onEdit}:EditorProps){
+export function BlockDocumentEditor({blocks,onEdit,readOnly=false}:EditorProps){
  // Types are rechecked at the browser boundary and again by the server.
  // The cast is limited to the BlockNote JSON interchange boundary.
  const editor=useCreateBlockNote({
@@ -42,6 +43,7 @@ export function BlockDocumentEditor({blocks,onEdit}:EditorProps){
  });
  return <BlockNoteView
   editor={editor}
+  editable={!readOnly}
   theme="light"
   linkToolbar={false}
   filePanel={false}
