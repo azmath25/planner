@@ -92,6 +92,21 @@ def run(browser,width):
  p.locator('[data-action="show-active-notes"]').click()
  p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').wait_for()
  assert p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').count()==1
+ # Quiet hours are opt-in, account-scoped, and never silently enabled.
+ selector='.mobile-nav' if width<760 else '.sidebar'
+ p.locator(f'{selector} [data-page="home"]').click()
+ p.locator('[data-action="quiet-hours"]').click()
+ p.locator('#quiet-hours-form [name="quietStart"]').fill('22:00')
+ p.locator('#quiet-hours-form [name="quietEnd"]').fill('07:00')
+ p.locator('#quiet-hours-form button[type="submit"]').click()
+ p.wait_for_function("() => window.__mockDb.quietSaveCalls.length===1")
+ assert p.evaluate("() => window.__mockDb.quietHours.quietStart")== '22:00'
+ p.locator('[data-action="quiet-hours"]').click()
+ p.locator('#quiet-hours-form [name="quietStart"]').fill('')
+ p.locator('#quiet-hours-form [name="quietEnd"]').fill('')
+ p.locator('#quiet-hours-form button[type="submit"]').click()
+ p.wait_for_function("() => window.__mockDb.quietSaveCalls.length===2")
+ assert p.evaluate("() => window.__mockDb.quietHours.quietStart") is None
  assert not errors,errors
  assert p.evaluate('() => document.documentElement.scrollWidth<=window.innerWidth+3'), f'overflow at {width}'
  p.close()
