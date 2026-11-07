@@ -30,7 +30,10 @@ def run(browser,width):
   page.locator('.mobile-nav [data-page="tasks"]').click()
  else:
   page.locator('.sidebar [data-page="tasks"]').click()
- page.locator(f'.task-row [data-action="start"][data-id="{TASK}"]').first.click()
+ start=page.locator(f'.task-row [data-action="start"][data-id="{TASK}"]').first
+ start.wait_for(state='visible')
+ page.wait_for_function("() => document.querySelector('.task-row [data-action=start]')?.disabled===false")
+ start.click()
  page.wait_for_function("() => window.__mockDb.timeSession?.state==='running'")
  assert page.locator('.global-timer').count()==1
 
