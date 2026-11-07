@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M3: Task Management implemented (M3.1–M3.3).** The mobile website is the first product; Android is deliberately later.
+**M4.1: Neon-saved untimed daily pool implemented.** M3 task management is complete; timed intervals and reminders are separate future milestones. The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -23,7 +23,17 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
 
-**Still local:** the daily pool, timed intervals, quick notes, workspace photos and time-tracking sessions, including the global timer. Task covers and avatars are saved privately in Neon. These remain account-namespaced browser previews; they are NOT synchronized between devices. No actual reminder notifications have been enabled. Use **Profile → Refresh saved data** to fetch cloud updates created elsewhere. Never rely on the current local timer as your sole permanent record.
+**Saved in Neon:** workspaces, active tasks, private task images, and each date's manually ordered untimed pool. **Still device-local:** fixed-time intervals, capacity, quick notes, workspace photos and timer sessions. No actual reminders are delivered yet. Use **Profile → Refresh saved data** for updated tasks/workspaces. Do not rely on local timer sessions as permanent records.
+
+## M4.1 — Untimed Daily Pool
+
+Open **Plan**, choose a date and use **Add to day** to select open tasks from any active workspace. Use the up/down controls to choose their order; **Remove** only removes the task from that date's plan, not from Dayframe. Neither a hard deadline nor a soft reminder is modified.
+
+Signed-in accounts save the **ordered untimed pool in Neon** per account and calendar date. The pool loads on sign-in and when you switch days. Concurrent changes from another device are revision-checked: if an update is stale, Dayframe refreshes the saved pool instead of overwriting it. Each date supports up to 100 distinct open tasks. The standalone local demo continues storing its example daily pools in the browser.
+
+**M4.1 boundary:** Fixed-time intervals, available hours/capacity, notifications, notes and time sessions remain local. The timed part of Plan will be addressed in M4.2. A task may be selected in both its untimed pool and a local timed interval; changing a local timed interval does not silently rewrite the cloud pool. Previously stored local pools are not automatically imported.
+
+See [M4.1 checkpoint](docs/CHECKPOINT_M4.1.md) for verified behavior and limitations.
 
 ## M3 task management — implemented
 
@@ -31,7 +41,7 @@ After sign-in, the permanent General workspace and any custom workspaces are loa
 - **M3.2:** Complete, cancel, reopen, archive, unarchive, Trash and restore. A separate typed confirmation is required for permanent deletion; it is limited to trashed leaf tasks. PostgreSQL records completion/cancellation timestamps and immutable audit events.
 - **M3.3:** Add nested subtasks from task details; move whole task trees atomically between workspaces, prevent ancestry loops, and confirm completion of a parent with open children. Task cover and avatar images can be resized and stored privately in Neon with owner-scoped API access.
 - All M3 changes are on **main**; Dayframe Neon Function deployment 6 is complete. Browser smoke, backend CI and live API security tests passed.
-- **Not yet cloud-synced:** timers/sessions, day pool, schedule, Quick Notes and workspace photos. Safari login still requires separate real-browser verification. Real authenticated two-account acceptance tests remain manual.
+- **M3 checkpoint note:** At the end of M3, timers/sessions, day pool, schedule, Quick Notes and workspace photos were not cloud-synced. M4.1 subsequently synchronized the untimed day pool only. Safari login still requires separate real-browser verification. Real authenticated two-account acceptance tests remain manual.
 
 See [M3 checkpoint](docs/CHECKPOINT_M3.md) for verified tests, database migrations and the precise limitations.
 
