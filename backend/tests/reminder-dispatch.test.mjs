@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import worker,{makeVapidAuthorization,isApprovedPushEndpoint,dispatchDue} from '../src/reminder-dispatch.mjs';
+import worker,{makeVapidAuthorization,isApprovedPushEndpoint,dispatchDue,PUSH_QUIET_SQL} from '../src/reminder-dispatch.mjs';
 
 test('M4.3 Web Push endpoint allowlist rejects SSRF and credentialed origins',()=>{
  for(const url of ['http://fcm.googleapis.com/test','https://127.0.0.1/push',
@@ -51,6 +51,7 @@ test('M4.3 successful push sends no task payload and marks delivery exactly once
   if(text.includes('UPDATE dayframe.notification_deliveries d SET'))
    return {rows:[{id:2,endpoint,attempts:1}]};
   if(text.includes('SELECT 1 FROM dayframe.notification_deliveries d'))return {rows:[{'?column?':1}]};
+  if(text===PUSH_QUIET_SQL)return {rows:[{not_before:new Date(0)}]};
   if(text.includes("status='delivered'"))return {rows:[]};
   throw Error('Unexpected query');
  };
