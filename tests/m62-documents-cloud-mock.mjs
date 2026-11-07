@@ -55,7 +55,12 @@ export const cloudApi={
   }
   const item={id,...clone(body),revision:1,deletedAt:null,
    createdAt:now,updatedAt:now};
-  items.push(item);return clone(item);
+  items.push(item);
+  if(window.__docMock.failNextCreateAfterCommit){
+   window.__docMock.failNextCreateAfterCommit=false;
+   throw Error('Synthetic connection loss after committed creation');
+  }
+  return clone(item);
  },
  async updateDocument(id,revision,body){
   const item=get(id);
@@ -76,4 +81,4 @@ export const cloudApi={
   item.deletedAt=null;item.revision++;return clone(item);
  }
 };
-Object.assign(window,{__docMock:{items,updates,creations,searches,exports,workspace:WORKSPACE,seed:SEED}});
+Object.assign(window,{__docMock:{items,updates,creations,searches,exports,workspace:WORKSPACE,seed:SEED,failNextCreateAfterCommit:false}});
