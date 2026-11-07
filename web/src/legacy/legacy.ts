@@ -93,7 +93,7 @@ async function changeDailyPool(mutate,day=state.planDay){
   if(!poolPending.has(day))state.poolErrors[day]='Load the day before editing its pool.';
   render();return false;
  }
- const before=[...poolForDay(day)],next=mutate([...before]);
+ const before=[...poolForDay(day)].filter(id=>state.tasks.some(t=>t.id===id&&t.status==='open')),next=mutate([...before]);
  if(next.length>100||new Set(next).size!==next.length||
   next.some(id=>!state.tasks.some(t=>t.id===id&&t.status==='open'))){
   state.poolErrors[day]='Select up to 100 distinct open tasks.';render();return false;
@@ -478,7 +478,25 @@ case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')
    .catch(saveError).finally(()=>{state.taskEventsBusy=false;if(state.taskTab==='history')render();});
  }
  break;
-}case'toggle-task':await toggleTask(id);break;case'reopen-task':{const task=findTask(id);if(task&&task.status!=='open')await toggleTask(id);break;}case'cancel-task':await cancelTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
+}case'toggle-task':await toggleTask(id);break;case'reopen-task':{const task=findTask(id);if(task&&task.status!=='open')await toggleTask(id);break;}case'cancel-task':await cancelTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':{
+ const task=findTask(id);if(!task||task.status!=='open')break;
+ const saved=await changeDailyPool(ids=>ids.includes(id)?ids:[...ids,id]);
+ if(saved){state.modal=null;render();}break;
+}
+case'pool-remove':await changeDailyPool(ids=>ids.filter(x=>x!==id));break;
+case'pool-up':case'pool-down':{
+ await changeDailyPool(ids=>{
+  const i=ids.indexOf(id),j=i+(a==='pool-up'?-1:1);
+  if(i>=0&&j>=0&&j<ids.length)[ids[i],ids[j]]=[ids[j],ids[i]];
+  return ids;
+ });break;
+}
+case'pool-retry':if(isCloud)await loadCloudPool(state.planDay);break;
+case'unschedule':{
+ const interval=state.scheduled.find(x=>x.id===id);
+ if(!isCloud&&interval&&!state.pool.includes(interval.taskId))state.pool.push(interval.taskId);
+ state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break;
+}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
  const m=state.mediaTarget;if(!m)break;
  if(isCloud&&m.kind==='task'){
   try{await cloudApi.deleteTaskMedia(m.id,m.slot);}
@@ -656,7 +674,7 @@ if(form.id==='workspace-form'){
  state.modal=null;state.modalTask=null;persist();render();
 }
 if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
-if(form.id==='schedule-form'){const start=String(data.get('start')),end=String(data.get('end'));if(parseClock(end)<=parseClock(start)){alert('End time must be later than start time.');return}const taskId=String(data.get('task'));if(!findTask(taskId))return;state.scheduled.push({id:newId(),taskId,day:state.planDay,start,end});if(remainingUnscheduled(findTask(taskId),state.planDay)>0){if(!state.pool.includes(taskId))state.pool.push(taskId)}else state.pool=state.pool.filter(x=>x!==taskId);state.modal=null;state.modalTask=null;persist();render()}});
+if(form.id==='schedule-form'){const start=String(data.get('start')),end=String(data.get('end'));if(parseClock(end)<=parseClock(start)){alert('End time must be later than start time.');return}const taskId=String(data.get('task'));if(!findTask(taskId))return;state.scheduled.push({id:newId(),taskId,day:state.planDay,start,end});if(!isCloud){if(remainingUnscheduled(findTask(taskId),state.planDay)>0){if(!state.pool.includes(taskId))state.pool.push(taskId)}else state.pool=state.pool.filter(x=>x!==taskId)}state.modal=null;state.modalTask=null;persist();render()}});
 trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos)}});
 trackListener('change',async e=>{if(e.target.id==='media-file'){
  const file=e.target.files?.[0],m=state.mediaTarget;
@@ -708,7 +726,7 @@ trackListener('change',async e=>{if(e.target.id==='media-file'){
   state.tasks.filter(t=>t.workspace===dest&&t.status==='open'&&!ids.has(t.id))
    .map(t=>'<option value="'+escapeHTML(t.id)+'">'+escapeHTML(t.title)+'</option>').join('');
  return;
-}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){state.planDay=e.target.value;render()}if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
+}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){state.planDay=e.target.value;render();if(isCloud)void loadCloudPool(state.planDay)}if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
 trackListener('keydown',e=>{if(e.key==='Escape'&&state.modal)closeModal()});
 const timerHandle = setInterval(()=>{
   document.querySelectorAll('[data-timer-display]').forEach(el=>el.textContent=formatTimer());
