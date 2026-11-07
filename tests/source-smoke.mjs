@@ -38,3 +38,14 @@ for(const marker of ["state.page==='profile'?profilePage()","data-page=\"profile
 }
 if(!react.includes('email={session.data.user.email')||!react.includes('onSignOut={signOut}'))throw new Error('Profile account identity or sign-out callback not wired');
 console.log('PASS: Profile identity and sign-out accessible without account top bar');
+
+// M2.3-W: archive is distinct from deletion, and the General workspace cannot be archived.
+const archiveApi=readFileSync('web/src/auth/api.ts','utf8');
+for(const marker of ['listArchivedWorkspaces','archiveWorkspace','restoreWorkspace']){
+ if(!archiveApi.includes(marker))throw new Error('Missing workspace archive API: '+marker);
+}
+for(const marker of ['archivedWorkspacesPage()','case\x27confirm-archive-workspace\x27','case\x27restore-workspace\x27',"w.kind!=='custom'",'state.tasks=state.tasks.filter(t=>t.workspace!==w.id)','Boolean(findTask(s.taskId))']){
+ if(!legacy.includes(marker))throw new Error('Missing archive/restore UI logic: '+marker);
+}
+if(!readFileSync('web/src/styles.css','utf8').includes('@media(max-width:480px){.archive-workspace-row'))throw new Error('Missing mobile restore layout');
+console.log('PASS: Workspace archive, restore and mobile controls wired with General protection');

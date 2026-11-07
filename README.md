@@ -25,6 +25,12 @@ After sign-in, the permanent General workspace and any custom workspaces are loa
 
 **Still local:** the daily pool, timed intervals, quick notes, photos and time-tracking sessions, including the global timer. These remain account-namespaced browser previews; they are NOT synchronized between devices. No actual reminder notifications have been enabled. Use Refresh in the account bar to fetch cloud updates created elsewhere. Never rely on the current local timer as your sole permanent record.
 
+## M2.3-W: archive and restore custom workspaces
+
+From **Workspaces**, open a custom workspace and select **Archive**. The confirmation preserves the workspace and its tasks in Neon, but hides them from active Home, Tasks, Calendar and Plan views. Workspaces → **Archived workspaces** lists archived custom spaces and provides **Restore**. General cannot be archived; workspace-level time sessions, notes and day plans are still stored locally and are not deleted. If a local timer is running for an archived workspace, it is stopped and saved locally before the workspace is hidden.
+
+Backend enforces ownership, `revision` on archive/restore, and protects General in both SQL and API. See `docs/CHECKPOINT_M2.3-W.md`.
+
 ## M2.3 persisted workspaces and tasks
 
 - Neon tables: `dayframe.workspaces` (custom records, permanent General) and `dayframe.tasks` with composite owner/workspace and owner/parent foreign keys.

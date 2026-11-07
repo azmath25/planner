@@ -144,3 +144,13 @@
 .profile-actions{display:flex;flex-wrap:wrap;gap:10px}
 @media(max-width:430px){.profile-identity{gap:12px}.profile-avatar-large{height:58px;width:58px;font-size:20px}.profile-actions .btn{flex:1}}
 
+
+/* M2.3-W: accessible archive management across desktop and mobile. */
+.archive-workspace-list{max-width:780px;display:grid;gap:10px}
+.archive-workspace-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 4px;border-bottom:1px solid var(--line)}
+.archive-workspace-row:last-child{border-bottom:0}
+.archive-workspace-copy{display:grid;gap:4px;min-width:0;overflow-wrap:anywhere}
+.archive-workspace-copy strong{font-size:14px}
+.archive-workspace-copy small{font-size:12px;color:var(--muted)}
+.archive-workspace-row .btn{flex-shrink:0}
+@media(max-width:480px){.archive-workspace-row{align-items:stretch;flex-direction:column;padding:12px 0}.archive-workspace-row .btn{width:100%;min-height:44px}}
