@@ -1,22 +1,24 @@
 """M1.2 mobile UI and local-only photo personalization smoke test."""
 from pathlib import Path
 from io import BytesIO
+import subprocess
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
+subprocess.run(['node','tests/build-demo-harness.mjs'],cwd=ROOT,check=True)
 b=BytesIO()
 Image.new('RGB', (840, 460), (56, 113, 151)).save(b,format='PNG')
 photo=b.getvalue()
 with sync_playwright() as p:
-    browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu'])
+    browser=p.chromium.launch(headless=True,args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu'])
     page=browser.new_page(viewport={'width':390,'height':844})
     errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.set_content('<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div></body></html>')
     page.evaluate("""() => { const db = {}; Object.defineProperty(window,'localStorage',{configurable:true,value:{getItem:k=>db[k]||null,setItem:(k,v)=>{db[k]=String(v)},removeItem:k=>{delete db[k]}}}) }""")
-    page.add_style_tag(content=(ROOT/'styles.css').read_text())
-    page.add_script_tag(content=(ROOT/'app.js').read_text())
+    page.add_style_tag(content=(ROOT/'tests/.harness/styles.css').read_text())
+    page.add_script_tag(content=(ROOT/'tests/.harness/app.js').read_text())
 
     page.locator('.mobile-top [data-page="settings"]').click()
     page.locator('[data-action="theme"][data-id="midnight"]').click()
