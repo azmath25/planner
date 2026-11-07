@@ -71,9 +71,9 @@ Appearance gallery: **Minimal, Midnight, Nature, Pastel, Editorial, Professional
 
 Proposed conceptual tables: users/auth, workspaces, tasks, task_relations (or parent_id), task_reminders, day_plans, day_plan_items, scheduled_intervals, time_sessions, quick_notes, documents, document_revisions, stored_media, task_events, user_preferences, notification_deliveries, recurrence_rules. Exact SQL and policies are deferred to backend milestone.
 
-## 10. Milestones (one at a time)
+## 10. Milestones (feature branch, final consolidated verification)
 
-Every milestone: implement only approved scope, run relevant checks, document outcomes and risks, **stop for approval**. The user approved replacement of this repository’s legacy app; the legacy branches have been deleted by the user's explicit instruction, and only GitHub `main` is used. Avoid unrelated protected branches, Neon production resources and live deployments without explicit approval.
+**2026-11-07 workflow override:** The user approved continuing the remaining M5.3/M6/M7/M8 scope together on `feature/dayframe-m53-release-20261107`, while `main` stays unchanged. Implement in small checkpoints, but defer full build/CI/browser/device verification until the integrated release gate, ordinarily once and then a targeted rerun if defects are found. GitHub Actions billing/runner access will be handled at the end. **Do not merge, publish the site or deploy new Neon changes without explicit release authorization.** Refer to `docs/FEATURE_BRANCH_ROADMAP.md` for acceptance and sequencing. The historical main-only workflow applied to earlier completed milestones, not this feature-branch development cycle.
 
 ### Phase I — website
 
