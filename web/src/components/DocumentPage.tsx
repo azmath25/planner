@@ -35,6 +35,10 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
  const [showTrash,setShowTrash]=useState(false);
+ const [searchTerm,setSearchTerm]=useState('');
+ const [searchResults,setSearchResults]=useState<CloudDocumentMeta[]|null>(null);
+ const [searchBusy,setSearchBusy]=useState(false);
+ const [searchError,setSearchError]=useState('');
  const [pendingCreate,setPendingCreate]=useState<{id:string;body:CloudDocumentInput}|null>(null);
  const alive=useRef(true);
  useEffect(()=>{
@@ -224,10 +228,64 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot restore document');}
   finally{if(alive.current)setBusy(false);}
  };
- const filtered=useMemo(()=>documents.filter(d=>
+ // Search runs only on demand, debounced and owner-scoped by the API.
+ // No document content is stored in the browser's search results.
+ useEffect(()=>{
+  const q=searchTerm.trim();
+  if(q.length<2){setSearchResults(null);setSearchBusy(false);setSearchError('');return;}
+  const controller=new AbortController();
+  setSearchBusy(true);setSearchError('');
+  const timer=window.setTimeout(()=>{
+   void cloudApi.searchDocuments(q,{
+    ...(filterWorkspace!=='all'?{workspace:filterWorkspace}:{}),
+    ...(filterTask?{taskId:filterTask}:{})
+   },controller.signal).then(rows=>{
+    if(!controller.signal.aborted){setSearchResults(rows);setSearchBusy(false);}
+   }).catch(e=>{
+    if(!controller.signal.aborted){
+     setSearchError(e instanceof Error?e.message:'Search unavailable');
+     setSearchResults([]);setSearchBusy(false);
+    }
+   });
+  },350);
+  return ()=>{window.clearTimeout(timer);controller.abort();};
+ },[searchTerm,filterWorkspace,filterTask]);
+ const downloadJson=(payload:unknown,name:string)=>{
+  const text=JSON.stringify(payload,null,2);
+  if(text.length>240000){setError('Export is too large for a single document');return;}
+  const blob=new Blob([text],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  try{
+   const anchor=document.createElement('a');
+   anchor.href=url;anchor.download=name;
+   document.body.appendChild(anchor);anchor.click();anchor.remove();
+  }finally{window.setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ };
+ const exportSaved=async()=>{
+  if(!active||busy)return;
+  setBusy(true);setError('');
+  try{
+   const data=await cloudApi.exportDocument(active.id);
+   if(!alive.current)return;
+   downloadJson(data,'dayframe-document-'+active.id+'.json');
+  }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Export unavailable');}
+  finally{if(alive.current)setBusy(false);}
+ };
+ const exportDraft=()=>{
+  if(!active)return;
+  downloadJson({
+   schema:'dayframe.document.draft.v1',
+   exportedAt:new Date().toISOString(),
+   baseRevision:active.revision,
+   document:{id:active.id,workspace:active.workspace,taskId:active.taskId,
+    parentId:active.parentId,title,blocks}
+  },'dayframe-unsaved-draft-'+active.id+'.json');
+ };
+ const filtered=useMemo(()=>(searchTerm.trim().length>=2?(searchResults??[]):documents)
+ .filter(d=>
   (filterWorkspace==='all'||d.workspace===filterWorkspace)&&
   (!filterTask||d.taskId===filterTask)
- ),[documents,filterWorkspace,filterTask]);
+ ),[documents,searchResults,searchTerm,filterWorkspace,filterTask]);
  const ids=useMemo(()=>new Map(filtered.map(d=>[d.id,d])),[filtered]);
  const ordered=useMemo(()=>{
   const byTitle=(a:CloudDocumentMeta,b:CloudDocumentMeta)=>
@@ -264,6 +322,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     <button className="btn small secondary" disabled={busy||conflict||!!validation}
       type="button" onClick={()=>{setAutoSavePaused(false);void save();}}>Retry save</button>
     <button className="btn small secondary" disabled={busy}
+      type="button" onClick={exportDraft}>Download local draft</button>
+    <button className="btn small secondary" disabled={busy}
       type="button" onClick={()=>void reloadLatest()}>Reload server version</button>
   </div>}
   {pendingCreate&&<div className="info-banner" role="alert">
@@ -281,6 +341,14 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       onClick={()=>void openTrash()} aria-pressed={showTrash}>Recently Deleted</button>
     </div>
     {!showTrash&&<>
+     <label className="field-wrap"><span className="form-label">Search documents (server)</span>
+      <input className="field" type="search" aria-label="Search private documents"
+       placeholder="Title or text (2+ characters)" maxLength={120}
+       value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}/>
+     </label>
+     {searchTerm.trim().length>=2&&<p className="tiny" role="status">
+      {searchBusy?'Searching saved documents…':searchError||'Showing matching documents'}
+     </p>}
      <label className="field-wrap"><span className="form-label">Workspace</span>
       <select className="field" aria-label="Filter documents by workspace"
        value={filterWorkspace} onChange={e=>{if(!canDiscard())return;setFilterWorkspace(e.target.value);setFilterTask(null);resetDraft(null);}}>
@@ -322,6 +390,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         onClick={()=>void create(true)}>New child page</button>
        <button type="button" className="btn small secondary" disabled={busy||!dirty}
         onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
+       <button type="button" className="btn small secondary" disabled={busy}
+        onClick={()=>void exportSaved()}>Download saved JSON</button>
        <button type="button" className="btn small secondary" disabled={busy||dirty}
         onClick={()=>void remove()}>Delete</button>
        <button type="button" className="btn small" disabled={busy||!dirty||!!validation}
