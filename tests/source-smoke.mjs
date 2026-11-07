@@ -44,7 +44,7 @@ const archiveApi=readFileSync('web/src/auth/api.ts','utf8');
 for(const marker of ['listArchivedWorkspaces','archiveWorkspace','restoreWorkspace']){
  if(!archiveApi.includes(marker))throw new Error('Missing workspace archive API: '+marker);
 }
-for(const marker of ['archivedWorkspacesPage()','case\x27confirm-archive-workspace\x27','case\x27restore-workspace\x27',"w.kind!=='custom'",'state.tasks=state.tasks.filter(t=>t.workspace!==w.id)','Boolean(findTask(s.taskId))']){
+for(const marker of ['archivedWorkspacesPage()','case\x27confirm-archive-workspace\x27','case\x27restore-workspace\x27',"w.kind!=='custom'",'state.tasks=state.tasks.filter(t=>t.workspace!==w.id)','Archived task · reserved time']){
  if(!legacy.includes(marker))throw new Error('Missing archive/restore UI logic: '+marker);
 }
 if(!readFileSync('web/src/styles.css','utf8').includes('@media(max-width:480px){.archive-workspace-row'))throw new Error('Missing mobile restore layout');
