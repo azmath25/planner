@@ -11,7 +11,8 @@
     "test:source": "node tests/source-smoke.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:time": "node --experimental-strip-types --test tests/time-tracking.test.mjs",
-    "test:api": "node --test backend/tests/*.test.mjs"
+    "test:api": "node --test backend/tests/*.test.mjs",
+    "test:documents": "node --experimental-strip-types --test tests/documentBlocks.test.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.57.0",
