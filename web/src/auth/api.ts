@@ -1,4 +1,5 @@
 import { AUTH_URL, authClient } from './client';
+import {parsePeriodReport,type PeriodReport,type ReportPeriod} from '../domain/timeReports';
 
 export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
 
@@ -484,6 +485,15 @@ export const cloudApi={
   return {note:result.note,task:result.task};
  },
 
+ async getTimePeriod(period:ReportPeriod,day:string,signal?:AbortSignal):Promise<PeriodReport>{
+  if(!['day','week','month'].includes(period)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day))
+   throw new Error('Invalid time report request');
+  const data=await call<{report:unknown}>(
+   '/v1/time-report?period='+encodeURIComponent(period)+'&day='+encodeURIComponent(day),
+   {signal}
+  );
+  return parsePeriodReport(data.report);
+ },
  async getWeeklyTime():Promise<CloudTimeWeek>{
   const result=await call<{week:unknown}>('/v1/time-week');
   return parseCloudTimeWeek(result.week);
