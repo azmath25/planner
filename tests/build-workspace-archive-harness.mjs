@@ -22,7 +22,7 @@ const mockDb={
 window.__mockDb=mockDb;
 window.__refreshCount=0;
 const cloudApi={
- async listArchivedWorkspaces(){return mockDb.workspaces.filter(w=>w.archivedAt);}
+ async listArchivedWorkspaces(){return mockDb.workspaces.filter(w=>w.archivedAt);},
  async archiveWorkspace(id,revision){
   const w=mockDb.workspaces.find(w=>w.id===id&&w.revision===revision&&w.kind==='custom'&&!w.archivedAt);
   if(!w)throw Error('Workspace protected or changed');
