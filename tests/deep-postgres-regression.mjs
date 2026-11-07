@@ -4,7 +4,8 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL} from '../backend/src/index.mjs';
+import {NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL} from '../backend/src/reminder-dispatch.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -19,7 +20,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=13;i++){
+ for(let i=1;i<=14;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -33,11 +34,12 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all thirteen staged migrations execute without dependency errors',async()=>{
+test('all fourteen staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,13);
+ assert.equal(rows.length,14);
  assert.equal(rows[11].version,'0012_weekly_targets');
  assert.equal(rows[12].version,'0013_quick_notes');
+ assert.equal(rows[13].version,'0014_quick_note_reminders');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -477,4 +479,62 @@ test('M6.1 note conversion is exactly-once across retries and refuses cross-acco
  assert.equal(row.convertedTaskId,task);assert.equal(row.revision,2);
  assert.equal((await pool.query('SELECT count(*)::int AS count FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2',[owner,task])).rows[0].count,1);
  assert.equal((await pool.query('SELECT title,notes,estimate_minutes FROM dayframe.tasks WHERE id=$1',[task])).rows[0].estimate_minutes,45);
+});
+
+test('M6.1a note reminders: timezone, account isolation, durable outbox, atomic claim and delete safety',async()=>{
+ const owner='m61-reminder-a',other='m61-reminder-b';
+ const workspace='f9111111-1111-4111-8111-111111111111';
+ const noteId='f9222222-2222-4222-8222-222222222222';
+ const endpoint='https://fcm.googleapis.com/fcm/send/audit-note-push';
+ const day=new Date(Date.now()-24*60*60*1000).toISOString().slice(0,10);
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Note alerts','custom')",[workspace,owner]);
+ await pool.query(NOTE_INSERT_SQL,[owner,noteId,workspace,'Private reminder','Never put this in push','green',false,day,'09:00']);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'UTC')",[owner]);
+ await pool.query("INSERT INTO dayframe.push_subscriptions(owner_user_id,endpoint) VALUES($1,$2)",[owner,endpoint]);
+ const {rows:list}=await pool.query(NOTE_ALERT_LIST_SQL,[owner,'UTC']);
+ assert.equal(list.length,1);
+ assert.equal(list[0].noteId,noteId);
+ assert.equal(list[0].kind,'note');
+ assert.equal((await pool.query(NOTE_ALERT_LIST_SQL,[other,'UTC'])).rows.length,0);
+ await assert.rejects(pool.query(NOTE_ALERT_ACTION_SQL,[other,noteId,day,'09:00',0,'acknowledge',null]),
+  err=>err.code==='40001');
+ assert.equal((await pool.query('SELECT dayframe.enqueue_due_note_push(50) AS count')).rows[0].count,1);
+ assert.equal((await pool.query('SELECT dayframe.enqueue_due_note_push(50) AS count')).rows[0].count,0,
+  'Same source occurrence must not queue a duplicate push');
+ const first=await pool.connect();
+ try{
+  await first.query('BEGIN');
+  const claimed=await first.query(NOTE_CLAIM_SQL,[10]);
+  assert.equal(claimed.rows.length,1);
+  assert.equal(claimed.rows[0].owner_user_id,owner);
+  assert.equal((await pool.query(NOTE_CLAIM_SQL,[10])).rows.length,0,
+   'Second worker cannot claim a sending occurrence');
+  await first.query('COMMIT');
+  assert.equal((await pool.query(NOTE_ELIGIBLE_SQL,[claimed.rows[0].id])).rows.length,1);
+  await pool.query('UPDATE dayframe.quick_notes SET deleted_at=now() WHERE id=$1',[noteId]);
+  assert.equal((await pool.query(NOTE_ELIGIBLE_SQL,[claimed.rows[0].id])).rows.length,0,
+   'Deleted note must not send a pending notification');
+ }finally{
+  try{await first.query('ROLLBACK');}catch{}
+  first.release();
+ }
+});
+test('M6.1a note alert acknowledgements and snoozes use optimistic revisions',async()=>{
+ const owner='m61-note-action';
+ const ws='f9333333-3333-4333-8333-333333333333';
+ const id='f9444444-4444-4444-8444-444444444444';
+ const day=new Date(Date.now()+24*60*60*1000).toISOString().slice(0,10);
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Note action','custom')",[ws,owner]);
+ await pool.query(NOTE_INSERT_SQL,[owner,id,ws,'Alert','Content','blue',false,day,'10:00']);
+ assert.equal((await pool.query(NOTE_ALERT_ACTION_SQL,[owner,id,day,'10:00',0,'acknowledge',null])).rows[0].revision,1);
+ await assert.rejects(pool.query(NOTE_ALERT_ACTION_SQL,[owner,id,day,'10:00',0,'reset',null]),
+  err=>err.code==='40001');
+ assert.equal((await pool.query(NOTE_ALERT_LIST_SQL,[owner,'UTC'])).rows.length,0);
+ const future=new Date(Date.now()+60*60*1000).toISOString();
+ assert.equal((await pool.query(NOTE_ALERT_ACTION_SQL,[owner,id,day,'10:00',1,'snooze',future])).rows[0].revision,2);
+ assert.equal((await pool.query(NOTE_ALERT_LIST_SQL,[owner,'UTC'])).rows.length,0);
+ await pool.query("UPDATE dayframe.quick_notes SET reminder=$2 WHERE id=$1",[id,
+   new Date(Date.now()+48*60*60*1000).toISOString().slice(0,10)]);
+ await assert.rejects(pool.query(NOTE_ALERT_ACTION_SQL,[owner,id,day,'10:00',2,'acknowledge',null]),
+  err=>err.code==='40001');
 });
