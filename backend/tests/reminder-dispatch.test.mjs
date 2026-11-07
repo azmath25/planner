@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import {makeVapidAuthorization,isApprovedPushEndpoint,dispatchDue} from '../src/reminder-dispatch.mjs';
+import worker,{makeVapidAuthorization,isApprovedPushEndpoint,dispatchDue} from '../src/reminder-dispatch.mjs';
 
 test('M4.3 Web Push endpoint allowlist rejects SSRF and credentialed origins',()=>{
  for(const url of ['http://fcm.googleapis.com/test','https://127.0.0.1/push',
@@ -61,4 +61,20 @@ test('M4.3 successful push sends no task payload and marks delivery exactly once
  });
  assert.deepEqual(result,{claimed:1,delivered:1,expired:0,retrying:0});
  assert.deepEqual(requests,[{url:endpoint,auth:'vapid test-token'}]);
+});
+
+test('M4.3 reject trigger body/header mismatches before any dispatch',async()=>{
+ const makeRequest=(header,body)=>new Request('https://example.invalid/dispatch',{
+  method:'POST',headers:{'content-type':'application/json','x-neon-trigger-invocation-id':header},
+  body:JSON.stringify(body)
+ });
+ const event={version:1,invocation_id:'real-invocation',trigger:{type:'schedule',name:'dayframe-reminder-dispatch'},data:{scheduled_at:'2026-11-07T12:00:00Z'}};
+ const bad=await worker.fetch(makeRequest('another-invocation',event));
+ assert.equal(bad.status,403);
+ const missing=await worker.fetch(new Request('https://example.invalid/dispatch',{
+  method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(event)
+ }));
+ assert.equal(missing.status,403);
+ const spoofed=await worker.fetch(makeRequest('real-invocation',{...event,trigger:{...event.trigger,name:'not-dayframe'}}));
+ assert.equal(spoofed.status,403);
 });
