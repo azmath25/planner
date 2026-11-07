@@ -697,6 +697,7 @@ function navigate(page){
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
  if(isCloud&&page==='home')void loadCloudAlerts();
+ if(isCloudTime&&(page==='workspace'||page==='reports'))void loadCloudWeek();
  if(isCloud&&page==='plan')void loadCloudSchedule(state.planDay,state.planDay);
  if(isCloud&&page==='calendar'){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
  if(page==='task-archive'&&isCloud){
@@ -732,6 +733,19 @@ function applyCloudTimeSnapshot(session){
   startedAt:Date.parse(session.segmentStartedAt||session.startedAt),
   elapsed:session.accumulatedMs,running:session.state==='running'
  };
+}
+async function loadCloudWeek(){
+ if(!isCloudTime||disposed||state.weekLoading||state.weekSaving)return;
+ state.weekLoading=true;state.weekError='';
+ try{
+  const week=await cloudApi.getWeeklyTime();
+  if(!disposed)state.timeWeek=week;
+ }catch(err){
+  if(!disposed)state.weekError=err instanceof Error?err.message:'Weekly data unavailable';
+ }finally{
+  state.weekLoading=false;
+  if(!disposed&&(state.page==='workspace'||state.page==='reports'))render();
+ }
 }
 async function loadCloudTime(){
  if(!isCloudTime||disposed||state.timeLoading||state.timeBusy)return;
@@ -788,7 +802,8 @@ async function updateCloudTimer(action,id){
   }
  }finally{
   state.timeBusy=false;
-  if(!disposed)await loadCloudTime();
+  if(!disposed){await loadCloudTime();
+   if(state.page==='workspace'||state.page==='reports')void loadCloudWeek();}
  }
 }
 function recordAndStop(reason='stopped'){
@@ -869,6 +884,7 @@ function updateTimer(action,id){
 trackListener('click',async e=>{if(e.target.dataset.backdrop){closeModal();return}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':navigate(b.dataset.page);break;
 case'refresh-alerts':void loadCloudAlerts();break;
 case'time-retry':void loadCloudTime();break;
+case'refresh-week':void loadCloudWeek();break;
 case'enable-push':void enableBrowserPush();break;
 case'disable-push':void disableBrowserPush();break;
 case'use-device-zone':void setCurrentNotificationZone();break;
@@ -916,7 +932,7 @@ case'calendar-open-day':{
  const day=b.dataset.day;
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))break;
  state.planDay=day;navigate('plan');if(isCloud)void loadCloudPool(day);break;
-}case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
+}case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();if(isCloudTime)void loadCloudWeek();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
  state.taskTab=b.dataset.value;render();
  if(state.taskTab==='history'&&isCloud){
   state.taskEventsBusy=true;state.taskEvents=[];render();
@@ -1046,7 +1062,30 @@ case'restore-task':{
  finally{state.cloudBusy=false;}
  persist();render();break;
 }case'delete-note':state.modal='delete-note';state.modalTask=id;render();break;case'confirm-delete-note':state.notes=state.notes.filter(n=>n.id!==state.modalTask);state.modal=null;persist();render();break;case'reset':state.modal='reset';render();break;case'confirm-reset':localStorage.removeItem(STORAGE);location.reload();break;default:break}});
-trackListener('submit',async e=>{e.preventDefault();const form=e.target;const data=new FormData(form);if(form.id==='task-form'){
+trackListener('submit',async e=>{e.preventDefault();const form=e.target;const data=new FormData(form);
+if(form.id==='weekly-goal-form'){
+ if(!isCloudTime||state.weekSaving||state.weekLoading)return;
+ const w=workspace(state.viewWorkspace),row=weekWorkspace(w);
+ if(!row){state.weekError='Reload this week before saving a target.';render();return;}
+ const hours=Number(data.get('hours'));
+ const targetMinutes=hours*60;
+ if(!Number.isFinite(hours)||hours<0||hours>168||!Number.isInteger(hours*4)||
+  !Number.isInteger(targetMinutes)){
+  state.weekError='Enter whole quarter-hours between 0 and 168 hours.';
+  render();return;
+ }
+ state.weekSaving=true;state.weekError='';render();
+ try{
+  await cloudApi.saveWeeklyTarget(serverWorkspaceId(w.id),targetMinutes,row.revision);
+ }catch(err){
+  if(!disposed)state.weekError=err instanceof Error?err.message:'Could not save goal';
+ }finally{
+  state.weekSaving=false;
+  if(!disposed)void loadCloudWeek();
+ }
+ return;
+}
+if(form.id==='task-form'){
  if(state.cloudBusy)return;
  const existing=state.modal==='edit'&&findTask(state.modalTask);
  const entry={title:String(data.get('title')||'').trim(),workspace:String(data.get('workspace')||'general'),
@@ -1261,7 +1300,12 @@ render();
 if(isCloud)void loadCloudPool(today());
 if(isCloud)void loadCloudAlerts();
 if(isCloudTime)void loadCloudTime();
-const onTimeFocus=()=>{if(isCloudTime&&!document.hidden)void loadCloudTime();};
+const onTimeFocus=()=>{
+ if(isCloudTime&&!document.hidden){
+  void loadCloudTime();
+  if(state.page==='workspace'||state.page==='reports')void loadCloudWeek();
+ }
+};
 window.addEventListener('focus',onTimeFocus);
 document.addEventListener('visibilitychange',onTimeFocus);
 const timeRefreshHandle=isCloudTime?setInterval(onTimeFocus,45000):null;
