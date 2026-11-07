@@ -71,7 +71,7 @@ let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?(saved.notes||[]).filter(n=>workspaces.some(w=>w.id===n.workspace)):(saved.notes||initialNotes()),
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
-scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
+scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
@@ -339,6 +339,52 @@ const workspaceTimeMs=w=>{
 const accountTimeMs=()=>isCloudTime
  ?(state.timeRollups?.accountTotalMs||0)+activeTimeDeltaMs()
  :workspaces.reduce((sum,w)=>sum+workspaceTimeMs(w),0);
+
+
+const taskRemainingMs=task=>task.status==='open'
+ ?Math.max(0,Math.round(task.estimate*60000)-taskTimeMs(task)):0;
+const subtreeRemainingMs=task=>state.tasks
+ .filter(x=>isDescendantOf(x.id,task.id)&&x.status==='open')
+ .reduce((sum,x)=>sum+taskRemainingMs(x),0);
+const weekWorkspace=w=>state.timeWeek?.workspaces.find(
+  row=>row.workspaceId===serverWorkspaceId(w.id))||null;
+const weekCaption=()=>state.timeWeek
+ ?'Week '+state.timeWeek.weekStart+'–'+state.timeWeek.weekEnd+
+   ' · '+state.timeWeek.timeZone
+ :'Current week';
+function weekWorkspaceBlock(w){
+ if(!isCloudTime)return '';
+ const row=weekWorkspace(w);
+ const noTarget=!row||row.targetMinutes===0;
+ const actual=row?.actualMs||0;
+ const legacy=row?.legacyEstimatedMs||0;
+ const targetMs=(row?.targetMinutes||0)*60000;
+ const percent=targetMs?Math.round(actual/targetMs*100):0;
+ const loading=state.weekLoading?'Loading current week…':(state.weekError||'Weekly summary unavailable');
+ return `<section class="card" aria-label="Weekly time target for ${escapeHTML(w.name)}">
+  <div class="card-title"><h2>Weekly focus target</h2>
+   <button type="button" class="btn small secondary" data-action="refresh-week" ${state.weekLoading?'disabled':''}>Refresh</button>
+  </div>
+  <p class="tiny">${escapeHTML(weekCaption())}. Progress repeats every week. The goal itself is saved across devices.</p>
+  ${row?`<div class="metrics">
+   <div class="metric"><div class="metric-label">Recorded this week</div><div class="metric-value">${formatElapsed(actual)}</div></div>
+   <div class="metric"><div class="metric-label">Fixed plan this week</div><div class="metric-value">${minsText(row.plannedMinutes)}</div></div>
+   <div class="metric"><div class="metric-label">Weekly goal</div><div class="metric-value">${noTarget?'Not set':minsText(row.targetMinutes)}</div></div>
+  </div>
+  ${noTarget?'<p class="tiny">Set a target to monitor weekly progress.</p>':`<label class="form-label" for="week-target-progress">Goal progress: ${percent}%</label>
+   <progress id="week-target-progress" value="${Math.min(actual,targetMs)}" max="${targetMs}"></progress>`}
+  ${legacy?'<p class="tiny">Some older time is attributed to the week the session started; exact pre-M5.3 segments were unavailable.</p>':''}
+  `: `<p class="tiny" role="status">${escapeHTML(loading)}</p>`}
+  <form id="weekly-goal-form" class="actions" style="align-items:flex-end;flex-wrap:wrap">
+   <label class="field-wrap"><span class="form-label">Weekly target (hours; 0 disables)</span>
+    <input class="field" name="hours" type="number" min="0" max="168" step="0.25"
+     value="${row?row.targetMinutes/60:0}" ${!row||state.weekSaving?'disabled':''} required/>
+   </label>
+   <button class="btn small" type="submit" ${!row||state.weekSaving?'disabled':''}>Save weekly goal</button>
+  </form>
+  ${state.weekError?`<p class="tiny" role="alert">${escapeHTML(state.weekError)}</p>`:''}
+ </section>`;
+}
 
 const timeControls=(task,compact=false)=>{
   const timerDisabled=isCloudTime&&(state.timeBusy||state.timeLoading||!state.timeLoaded)?' disabled aria-disabled="true"':'';
