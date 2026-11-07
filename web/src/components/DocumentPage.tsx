@@ -114,7 +114,10 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    if(!alive.current)return;
    setDocuments(current=>current.map(d=>d.id===updated.id?updated:d));
    if(draftVersion.current===savedVersion){
-    resetDraft(updated);
+    // Confirm the revision without remounting BlockNote: remounting after each
+    // autosave discards cursor position, selection and editor undo history.
+    setActive(updated);setDirty(false);setConflict(false);setAutoSavePaused(false);
+    setError('');
    }else{
     // A later edit arrived while the request was pending. Advance the
     // observed server revision without replacing the newer local draft.
