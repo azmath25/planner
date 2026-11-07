@@ -4,7 +4,7 @@ export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-
 
 export type CloudWorkspace={
   id:string;kind:'general'|'custom';name:string;subtitle:string;color:string;cover:string;
-  revision:number;createdAt:string;
+  revision:number;createdAt:string;archivedAt:string|null;
 };
 export type CloudTask={
   id:string;workspace:string;parent:string|null;title:string;notes:string;
@@ -82,6 +82,20 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async listArchivedWorkspaces():Promise<CloudWorkspace[]>{
+  const data=await call<{workspaces:unknown[]}>('/v1/workspaces/archived');
+  if(!Array.isArray(data.workspaces)||!data.workspaces.every(verifyWorkspace)||
+     data.workspaces.some(w=>w.kind!=='custom'||!('archivedAt' in w)||typeof w.archivedAt!=='string')){
+    throw new Error('Invalid archived workspace response.');
+  }
+  return data.workspaces;
+ },
+ async archiveWorkspace(id:string,revision:number):Promise<CloudWorkspace>{
+  return (await call<{workspace:CloudWorkspace}>('/v1/workspaces/'+encodeURIComponent(id)+'/archive',{method:'POST',body:{revision}})).workspace;
+ },
+ async restoreWorkspace(id:string,revision:number):Promise<CloudWorkspace>{
+  return (await call<{workspace:CloudWorkspace}>('/v1/workspaces/'+encodeURIComponent(id)+'/restore',{method:'POST',body:{revision}})).workspace;
+ },
  async createWorkspace(body:{name:string;subtitle?:string;color?:string;cover?:string}):Promise<CloudWorkspace>{
   return (await call<{workspace:CloudWorkspace}>('/v1/workspaces',{method:'POST',body})).workspace;
  },
