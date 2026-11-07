@@ -7,6 +7,7 @@ import pg from 'pg';
 import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL,DOCUMENT_INSERT_SQL,DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_DETAIL_SQL} from '../backend/src/index.mjs';
 import {NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL} from '../backend/src/reminder-dispatch.mjs';
 import {TIME_PERIOD_REPORT_SQL} from '../backend/src/time-period-report.mjs';
+import {TIME_INSIGHTS_SQL} from '../backend/src/time-insights.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -21,7 +22,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=17;i++){
+ for(let i=1;i<=18;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -35,15 +36,16 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all seventeen staged migrations execute without dependency errors',async()=>{
+test('all eighteen staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,17);
+ assert.equal(rows.length,18);
  assert.equal(rows[11].version,'0012_weekly_targets');
  assert.equal(rows[12].version,'0013_quick_notes');
  assert.equal(rows[13].version,'0014_quick_note_reminders');
  assert.equal(rows[14].version,'0015_notification_quiet_hours');
  assert.equal(rows[15].version,'0016_private_documents');
  assert.equal(rows[16].version,'0017_workspace_pins');
+ assert.equal(rows[17].version,'0018_completion_insights_index');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -691,4 +693,45 @@ test('M7.2 spring DST day boundary is an IANA-zone calendar day, not fixed 24 ho
  assert.equal(report.endDayExclusive,'2026-03-30');
  assert.equal(Number(report.accountRecordedMs),3600000);
  assert.equal(Number(report.accountLegacyEstimatedMs),0);
+});
+
+test('M7.3 source-backed completion history distinguishes due-event counts and estimated comparison',async()=>{
+ const owner='m73-insights-owner',other='m73-insights-other';
+ const ws='f1111111-1111-4111-8111-111111111111';
+ const task='f2222222-2222-4222-8222-222222222222';
+ const session='f3333333-3333-4333-8333-333333333333';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Insights QA','custom')",[ws,owner]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku')",[owner]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline,deadline_time) VALUES($1,$2,$3,'Accuracy example',60,'2026-11-07','18:00')",[task,owner,ws]);
+ await pool.query("UPDATE dayframe.tasks SET status='done' WHERE id=$1",[task]);
+ await pool.query("UPDATE dayframe.task_events SET created_at='2026-11-07 13:00:00+00' WHERE task_id=$1 AND owner_user_id=$2 AND event_type='completed'",[task,owner]);
+ await pool.query("INSERT INTO dayframe.time_sessions(id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,started_at,accumulated_ms,state,ended_at,end_reason) "+
+  "VALUES($1,$2,$3,'Accuracy example',$4,'2026-11-07 12:00:00+00',1800000,'stopped','2026-11-07 12:30:00+00','stopped')",[session,owner,task,ws]);
+ await pool.query("INSERT INTO dayframe.time_session_segments(session_id,started_at,ended_at,duration_ms) "+
+  "VALUES($1,'2026-11-07 12:00:00+00','2026-11-07 12:30:00+00',1800000)",[session]);
+ const row=(await pool.query(TIME_INSIGHTS_SQL,[owner,'day','2026-11-07'])).rows[0];
+ assert.equal(row.timeZone,'Asia/Baku');
+ assert.deepEqual(row.deadline,{completedEvents:1,withDeadline:1,withoutDeadline:0,onTime:1,late:0});
+ assert.equal(row.estimate.measuredTasks,1);
+ assert.equal(Number(row.estimate.estimatedMinutes),60);
+ assert.equal(Number(row.estimate.recordedMs),1800000);
+ assert.equal(row.history[0].taskId,task);
+ assert.equal(row.history[0].onTime,true);
+ const foreign=(await pool.query(TIME_INSIGHTS_SQL,[other,'day','2026-11-07'])).rows[0];
+ assert.equal(foreign.deadline.completedEvents,0);
+ assert.equal(foreign.history.length,0);
+});
+test('M7.3 date-only deadlines end at next local midnight; late completion measured using event snapshot',async()=>{
+ const owner='m73-deadline-day';
+ const ws='f4444444-4444-4444-8444-444444444444';
+ const task='f5555555-5555-4555-8555-555555555555';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Deadline QA','custom')",[ws,owner]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'UTC')",[owner]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,deadline) VALUES($1,$2,$3,'Date only','2026-11-07')",[task,owner,ws]);
+ await pool.query("UPDATE dayframe.tasks SET status='done' WHERE id=$1",[task]);
+ await pool.query("UPDATE dayframe.task_events SET created_at='2026-11-08 00:00:01+00' WHERE task_id=$1 AND event_type='completed'",[task]);
+ const row=(await pool.query(TIME_INSIGHTS_SQL,[owner,'day','2026-11-08'])).rows[0];
+ assert.equal(row.deadline.late,1);
+ assert.equal(row.deadline.onTime,0);
+ assert.equal(row.history[0].deadlineTime,null);
 });
