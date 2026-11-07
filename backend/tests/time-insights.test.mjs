@@ -5,7 +5,8 @@ import {createHandler,TIME_INSIGHTS_SQL} from '../src/index.mjs';
 const SAMPLE={
  period:'week',timeZone:'Asia/Baku',startDay:'2026-11-02',endDayExclusive:'2026-11-09',
  deadline:{completedEvents:3,withDeadline:2,withoutDeadline:1,onTime:1,late:1},
- estimate:{measuredTasks:2,excludedLegacyTasks:1,estimatedMinutes:'90',recordedMs:'5400000'},
+ estimate:{measuredTasks:2,excludedLegacyTasks:1,untrackedTasks:1,estimatedMinutes:'90',recordedMs:'5400000',absoluteErrorMs:'1200000'},
+ weeklyTrend:[],
  history:[]
 };
 function setup(){
@@ -49,4 +50,15 @@ test('M7.3 deadline and estimate SQL derives completion snapshots from the owner
  assert.match(TIME_INSIGHTS_SQL,/time_session_segments/);
  assert.match(TIME_INSIGHTS_SQL,/excludedLegacyTasks|excluded_legacy_tasks/);
  assert.match(TIME_INSIGHTS_SQL,/AT TIME ZONE b.zone/);
+});
+
+test('M7.3 insight SQL isolates exact segment trends and excludes untracked estimates',()=>{
+ assert.match(TIME_INSIGHTS_SQL,/weekly_focus/);
+ assert.match(TIME_INSIGHTS_SQL,/generate_series\(0,5\)/);
+ assert.match(TIME_INSIGHTS_SQL,/g.started_at/);
+ assert.match(TIME_INSIGHTS_SQL,/exact_ms>0/);
+ assert.match(TIME_INSIGHTS_SQL,/untracked_tasks/);
+ assert.match(TIME_INSIGHTS_SQL,/absolute_error_ms/);
+ assert.match(TIME_INSIGHTS_SQL,/event_type='completed'/);
+ assert.doesNotMatch(TIME_INSIGHTS_SQL,/SUM\(.*long_term/s);
 });
