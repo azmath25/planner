@@ -35,10 +35,17 @@ jobs:
           (cd backend/deploy && zip -q -9 ../dayframeapi.zip index.mjs)
           base64 -w0 backend/dayframeapi.zip > backend/packaged/dayframeapi.b64
           test -s backend/packaged/dayframeapi.b64
+          mkdir -p backend/deploy/reminder
+          npx esbuild backend/src/reminder-dispatch.mjs --bundle --platform=node --target=node24 --format=esm --external:pg-native --outfile=backend/deploy/reminder/index.mjs --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
+          node --check backend/deploy/reminder/index.mjs
+          (cd backend/deploy/reminder && zip -q -9 ../../dayframedue.zip index.mjs)
+          base64 -w0 backend/dayframedue.zip > backend/packaged/dayframedue.b64
+          test -s backend/packaged/dayframedue.b64
       - name: Publish reproducible deploy bundle to same branch
         run: |
           set -euo pipefail
           cp backend/packaged/dayframeapi.b64 /tmp/dayframeapi.b64
+          cp backend/packaged/dayframedue.b64 /tmp/dayframedue.b64
           for attempt in 1 2 3; do
             git fetch origin main
             # A later API edit needs its own build. Never publish a stale bundle.
@@ -49,7 +56,8 @@ jobs:
             git reset --hard origin/main
             mkdir -p backend/packaged
             cp /tmp/dayframeapi.b64 backend/packaged/dayframeapi.b64
-            git add -f backend/packaged/dayframeapi.b64
+            cp /tmp/dayframedue.b64 backend/packaged/dayframedue.b64
+            git add -f backend/packaged/dayframeapi.b64 backend/packaged/dayframedue.b64
             if git diff --cached --quiet; then exit 0; fi
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
