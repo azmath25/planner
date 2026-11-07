@@ -37,19 +37,36 @@ jobs:
       - name: Publish compiled assets to main root
         run: |
           set -euo pipefail
-          cp dist/index.html index.html
-          rm -rf assets
-          cp -R dist/assets assets
-          touch .nojekyll
-          # Legacy source moved into web/src/legacy; old browser bundles are not served.
-          git rm -f --ignore-unmatch app.js styles.css || true
-          git add -A -- index.html assets .nojekyll
-          if git diff --cached --quiet; then
-            echo 'No generated-site changes'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'build: refresh React preview on main [skip ci]'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          # Do not rebase a generated index.html over another Pages build:
+          # it causes content conflicts and leaves the live site outdated.
+          test -s dist/index.html
+          test -d dist/assets
+          for attempt in 1 2 3; do
+            git fetch origin main
+            # If newer frontend source exists, its own run must publish it.
+            if ! git diff --quiet "$GITHUB_SHA" origin/main -- web package.json package-lock.json vite.config.ts tsconfig.json scripts; then
+              echo 'A newer frontend source commit exists; skipping stale compiled assets.'
+              exit 0
+            fi
+            git reset --hard origin/main
+            cp dist/index.html index.html
+            rm -rf assets
+            cp -R dist/assets assets
+            touch .nojekyll
+            git rm -f --ignore-unmatch app.js styles.css || true
+            git add -A -- index.html assets .nojekyll
+            if git diff --cached --quiet; then
+              echo 'No generated-site changes.'
+              exit 0
+            fi
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'build: refresh React preview on main [skip ci]'
+            if git push origin HEAD:main; then
+              echo 'Published compiled assets from current frontend source.'
+              exit 0
+            fi
+            echo "Concurrent update during publish attempt $attempt; retrying from latest main."
+          done
+          echo 'Could not publish compiled assets after retries.' >&2
+          exit 1
