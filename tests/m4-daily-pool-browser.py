@@ -23,6 +23,7 @@ def run(browser,width):
   Object.defineProperty(window,'localStorage',{configurable:true,value:{
    getItem:k=>d[k]||null,setItem:(k,v)=>{d[k]=String(v)},removeItem:k=>{delete d[k]}
   }});
+  if(!crypto.randomUUID)Object.defineProperty(crypto,'randomUUID',{value:()=>'88888888-8888-4888-8888-'+Math.floor(Math.random()*1e12).toString().padStart(12,'0')});
  }""")
  p.add_style_tag(content=(ROOT/'tests/.harness/m4.css').read_text())
  p.add_script_tag(content=(ROOT/'tests/.harness/m4-app.js').read_text())
@@ -31,7 +32,7 @@ def run(browser,width):
  p.locator('#title').fill('Second workspace task')
  p.locator('#workspace').select_option('33333333-3333-4333-8333-333333333333')
  p.locator('#task-form [type="submit"]').click()
- p.wait_for_function("() => window.__mockDb.tasks.some(t=>t.title==='Second workspace task')")
+ p.wait_for_function("() => window.__mockDb.tasks.some(t=>t.title==='Second workspace task')",timeout=9000)
  B=p.evaluate("() => window.__mockDb.tasks.find(t=>t.title==='Second workspace task').id")
  nav(p,width,'plan')
  p.locator('.pool-sync-status').get_by_text('Daily pool saved in Neon').wait_for()
