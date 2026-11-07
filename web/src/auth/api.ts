@@ -35,8 +35,8 @@ function verifyCloudTimeSession(value:unknown):value is CloudTimeSession{
  typeof s.workspaceIdAtStart==='string'&&['running','paused','stopped'].includes(s.state||'')&&
  typeof s.startedAt==='string'&&Number.isFinite(Date.parse(s.startedAt))&&
  (s.segmentStartedAt===null||(typeof s.segmentStartedAt==='string'&&Number.isFinite(Date.parse(s.segmentStartedAt))))&&
- Number.isSafeInteger(s.accumulatedMs)&&s.accumulatedMs>=0&&
- Number.isSafeInteger(s.revision)&&s.revision>=1&&
+ typeof s.accumulatedMs==='number'&&Number.isSafeInteger(s.accumulatedMs)&&s.accumulatedMs>=0&&
+ typeof s.revision==='number'&&Number.isSafeInteger(s.revision)&&s.revision>=1&&
  typeof s.serverNow==='string'&&Number.isFinite(Date.parse(s.serverNow))&&
  (s.endedAt===null||(typeof s.endedAt==='string'&&Number.isFinite(Date.parse(s.endedAt))));
 }
