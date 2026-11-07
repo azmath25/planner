@@ -13,6 +13,7 @@ test('M4.3 deployed API healthy and unauthorized for all new routes',async()=>{
  const routes=[
  [BASE+'/v1/alerts?timeZone=Asia%2FBaku','GET'],
  [BASE+'/v1/notification-preferences','GET'],
+ [BASE+'/v1/push-subscription/status','POST',{endpoint:'https://fcm.googleapis.com/fcm/send/foobar'}],
  [BASE+'/v1/notification-preferences','PUT',{timeZone:'Asia/Baku'}],
  [BASE+'/v1/push-subscription','PUT',{endpoint:'https://fcm.googleapis.com/fcm/send/foobar'}],
  [BASE+'/v1/push-subscription','DELETE',{endpoint:'https://fcm.googleapis.com/fcm/send/foobar'}],
