@@ -26,6 +26,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [blocks,setBlocks]=useState<unknown[]>(emptyDocumentBlocks());
  const [dirty,setDirty]=useState(false);
  const [validation,setValidation]=useState('');
+ const [conflict,setConflict]=useState(false);
+ const [autoSavePaused,setAutoSavePaused]=useState(false);
+ const [editorEpoch,setEditorEpoch]=useState(0);
+ // A network response must not clear edits made after its request began.
+ const draftVersion=useRef(0);
+ const savingRef=useRef(false);
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
  const [showTrash,setShowTrash]=useState(false);
@@ -42,20 +48,25 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   return ()=>{cancelled=true;alive.current=false;};
  },[]);
  useEffect(()=>{
-  onDirtyChange(dirty);
+  onDirtyChange(dirty||busy||pendingCreate!==null);
   const unload=(event:BeforeUnloadEvent)=>{
-   if(dirty){event.preventDefault();event.returnValue='';}
+   if(dirty||busy||pendingCreate!==null){event.preventDefault();event.returnValue='';}
   };
   window.addEventListener('beforeunload',unload);
   return ()=>window.removeEventListener('beforeunload',unload);
- },[dirty,onDirtyChange]);
- const canDiscard=()=>!dirty||window.confirm('Discard unsaved document changes?');
+ },[dirty,busy,pendingCreate,onDirtyChange]);
+ const canDiscard=()=>{
+  if(busy||savingRef.current){setError('An account request is still finishing. Try again when it completes.');return false;}
+  if(pendingCreate){setError('A document creation result is uncertain. Retry creation first.');return false;}
+  return !dirty||window.confirm('Discard unsaved document changes?');
+ };
  const resetDraft=(value:CloudDocument|null)=>{
+  draftVersion.current++;
   setActive(value);
   setTitle(value?.title??'');
   setBlocks(value?.blocks??emptyDocumentBlocks());
   setValidation('');
-  setDirty(false);
+  setDirty(false);setConflict(false);setAutoSavePaused(false);setEditorEpoch(x=>x+1);
  };
  const refresh=async()=>{
   if(!canDiscard())return;
@@ -78,24 +89,76 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   finally{if(alive.current)setBusy(false);}
  };
  const save=async()=>{
-  if(!active||busy)return;
+  if(!active||busy||savingRef.current||conflict)return;
   const safeTitle=title.trim();
-  if(!safeTitle||safeTitle.length>160){setError('Document title must contain 1–160 characters.');return;}
+  if(!safeTitle||safeTitle.length>160){
+   setValidation('Document title must contain 1–160 characters.');return;
+  }
   try{assertDocumentBlocks(blocks);}catch(e){
    setValidation(e instanceof Error?e.message:'Unsupported blocks');return;
   }
-  setBusy(true);setError('');
+  // Capture exact version, document and payload. Never retry a network failure
+  // automatically: the first write may already have committed on the server.
+  const savedVersion=draftVersion.current;
+  const docId=active.id;
+  savingRef.current=true;setBusy(true);setError('');
   try{
-   const updated=await cloudApi.updateDocument(active.id,active.revision,{
+   const updated=await cloudApi.updateDocument(docId,active.revision,{
     workspace:active.workspace,taskId:active.taskId,parentId:active.parentId,
     title:safeTitle,blocks
    });
    if(!alive.current)return;
-   resetDraft(updated);
    setDocuments(current=>current.map(d=>d.id===updated.id?updated:d));
-  }catch(e){if(alive.current)setError((e instanceof Error?e.message:'Save failed')+
-   ' Your unsaved edits remain in this browser. Refresh only if you wish to discard them.');}
+   if(draftVersion.current===savedVersion){
+    resetDraft(updated);
+   }else{
+    // A later edit arrived while the request was pending. Advance the
+    // observed server revision without replacing the newer local draft.
+    setActive(updated);setDirty(true);
+   }
+  }catch(e){
+   if(!alive.current)return;
+   const status=(e&&typeof e==='object'&&'status' in e)?Number(e.status):0;
+   if(status===409){
+    setConflict(true);
+    setError('A newer version exists on the server. Your local draft is untouched. Download it or reload the latest version before continuing.');
+   }else{
+    setAutoSavePaused(true);
+    setError('Save outcome uncertain. Your local changes are preserved here. Retry manually after checking your connection.');
+   }
+  }finally{
+   savingRef.current=false;
+   if(alive.current)setBusy(false);
+  }
+ };
+ useEffect(()=>{
+  if(!active||!dirty||busy||savingRef.current||validation||
+     conflict||autoSavePaused||pendingCreate)return;
+  const timer=window.setTimeout(()=>{void save();},1400);
+  return ()=>window.clearTimeout(timer);
+ // save() intentionally uses the latest render's captured title and blocks.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[active?.id,active?.revision,title,blocks,dirty,busy,validation,conflict,autoSavePaused,pendingCreate]);
+ const reloadLatest=async()=>{
+  if(!active||busy||savingRef.current)return;
+  if(!window.confirm('Discard the local document draft and load the newest saved version?'))return;
+  setBusy(true);setError('');
+  try{
+   const remote=await cloudApi.getDocument(active.id);
+   assertDocumentBlocks(remote.blocks);
+   if(alive.current)resetDraft(remote);
+  }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Could not reload document');}
   finally{if(alive.current)setBusy(false);}
+ };
+ const changeDraft=(newBlocks:unknown[],message:string|null)=>{
+  if(busy||savingRef.current)return;
+  draftVersion.current++;setBlocks(newBlocks);
+  setValidation(message||'');setDirty(true);
+ };
+ const changeTitle=(newTitle:string)=>{
+  if(busy||savingRef.current)return;
+  draftVersion.current++;setTitle(newTitle);setDirty(true);
+  setValidation(''); // New input gets a fresh validation pass.
  };
  const create=async(child:boolean)=>{
   if(busy||!canDiscard())return;
@@ -189,7 +252,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  return <section className="df-documents" aria-label="Private document library">
   <div className="page-head">
    <div><div className="eyebrow">PRIVATE LIBRARY</div><h1>Documents</h1>
-    <p className="subtitle">Rich text saved to your Dayframe account. Changes require Save; autosave arrives in M6.3.</p>
+    <p className="subtitle">Private rich-text documents autosave after 1.4 seconds of inactivity. Saves pause on errors; no offline sync is promised.</p>
    </div>
    <div className="actions">
     <button className="btn secondary small" type="button" onClick={()=>void refresh()} disabled={busy||loading}>Refresh</button>
@@ -197,6 +260,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    </div>
   </div>
   {error&&<p role="alert" className="info-banner">{error}</p>}
+  {active&&(conflict||autoSavePaused)&&<div className="actions" role="group" aria-label="Document recovery actions">
+    <button className="btn small secondary" disabled={busy||conflict||!!validation}
+      type="button" onClick={()=>{setAutoSavePaused(false);void save();}}>Retry save</button>
+    <button className="btn small secondary" disabled={busy}
+      type="button" onClick={()=>void reloadLatest()}>Reload server version</button>
+  </div>}
   {pendingCreate&&<div className="info-banner" role="alert">
     A document creation response is uncertain.
     <button type="button" className="btn small secondary" disabled={busy}
@@ -246,28 +315,26 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
      <div className="df-doc-controls">
       <label className="field-wrap"><span className="form-label">Document title</span>
        <input className="field" aria-label="Document title" maxLength={160}
-        value={title} disabled={busy} onChange={e=>{setTitle(e.target.value);setDirty(true);}}/>
+        value={title} disabled={busy} onChange={e=>changeTitle(e.target.value)}/>
       </label>
       <div className="actions">
        <button type="button" className="btn small secondary" disabled={busy}
         onClick={()=>void create(true)}>New child page</button>
        <button type="button" className="btn small secondary" disabled={busy||!dirty}
-        onClick={()=>resetDraft(active)}>Discard edits</button>
+        onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
        <button type="button" className="btn small secondary" disabled={busy||dirty}
         onClick={()=>void remove()}>Delete</button>
        <button type="button" className="btn small" disabled={busy||!dirty||!!validation}
-        onClick={()=>void save()}>Save changes</button>
+        onClick={()=>{setAutoSavePaused(false);void save();}}>Save changes</button>
       </div>
       <p className="tiny" role="status" aria-live="polite">
-       {busy?'Working…':validation?'Cannot save: '+validation:dirty?'Unsaved changes':'All changes saved'}
+       {busy?'Saving…':conflict?'Conflict — local draft preserved':autoSavePaused?'Autosave paused — use Retry save':validation?'Cannot autosave: '+validation:dirty?'Unsaved — autosave scheduled':'Saved'}
       </p>
       {active.parentId&&<p className="tiny">Nested below another document. Delete children first.</p>}
      </div>
      <div className="df-document-editor" aria-label="Rich text editor">
-      <BlockDocumentEditor key={active.id+'-'+active.revision} blocks={blocks} readOnly={busy}
-       onEdit={(changed,message)=>{
-        setBlocks(changed);setValidation(message||'');setDirty(true);
-       }}/>
+      <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks} readOnly={busy}
+       onEdit={changeDraft}/>
      </div>
     </>:<div className="df-doc-empty">
       <h2>{showTrash?'Restore a document':'Choose a document'}</h2>
