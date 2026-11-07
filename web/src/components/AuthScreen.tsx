@@ -23,9 +23,22 @@ export function AuthScreen() {
         : await authClient.signUp.email({ ...credentials, name: name.trim() });
       if (result.error) {
         setMessage(result.error.message || 'Could not authenticate. Check your details and try again.');
-      } else if (mode === 'sign-up') {
-        setMessage('Account created. If you are not redirected, sign in with your new password.');
-        setMode('sign-in');
+      } else {
+        // An HTTP 200 on sign-in does not mean the browser retained a session.
+        // Managed Neon Auth is cross-site on GitHub Pages; some Safari/ITP
+        // configurations reject that cookie even after credentials are accepted.
+        const session = await authClient.getSession();
+        if (session.data?.user) {
+          setPassword('');
+          // Also restores the React useSession() state if its initial value was cached.
+          window.location.reload();
+          return;
+        }
+        setPassword('');
+        if (mode === 'sign-up') setMode('sign-in');
+        setMessage(mode === 'sign-up'
+          ? 'Your account was created, but this browser did not keep the login session. Try signing in. Safari can block cross-site login cookies.'
+          : 'Your credentials were accepted, but this browser could not restore the login session. Safari may be blocking Neon Auth’s cross-site cookies. Try a browser that permits the authentication cookie; a same-site proxy is needed for reliable Safari support.');
       }
     } catch {
       setMessage('Could not reach the authentication service. Please retry.');
