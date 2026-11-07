@@ -807,7 +807,7 @@ case'confirm-delete-task':{
  if(isCloud){
   if(state.cloudBusy)return;
   state.cloudBusy=true;
-  try{await cloudApi.trashTask(tid);}
+  try{const task=findTask(tid);if(!task)throw new Error('Task no longer exists. Refresh.');await cloudApi.trashTask(tid,task.revision);}
   catch(err){saveError(err);return;}
   finally{state.cloudBusy=false;}
  }
@@ -836,7 +836,9 @@ case'restore-task':{
  if(!isCloud||state.cloudBusy)return;
  state.cloudBusy=true;
  try{
-  await cloudApi.restoreTask(id);
+  const item=state.trashed.find(t=>t.id===id);
+  if(!item)throw new Error('This task is not in the loaded Trash. Refresh.');
+  await cloudApi.restoreTask(id,item.revision);
   if(typeof account.onRefresh==='function')account.onRefresh();
   else location.reload();
  }catch(err){saveError(err);return;}
