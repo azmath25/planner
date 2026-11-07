@@ -50,7 +50,7 @@ def run(browser,width):
  p.locator('#note-form button[type="submit"]').click()
  p.wait_for_function("() => window.__mockDb.notes.some(n=>n.title==='Saved to my account')")
  note_id=p.evaluate("() => window.__mockDb.notes.find(n=>n.title==='Saved to my account').id")
- assert 'notification delivery not yet active' in p.locator('.content').inner_text()
+ assert 'account reminder; browser push requires permission' in p.locator('.content').inner_text()
 
  p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').click()
  p.locator('#note-form [name="content"]').fill('Updated account note')
