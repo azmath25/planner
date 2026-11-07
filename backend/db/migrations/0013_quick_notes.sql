@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS dayframe.quick_notes (
  reminder_time time,
  converted_task_id uuid,
  converted_at timestamptz,
+ deleted_at timestamptz,
  revision integer NOT NULL DEFAULT 1 CHECK(revision >= 1),
  created_at timestamptz NOT NULL DEFAULT now(),
  updated_at timestamptz NOT NULL DEFAULT now(),
