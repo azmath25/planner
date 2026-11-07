@@ -154,3 +154,16 @@
 .archive-workspace-copy small{font-size:12px;color:var(--muted)}
 .archive-workspace-row .btn{flex-shrink:0}
 @media(max-width:480px){.archive-workspace-row{align-items:stretch;flex-direction:column;padding:12px 0}.archive-workspace-row .btn{width:100%;min-height:44px}}
+
+/* M3 task management: compact desktop controls, touch-sized mobile controls. */
+.task-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,200px) minmax(130px,160px);gap:10px;align-items:center}
+.task-toolbar .field{max-width:none!important;min-width:0}
+.task-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.task-filter-row .filter{min-height:36px}
+.task-check-label{display:flex;align-items:center;gap:10px;padding:10px 0;min-height:44px}
+.task-check-label input{accent-color:var(--accent);width:17px;height:17px}
+.task-tag-label{max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:12px}
+.page-detail .detail-options{flex-wrap:wrap;gap:8px}
+.page-detail .detail-options .btn{min-height:40px}
+@media(max-width:760px){.task-toolbar{grid-template-columns:1fr 1fr}.task-toolbar .search{grid-column:1/-1;width:100%}.task-filter-row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;padding:2px 0 9px}.task-filter-row .filter{flex:none;min-height:42px}.page-detail .detail-options .btn{flex:1 1 auto}}
+@media(max-width:400px){.task-toolbar{grid-template-columns:1fr}.task-toolbar .search{grid-column:auto}.page-detail .detail-options .btn{width:100%}}
