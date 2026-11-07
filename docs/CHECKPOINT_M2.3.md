@@ -31,3 +31,12 @@ Neon Managed Auth is currently called directly from `https://azmath25.github.io`
 - Test two distinct authenticated accounts end-to-end against cloud tasks, including cross-owner denial and task restore.
 - Revisit tablet/mobile interactions after account data replaces local sample tasks.
 - Do not start the next milestone before explicit approval.
+
+## 2026-11-07 login failure follow-up
+
+- Inspected the real Dayframe Neon Auth database without retrieving identities or session tokens. It showed **three active sessions**, but no General workspace rows. This establishes that the Auth service accepted sign-ins, not that the browser retained access.
+- Neon Function request logs showed no post-login workspace API calls during those attempts; the issue is before application database CRUD. A blocked third-party session cookie or a stale token cache is consistent with the evidence. Exact client error still needs a browser-side test.
+- Added an uncached GET `/token` fallback using cookie credentials when `authClient.token()` returns no token. It does not store tokens in localStorage or weaken JWT validation.
+- Added a clearly labeled **Open local demo without signing in** option so the app's sample screens can be tested even if Neon Auth cookies are blocked. Local-demo data stays separated from account data.
+- Source checks and React production build passed. Published Pages bundle contains the token fallback and demo control; Github branch Pages deployment passed.
+- **Account sign-in in Safari remains unverified and should be treated as unresolved** until a successful end-to-end session/General workspace test. Proper cross-site cookie support requires a same-site proxy or first-party auth hosting; no hosting switch was authorized or performed.
