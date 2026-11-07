@@ -62,6 +62,33 @@ export const DAY_POOL_GET_SQL =
 "FROM (SELECT 1) seed LEFT JOIN dayframe.daily_pools p ON p.owner_user_id=$1 AND p.plan_day=$2::date";
 export const DAY_POOL_PUT_SQL="SELECT dayframe.replace_daily_pool($1,$2::date,$3,$4::uuid[]) AS revision";
 
+// M4.3 in-app alert inbox: date/time in a verified IANA zone, never a hard-deadline mutation.
+// A missing clock time is interpreted as 09:00 in the chosen zone.
+export const ALERT_LIST_SQL =
+ "WITH occurrences AS ("+
+ "SELECT t.id::text AS \"taskId\",t.title,kind.kind, "+
+ "CASE WHEN kind.kind='reminder' THEN t.reminder ELSE t.deadline END AS day, "+
+ "COALESCE(CASE WHEN kind.kind='reminder' THEN t.reminder_time ELSE t.deadline_time END,'09:00'::time) AS clock "+
+ "FROM dayframe.tasks t JOIN dayframe.workspaces w ON w.id=t.workspace_id AND w.owner_user_id=$1 "+
+ "CROSS JOIN (VALUES('reminder'),('deadline')) kind(kind) "+
+ "WHERE t.owner_user_id=$1 AND t.status='open' AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
+ "AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
+ "AND (CASE WHEN kind.kind='reminder' THEN t.reminder ELSE t.deadline END) IS NOT NULL) "+
+ "SELECT o.\"taskId\",o.title,o.kind,o.day::text AS day,to_char(o.clock,'HH24:MI') AS time, "+
+ "((o.day+o.clock) AT TIME ZONE $2) AS \"dueAt\", "+
+ "a.revision, a.acknowledged_at AS \"acknowledgedAt\",a.snoozed_until AS \"snoozedUntil\" "+
+ "FROM occurrences o LEFT JOIN dayframe.task_alert_actions a ON a.owner_user_id=$1 "+
+ "AND a.task_id=o.\"taskId\"::uuid AND a.kind=o.kind AND a.source_day=o.day AND a.source_time=o.clock "+
+ "WHERE ((o.day+o.clock) AT TIME ZONE $2) <= now()+interval '48 hours' "+
+ "AND a.acknowledged_at IS NULL AND (a.snoozed_until IS NULL OR a.snoozed_until<=now()) "+
+ "ORDER BY \"dueAt\",o.\"taskId\",o.kind LIMIT 100";
+export const ALERT_ACTION_SQL="SELECT dayframe.update_task_alert($1,$2,$3,$4::date,$5::time,$6,$7,$8::timestamptz) AS revision";
+function alertZone(value){
+ if(typeof value!=='string'||value.length>64||!/^[A-Za-z0-9_+\/-]+$/.test(value))throw fail(400,'Invalid alert time zone');
+ try{new Intl.DateTimeFormat('en-US',{timeZone:value});}catch{throw fail(400,'Invalid alert time zone');}
+ return value;
+}
+
 export const TIMED_RANGE_SQL =
  "SELECT s.id::text AS id,s.task_id::text AS \"taskId\",s.plan_day::text AS day,"+
  "lpad((s.start_minute/60)::text,2,'0')||':'||lpad((s.start_minute%60)::text,2,'0') AS start,"+
@@ -238,6 +265,33 @@ return {async fetch(req){
         return json({from,to,intervals:rows},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+    }
+    if(path==='/v1/alerts'){
+      if(req.method==='GET'){
+        const zone=alertZone(new URL(req.url).searchParams.get('timeZone')||'');
+        const {rows}=await query(ALERT_LIST_SQL,[uid,zone]);
+        return json({alerts:rows,timeZone:zone},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+    }
+    const alertId=/^\/v1\/alerts\/([a-f0-9-]{36})\/(reminder|deadline)$/i.exec(path);
+    if(alertId){
+      if(req.method!=='POST')return json({error:'Method not allowed'},405,{...hdr,allow:'POST,OPTIONS'});
+      const body=await readBody(req);
+      const id=uuid(alertId[1],'alert task'),kind=alertId[2].toLowerCase();
+      const day=date(body.day,'alert date'),time=clock(body.time,day,'alert time');
+      if(!day||!time)throw fail(400,'Invalid alert occurrence');
+      if(!Number.isSafeInteger(body.revision)||body.revision<0)throw fail(400,'Invalid alert revision');
+      if(!['acknowledge','snooze','reset'].includes(body.action))throw fail(400,'Invalid alert action');
+      let until=null;
+      if(body.action==='snooze'){
+        if(typeof body.until!=='string'||!/^\d{4}-\d\d-\d\dT/.test(body.until)||!/[Zz]|[+-]\d\d:\d\d$/.test(body.until))throw fail(400,'Invalid snooze time');
+        until=new Date(body.until);
+        if(!Number.isFinite(until.valueOf())||until.valueOf()<=Date.now()||until.valueOf()>Date.now()+30*86400000)throw fail(400,'Snooze must be within 30 days');
+        until=until.toISOString();
+      }else if(body.until!==undefined&&body.until!==null)throw fail(400,'Unexpected snooze time');
+      const {rows}=await query(ALERT_ACTION_SQL,[uid,id,kind,day,time,body.revision,body.action,until]);
+      return json({revision:Number(rows[0].revision)},200,hdr);
     }
     const timedId=/^\/v1\/timed-intervals\/([a-f0-9-]{36})$/i.exec(path);
     if(timedId){
