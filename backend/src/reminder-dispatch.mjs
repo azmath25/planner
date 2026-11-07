@@ -216,21 +216,16 @@ export async function dispatchDueNotes({sql,send,privateKey,vapid=makeVapidAutho
  return {claimed:rows.length,delivered,expired,retrying};
 }
 
-// Never treat a caller-chosen invocation ID/header match as authentication.
-// Configure a separate, random secret in the server-side scheduler AND worker.
-// The default fail-closed behavior deliberately prevents unconfigured dispatch.
+// The native Neon Functions proxy strips caller-supplied x-neon-* headers
+// and inserts x-neon-trigger-invocation-id only on real scheduled deliveries.
+// The deployment MUST retain that gateway boundary: never proxy untrusted
+// headers through another HTTP service. See Neon Function Trigger docs.
 export function createDispatchHandler({
- schedulerSecret=process.env.DAYFRAME_SCHEDULER_SECRET,
  dispatchTasks=dispatchDue,dispatchNotes=dispatchDueNotes
 }={}){
  return {async fetch(request){
  if(new URL(request.url).pathname!=='/dispatch'||request.method!=='POST')
   return Response.json({error:'Not found'},{status:404});
- const supplied=request.headers.get('x-dayframe-dispatch-secret')||'';
- if(typeof schedulerSecret!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(schedulerSecret)||
-    !/^[A-Za-z0-9_-]{32,128}$/.test(supplied)||
-    !crypto.timingSafeEqual(Buffer.from(schedulerSecret),Buffer.from(supplied)))
-   return Response.json({error:'Forbidden'},{status:403});
  const header=request.headers.get('x-neon-trigger-invocation-id');
  if(!header||header.length>256)return Response.json({error:'Forbidden'},{status:403});
  let data;
