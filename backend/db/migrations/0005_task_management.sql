@@ -138,7 +138,7 @@ BEGIN
    ) SELECT 1 FROM descendants WHERE id=p_parent
   ) THEN RAISE EXCEPTION 'Cannot make a descendant the parent' USING ERRCODE='23514'; END IF;
  END IF;
- SET CONSTRAINTS tasks_parent_same_owner_workspace DEFERRED;
+ SET CONSTRAINTS dayframe.tasks_parent_same_owner_workspace DEFERRED;
  WITH RECURSIVE descendants AS (
   SELECT id,ARRAY[id] AS path FROM dayframe.tasks WHERE id=p_task AND owner_user_id=p_owner
   UNION ALL
@@ -151,7 +151,7 @@ BEGIN
   parent_id=CASE WHEN t.id=p_task THEN p_parent ELSE t.parent_id END,
   revision=revision+1,updated_at=now()
  FROM descendants d WHERE t.id=d.id AND t.owner_user_id=p_owner;
- SET CONSTRAINTS tasks_parent_same_owner_workspace IMMEDIATE;
+ SET CONSTRAINTS dayframe.tasks_parent_same_owner_workspace IMMEDIATE;
 END $move_task$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS tasks_id_owner_unique ON dayframe.tasks(id,owner_user_id);
