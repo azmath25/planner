@@ -30,6 +30,16 @@ export const DOCUMENT_LIST_SQL="SELECT "+DOCUMENT_META_FIELDS+
  "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
  "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
  "ORDER BY d.updated_at DESC,d.id DESC LIMIT $4 OFFSET $5";
+// Search is per authenticated owner. The query uses literal substring matching,
+// not caller-supplied SQL wildcards or unbounded regex.
+export const DOCUMENT_SEARCH_SQL="SELECT "+DOCUMENT_META_FIELDS+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL "+
+ "AND ($2::uuid IS NULL OR d.workspace_id=$2::uuid) "+
+ "AND ($3::uuid IS NULL OR d.task_id=$3::uuid) "+
+ "AND (strpos(lower(d.title),lower($4))>0 OR strpos(lower(d.blocks::text),lower($4))>0) "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "ORDER BY d.updated_at DESC,d.id DESC LIMIT $5 OFFSET $6";
 export const DOCUMENT_TRASH_SQL="SELECT "+DOCUMENT_META_FIELDS+
  " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NOT NULL "+
  "ORDER BY d.deleted_at DESC,d.id DESC LIMIT $2 OFFSET $3";
@@ -843,6 +853,35 @@ return {async fetch(req){
         return json({day,revision:Number(rows[0].revision),taskIds:ids},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
+    }
+    // M6.3: search is authenticated, bounded and returns metadata only.
+    // Document content may match, but must not leak into the result snippet.
+    if(path==='/v1/documents/search'){
+      if(req.method!=='GET')return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+      const params=new URL(req.url).searchParams;
+      const q=params.get('q')?.trim()??'';
+      const limit=Number(params.get('limit')??50),offset=Number(params.get('offset')??0);
+      if(q.length<2||q.length>120||q.includes('\0')||
+         !Number.isSafeInteger(limit)||limit<1||limit>100||
+         !Number.isSafeInteger(offset)||offset<0||offset>1000000)
+        throw fail(400,'Invalid document search');
+      const workspace=params.get('workspace')?uuid(params.get('workspace'),'document workspace'):null;
+      const taskId=params.get('taskId')?uuid(params.get('taskId'),'document task'):null;
+      const {rows}=await query(DOCUMENT_SEARCH_SQL,[uid,workspace,taskId,q,limit+1,offset]);
+      return json({documents:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
+    // A single-document JSON export never creates a public download URL.
+    const docExport=/^\/v1\/documents\/([a-f0-9-]{36})\/export$/i.exec(path);
+    if(docExport){
+      if(req.method!=='GET')return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+      const id=uuid(docExport[1],'document ID');
+      const {rows}=await query(DOCUMENT_DETAIL_SQL,[uid,id]);
+      if(!rows.length)throw fail(404,'Document unavailable');
+      return new Response(JSON.stringify({schema:'dayframe.document.export.v1',
+        exportedAt:new Date().toISOString(),document:rows[0]}),{
+       status:200,headers:{...hdr,'content-type':'application/json; charset=utf-8',
+        'content-disposition':'attachment; filename="dayframe-document.json"'}
+      });
     }
     // Private documents: no public URLs or document-content search endpoints.
     if(path==='/v1/documents/trash'&&req.method==='GET'){
