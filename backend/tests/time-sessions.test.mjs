@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHandler,TIME_ACTIVE_SQL,TIME_TRANSITION_SQL} from '../src/index.mjs';
+import {createHandler,TIME_ACTIVE_SQL,TIME_TRANSITION_SQL,TIME_DIRECT_TOTALS_SQL} from '../src/index.mjs';
 const ID='77777777-7777-4777-8777-777777777777';
 const OTHER='88888888-8888-4888-8888-888888888888';
 const TASK='99999999-9999-4999-8999-999999999999';
@@ -14,6 +14,7 @@ function make({rejectConflict=false}={}){
   query:async(sql,args)=>{
    calls.push({sql,args});
    if(sql===TIME_ACTIVE_SQL)return {rows:args[0]==='alice'?[{session:snapshot}]:[]};
+   if(sql===TIME_DIRECT_TOTALS_SQL)return {rows:args[0]==='alice'?[{taskId:TASK,totalMs:'0'}]:[]};
    if(sql===TIME_TRANSITION_SQL){
     if(rejectConflict)throw Object.assign(Error('Time session changed'),{code:'40001'});
     return {rows:[{session:{...snapshot,id:args[2],taskId:args[3]??TASK,state:args[1]==='stop'?'stopped':'running'}}]};
@@ -35,7 +36,7 @@ test('M5.1 reads only authenticated active timer belonging to current JWT',async
  assert.equal(b.status,200);assert.equal((await b.json()).session,null);
  assert.equal((await req('/v1/time-session','GET',null)).status,401);
  assert.equal((await req('/v1/time-session','GET','forged')).status,401);
- assert.deepEqual(calls.map(x=>x.args),[['alice'],['bob']]);
+ assert.deepEqual(calls.map(x=>x.args),[['alice'],['alice'],['bob'],['bob']]);
  assert.match(TIME_ACTIVE_SQL,/owner_user_id=\$1/);
 });
 test('M5.1 validates action, UUID and revision before database access',async()=>{
