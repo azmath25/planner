@@ -15,6 +15,10 @@ export type CloudTask={
 };
 export type TaskInput=Pick<CloudTask,'workspace'|'title'|'notes'|'status'|'priority'|'estimate'|'long'|'parent'|'deadline'|'deadlineTime'|'reminder'|'reminderTime'|'pinned'|'tags'>;
 export type TaskEvent={id:string;type:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null;createdAt:string};
+export type CloudAlert={
+ taskId:string;title:string;kind:'reminder'|'deadline';day:string;time:string;dueAt:string;
+ revision:number|null;acknowledgedAt:string|null;snoozedUntil:string|null;
+};
 export type TaskMedia={slot:'cover'|'avatar';data:string;focalY:number};
 export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
 export type DailyPool={day:string;revision:number;taskIds:string[]};
@@ -108,6 +112,24 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async listAlerts(timeZone:string):Promise<CloudAlert[]>{
+  const data=await call<{alerts:CloudAlert[]}>('/v1/alerts?timeZone='+encodeURIComponent(timeZone));
+  if(!Array.isArray(data.alerts)||data.alerts.some(x=>!x||typeof x.taskId!=='string'||
+   !['reminder','deadline'].includes(x.kind)||typeof x.day!=='string'||typeof x.time!=='string'||
+   typeof x.title!=='string'||typeof x.dueAt!=='string'||
+   (x.revision!==null&&(!Number.isSafeInteger(x.revision)||x.revision<1))))
+   throw new Error('Invalid alert response');
+  return data.alerts;
+ },
+ async changeAlert(alert:CloudAlert,action:'acknowledge'|'snooze'|'reset',until?:string):Promise<number>{
+  const response=await call<{revision:number}>(
+   '/v1/alerts/'+encodeURIComponent(alert.taskId)+'/'+encodeURIComponent(alert.kind),{
+    method:'POST',body:{day:alert.day,time:alert.time,revision:alert.revision??0,action,...(until?{until}:{})}
+   });
+  if(!Number.isSafeInteger(response.revision)||response.revision<1)throw new Error('Invalid alert revision');
+  return response.revision;
+ },
+
  async listTimedIntervals(from:string,to:string):Promise<TimedInterval[]>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))
    throw new Error('Invalid calendar dates');
