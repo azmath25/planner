@@ -75,13 +75,30 @@ export const ALERT_LIST_SQL =
  "AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
  "AND (CASE WHEN kind.kind='reminder' THEN t.reminder ELSE t.deadline END) IS NOT NULL) "+
  "SELECT o.\"taskId\",o.title,o.kind,o.day::text AS day,to_char(o.clock,'HH24:MI') AS time, "+
- "((o.day+o.clock) AT TIME ZONE $2) AS \"dueAt\", "+
+ "((o.day+o.clock) AT TIME ZONE COALESCE((SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1), $2)) AS \"dueAt\", "+
  "a.revision, a.acknowledged_at AS \"acknowledgedAt\",a.snoozed_until AS \"snoozedUntil\" "+
  "FROM occurrences o LEFT JOIN dayframe.task_alert_actions a ON a.owner_user_id=$1 "+
  "AND a.task_id=o.\"taskId\"::uuid AND a.kind=o.kind AND a.source_day=o.day AND a.source_time=o.clock "+
- "WHERE ((o.day+o.clock) AT TIME ZONE $2) <= now()+interval '48 hours' "+
+ "WHERE ((o.day+o.clock) AT TIME ZONE COALESCE((SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1), $2)) <= now()+interval '48 hours' "+
  "AND a.acknowledged_at IS NULL AND (a.snoozed_until IS NULL OR a.snoozed_until<=now()) "+
  "ORDER BY \"dueAt\",o.\"taskId\",o.kind LIMIT 100";
+export const NOTIFICATION_PREF_GET_SQL="SELECT time_zone AS \"timeZone\" FROM dayframe.notification_preferences WHERE owner_user_id=$1";
+export const NOTIFICATION_PREF_SAVE_SQL="INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,$2) ON CONFLICT(owner_user_id) DO UPDATE SET time_zone=EXCLUDED.time_zone,updated_at=now() RETURNING time_zone AS \"timeZone\"";
+export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($2,$1) ON CONFLICT(endpoint) DO UPDATE SET owner_user_id=EXCLUDED.owner_user_id,updated_at=now()";
+export const PUSH_SUB_DELETE_SQL="DELETE FROM dayframe.push_subscriptions WHERE endpoint=$2 AND owner_user_id=$1 RETURNING endpoint";
+export const PUSH_PUBLIC_KEY='BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8';
+function pushEndpoint(value){
+ if(typeof value!=='string'||value.length<30||value.length>1200)throw fail(400,'Invalid push endpoint');
+ let url;
+ try{url=new URL(value);}catch{throw fail(400,'Invalid push endpoint');}
+ const host=url.hostname.toLowerCase();
+ const allowed=host==='fcm.googleapis.com'||host==='updates.push.services.mozilla.com'||
+ host==='web.push.apple.com'||host.endsWith('.push.apple.com')||
+ host.endsWith('.notify.windows.com');
+ if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash||
+ !allowed)throw fail(400,'Unsupported push service');
+ return value;
+}
 export const ALERT_ACTION_SQL="SELECT dayframe.update_task_alert($1,$2,$3,$4::date,$5::time,$6,$7,$8::timestamptz) AS revision";
 function alertZone(value){
  if(typeof value!=='string'||value.length>64||!/^[A-Za-z0-9_+\/-]+$/.test(value))throw fail(400,'Invalid alert time zone');
@@ -265,6 +282,34 @@ return {async fetch(req){
         return json({from,to,intervals:rows},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+    }
+    if(path==='/v1/notification-preferences'){
+      if(req.method==='GET'){
+        const {rows}=await query(NOTIFICATION_PREF_GET_SQL,[uid]);
+        return json({timeZone:rows[0]?.timeZone??null,publicKey:PUSH_PUBLIC_KEY},200,hdr);
+      }
+      if(req.method==='PUT'){
+        const body=await readBody(req);
+        const zone=alertZone(body.timeZone);
+        const {rows}=await query(NOTIFICATION_PREF_SAVE_SQL,[uid,zone]);
+        return json({timeZone:rows[0].timeZone,publicKey:PUSH_PUBLIC_KEY},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
+    }
+    if(path==='/v1/push-subscription'){
+      if(req.method==='PUT'){
+        const body=await readBody(req,5000);
+        const endpoint=pushEndpoint(body.endpoint);
+        await query(PUSH_SUB_SAVE_SQL,[uid,endpoint]);
+        return json({saved:true},200,hdr);
+      }
+      if(req.method==='DELETE'){
+        const body=await readBody(req,5000);
+        const endpoint=pushEndpoint(body.endpoint);
+        await query(PUSH_SUB_DELETE_SQL,[uid,endpoint]);
+        return json({removed:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'PUT,DELETE,OPTIONS'});
     }
     if(path==='/v1/alerts'){
       if(req.method==='GET'){
