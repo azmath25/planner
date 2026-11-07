@@ -6,9 +6,9 @@ const ALICE='11111111-1111-4111-8111-111111111111';
 const BOB='22222222-2222-4222-8222-222222222222';
 const WS='33333333-3333-4333-8333-333333333333';
 const TASK='44444444-4444-4444-8444-444444444444';
-const task={id:TASK,workspace:WS,title:'Write chapter',notes:'',status:'open',priority:'medium',estimate:30,long:false,deadline:null,deadlineTime:null,reminder:null,reminderTime:null,parent:null,revision:1};
+const task={id:TASK,workspace:WS,title:'Write chapter',notes:'',status:'open',priority:'medium',estimate:30,long:false,deadline:null,deadlineTime:null,reminder:null,reminderTime:null,parent:null,pinned:false,tags:[],revision:1};
 const general={id:WS,kind:'general',name:'General',subtitle:'',cover:'general',color:'#85a99d',revision:1};
-function make({rejectSql=false,denyMutations=false}={}){
+function make({rejectSql=false,denyMutations=false,hasOpenChildren=false}={}){
   const queries=[];
   const query=async(sql,args)=>{
     queries.push({sql,args});
@@ -19,9 +19,16 @@ function make({rejectSql=false,denyMutations=false}={}){
     if(denyMutations&&sql.startsWith('UPDATE dayframe.workspaces SET archived_at'))return {rows:[]};
     if(sql.startsWith('UPDATE dayframe.workspaces SET archived_at=now()'))return {rows:[{...general,kind:'custom',archivedAt:'2026-11-07T12:00:00Z',revision:2}]};
     if(sql.startsWith('UPDATE dayframe.workspaces SET archived_at=NULL'))return {rows:[{...general,kind:'custom',archivedAt:null,revision:3}]};
+    if(sql.startsWith('WITH RECURSIVE descendants AS'))return {rows:hasOpenChildren?[{id:BOB}]:[]};
+    if(sql.includes('FROM dayframe.task_events e'))return {rows:[{id:'1',type:'created',createdAt:'2026-11-07T12:00:00Z'}]};
+    if(sql.startsWith('SELECT dayframe.move_task_subtree'))return {rows:[{}]};
+    if(sql.startsWith('SELECT ')&&sql.includes('FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2'))return {rows:[{...task,id:args[1],workspace:WS,revision:2}]};
+    if(sql.startsWith('UPDATE dayframe.tasks t SET archived_at=now()'))return {rows:[{...task,archivedAt:'2026-11-07T12:00:00Z',revision:2}]};
+    if(sql.startsWith('UPDATE dayframe.tasks t SET archived_at=NULL'))return {rows:[{...task,archivedAt:null,revision:2}]};
+    if(sql.startsWith('DELETE FROM dayframe.tasks t'))return {rows:denyMutations?[]:[{id:args[1]}]};
     if(sql.includes('FROM dayframe.tasks')&&sql.includes('LIMIT'))return {rows:[{...task,id:args[0]==='alice'?TASK:BOB}]};
     if(sql.startsWith('INSERT INTO dayframe.tasks'))return {rows:[{...task,id:args[1],workspace:args[2],title:args[3]}]};
-    if(sql.startsWith('UPDATE dayframe.tasks t'))return {rows:[{...task,id:args[1],workspace:args[2],title:args[3],revision:args[14]+1}]};
+    if(sql.startsWith('UPDATE dayframe.tasks t'))return {rows:[{...task,id:args[1],workspace:args[2],title:args[3],revision:args[16]+1}]};
     if(sql.startsWith('UPDATE dayframe.tasks SET deleted_at'))return {rows:[{id:args[1]}]};
     if(sql.startsWith('UPDATE dayframe.tasks SET deleted_at=NULL'))return {rows:[task]};
     if(sql.startsWith('INSERT INTO dayframe.workspaces'))return {rows:[{...general,kind:'custom',name:args[1]}]};
@@ -89,8 +96,8 @@ test('task patch uses owner and optimistic revision; task deletion is reversible
   const patch=await req('/v1/tasks/'+TASK,'PATCH','alice',{...task,title:'Revised'});
   assert.equal(patch.status,200);assert.equal((await patch.json()).task.revision,2);
   const q=queries.find(x=>x.sql.startsWith('UPDATE dayframe.tasks t'));
-  assert.equal(q.args[0],'alice');assert.equal(q.args[1],TASK);assert.equal(q.args[14],1);
-  assert.ok(q.sql.includes('t.revision=$15'));
+  assert.equal(q.args[0],'alice');assert.equal(q.args[1],TASK);assert.equal(q.args[16],1);
+  assert.ok(q.sql.includes('t.revision=$17'));
   assert.equal((await req('/v1/tasks/'+TASK,'DELETE','alice')).status,200);
   assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice')).status,200);
 });
@@ -167,4 +174,76 @@ test('active workspaces and active task queries exclude archived workspaces',asy
   assert.match(q.sql,/archived_at IS NULL/,'must not access tasks hidden inside archive');
   assert.deepEqual(q.args.slice(0,1),['alice']);
  }
+});
+
+test('M3 task validation supports independent deadlines, priority, pins, and tags',async()=>{
+ const {req,queries}=make();
+ let result=await req('/v1/tasks','POST','alice',{...task,priority:'high',pinned:true,tags:['Research','Project'],reminder:'2026-11-09',deadline:null});
+ assert.equal(result.status,201);
+ const args=queries.find(q=>q.sql.startsWith('INSERT INTO dayframe.tasks')).args;
+ assert.deepEqual(args.slice(-2),[true,['Research','Project']]);
+ for(const invalid of [
+  {...task,tags:['x','X']},{...task,tags:['x'.repeat(31)]},
+  {...task,priority:'critical'},{...task,pinned:'yes'},
+  {...task,deadline:null,deadlineTime:'23:00'},
+  {...task,reminder:null,reminderTime:'20:00'}
+ ]) assert.equal((await req('/v1/tasks','POST','alice',invalid)).status,400,JSON.stringify(invalid));
+ assert.equal((await req('/v1/tasks','PATCH','alice',{...task,priority:'low'})).status,404);
+});
+
+test('M3 task archive and restore are verified-user, revision guarded operations',async()=>{
+ const {req,queries}=make();
+ assert.equal((await req('/v1/tasks/archived','GET','alice')).status,200);
+ assert.equal((await req('/v1/tasks/'+TASK+'/archive','POST','alice',{revision:1,owner_user_id:'bob'})).status,200);
+ assert.equal((await req('/v1/tasks/'+TASK+'/unarchive','POST','alice',{revision:1})).status,200);
+ for(const path of ['/v1/tasks/archived','/v1/tasks/'+TASK+'/archive','/v1/tasks/'+TASK+'/unarchive']){
+  assert.equal((await req(path,'GET')).status,401);
+  assert.equal((await req(path,'POST','forged',{revision:1})).status,401);
+ }
+ const archive=queries.find(q=>q.sql.startsWith('UPDATE dayframe.tasks t SET archived_at=now()'));
+ assert.deepEqual(archive.args,['alice',TASK,1]);
+ assert.match(archive.sql,/t.owner_user_id=\$1/);
+ assert.match(archive.sql,/t.revision=\$3/);
+});
+
+test('M3 signed-in task event history cannot leak a foreign task',async()=>{
+ const {req,queries}=make();
+ const response=await req('/v1/tasks/'+TASK+'/events?limit=20','GET','bob');
+ assert.equal(response.status,200);
+ const data=await response.json();
+ assert.equal(data.events[0].type,'created');
+ const sql=queries.find(q=>q.sql.includes('FROM dayframe.task_events e'));
+ assert.deepEqual(sql.args,['bob',TASK,20]);
+ assert.match(sql.sql,/e.owner_user_id=\$1/);
+ assert.match(sql.sql,/t.owner_user_id=\$1/);
+ assert.equal((await req('/v1/tasks/'+TASK+'/events?limit=101','GET','alice')).status,400);
+});
+
+test('M3 moving nested task tree is performed with verified identity and version',async()=>{
+ const {req,queries}=make();
+ assert.equal((await req('/v1/tasks/'+TASK+'/move','POST','alice',{revision:1,workspace:WS,parent:null,owner_user_id:'bob'})).status,200);
+ const move=queries.find(q=>q.sql.includes('move_task_subtree'));
+ assert.deepEqual(move.args,['alice',TASK,WS,null,1]);
+ assert.equal((await req('/v1/tasks/'+TASK+'/move','POST','alice',{revision:1,workspace:'not-uuid',parent:null})).status,400);
+ assert.equal((await req('/v1/tasks/'+TASK+'/move','POST','forged',{revision:1,workspace:WS,parent:null})).status,401);
+});
+
+test('M3 permanent deletion requires exact confirmation, Trash and leaf task',async()=>{
+ const {req,queries}=make();
+ const path='/v1/tasks/'+TASK+'/permanent';
+ assert.equal((await req(path,'DELETE','alice',{revision:2,confirm:'wrong'})).status,400);
+ assert.equal((await req(path,'DELETE','alice',{revision:2,confirm:'DELETE',owner_user_id:'bob'})).status,200);
+ const sql=queries.find(q=>q.sql.startsWith('DELETE FROM dayframe.tasks t'));
+ assert.deepEqual(sql.args,['alice',TASK,2]);
+ assert.match(sql.sql,/t.deleted_at IS NOT NULL/);
+ assert.match(sql.sql,/NOT EXISTS/);
+ assert.equal((await make({denyMutations:true}).req(path,'DELETE','alice',{revision:2,confirm:'DELETE'})).status,409);
+});
+
+test('M3 parent completion requires handling open subtasks',async()=>{
+ const {req}=make({hasOpenChildren:true});
+ const bad=await req('/v1/tasks/'+TASK,'PATCH','alice',{...task,status:'done'});
+ assert.equal(bad.status,409);
+ assert.match((await bad.json()).error,/open subtasks/);
+ assert.equal((await req('/v1/tasks/'+TASK,'PATCH','alice',{...task,status:'done',allowOpenChildren:true})).status,200);
 });
