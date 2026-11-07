@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL,DOCUMENT_INSERT_SQL,DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_DETAIL_SQL} from '../backend/src/index.mjs';
 import {NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL} from '../backend/src/reminder-dispatch.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
@@ -20,7 +20,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=15;i++){
+ for(let i=1;i<=16;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -34,13 +34,14 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all fifteen staged migrations execute without dependency errors',async()=>{
+test('all sixteen staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,15);
+ assert.equal(rows.length,16);
  assert.equal(rows[11].version,'0012_weekly_targets');
  assert.equal(rows[12].version,'0013_quick_notes');
  assert.equal(rows[13].version,'0014_quick_note_reminders');
  assert.equal(rows[14].version,'0015_notification_quiet_hours');
+ assert.equal(rows[15].version,'0016_private_documents');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -568,4 +569,39 @@ test('M6.1c quiet preferences reject partial/equal windows and preserve timezone
  assert.equal(row.time_zone,'Asia/Baku');
  assert.match(row.quiet_start,/^22:00:/);
  assert.match(row.quiet_end,/^07:00:/);
+});
+
+test('M6.2a documents are owner-scoped; hierarchy cannot cross workspace or form a cycle',async()=>{
+ const owner='m62-doc-owner',other='m62-doc-other';
+ const wa='a9111111-1111-4111-8111-111111111111';
+ const wb='b9111111-1111-4111-8111-111111111111';
+ const root='a9222222-2222-4222-8222-222222222222';
+ const child='a9333333-3333-4333-8333-333333333333';
+ const blocks='[{"id":"para-1","type":"paragraph","props":{},"content":[{"type":"text","text":"Private draft","styles":{}}],"children":[]}]';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Documents A','custom'),($3,$4,'Documents B','custom')",[wa,owner,wb,other]);
+ const rootArgs=[owner,root,wa,null,null,'Root',blocks];
+ assert.equal((await pool.query(DOCUMENT_INSERT_SQL,rootArgs)).rows.length,1);
+ assert.equal((await pool.query(DOCUMENT_DETAIL_SQL,[other,root])).rows.length,0);
+ assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[other,'b9333333-3333-4333-8333-333333333333',wa,null,null,'Foreign workspace',blocks])).rows.length,0);
+ assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,child,wa,null,root,'Child',blocks])).rows.length,1);
+ await assert.rejects(pool.query(DOCUMENT_UPDATE_SQL,[owner,root,wa,null,child,'Root',blocks,1]),err=>err.code==='23514');
+ await assert.rejects(pool.query(DOCUMENT_UPDATE_SQL,[owner,child,wb,null,root,'Child',blocks,1]),err=>err.code==='23514');
+ assert.equal((await pool.query(DOCUMENT_DELETE_SQL,[owner,root,1])).rows.length,0,'Non-leaf parent cannot be removed');
+ assert.equal((await pool.query(DOCUMENT_DELETE_SQL,[owner,child,1])).rows.length,1);
+ assert.equal((await pool.query(DOCUMENT_DELETE_SQL,[owner,root,1])).rows.length,1);
+ assert.equal((await pool.query(DOCUMENT_DETAIL_SQL,[owner,root])).rows.length,0);
+});
+test('M6.2a attached documents reject cross-owner and wrong-workspace tasks',async()=>{
+ const owner='m62-linked-a',other='m62-linked-b';
+ const wa='a9444444-4444-4444-8444-444444444444';
+ const wb='b9444444-4444-4444-8444-444444444444';
+ const tb='b9555555-5555-4555-8555-555555555555';
+ const doc='a9666666-6666-4666-8666-666666666666';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Owner A','custom'),($3,$4,'Owner B','custom')",[wa,owner,wb,other]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Foreign task')",[tb,other,wb]);
+ const blocks='[]';
+ assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,doc,wa,tb,null,'Should not attach',blocks])).rows.length,0);
+ assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,doc,wa,null,null,'Safe doc',blocks])).rows.length,1);
+ assert.equal((await pool.query(DOCUMENT_UPDATE_SQL,[owner,doc,wa,tb,null,'Unsafe',blocks,1])).rows.length,0);
+ assert.equal((await pool.query(DOCUMENT_DETAIL_SQL,[other,doc])).rows.length,0);
 });
