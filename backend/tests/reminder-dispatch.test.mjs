@@ -80,32 +80,29 @@ test('M4.3 reject trigger body/header mismatches before any dispatch',async()=>{
  assert.equal(spoofed.status,403);
 });
 
-test('M8.1 scheduler requires independent secret even when invocation fields are forged',async()=>{
- const secret='abcdefghijklmnopqrstuvwx0123456789ABCDEFG';
- const event={version:1,invocation_id:'attacker-picked',
+test('M8.1 native Neon trigger proxy contract verifies invocation and schedule details',async()=>{
+ // Native Neon drops client-supplied x-neon-* headers. The test injects
+ // post-proxy requests, not publicly spoofable HTTP traffic.
+ const event={version:1,invocation_id:'native-trigger-id',
   trigger:{type:'schedule',name:'dayframe-reminder-dispatch'},
   data:{scheduled_at:'2026-11-07T12:00:00Z'}};
  let taskCalls=0,noteCalls=0;
  const handler=createDispatchHandler({
-  schedulerSecret:secret,
   dispatchTasks:async()=>{taskCalls++;return {claimed:0,delivered:0,expired:0,retrying:0};},
   dispatchNotes:async()=>{noteCalls++;return {claimed:0,delivered:0,expired:0,retrying:0};}
  });
- const request=(token,eventBody=event,invocation='attacker-picked')=>new Request(
-  'https://example.invalid/dispatch',{method:'POST',
-   headers:{'content-type':'application/json',
-    'x-neon-trigger-invocation-id':invocation,
-    ...(token?{'x-dayframe-dispatch-secret':token}:{})},
-   body:JSON.stringify(eventBody)});
- for(const token of [null,'bad',secret+'extra']){
-  const reply=await handler.fetch(request(token));
-  assert.equal(reply.status,403);
- }
- assert.equal((await createDispatchHandler({schedulerSecret:''}).fetch(request(secret))).status,403);
- assert.equal((await handler.fetch(request(secret,event,'different'))).status,403);
- assert.equal(taskCalls,0);
- assert.equal(noteCalls,0);
- const valid=await handler.fetch(request(secret));
+ const request=(header,eventBody=event)=>new Request('https://example.invalid/dispatch',{
+  method:'POST',
+  headers:{'content-type':'application/json',
+   ...(header?{'x-neon-trigger-invocation-id':header}:{})},
+  body:JSON.stringify(eventBody)
+ });
+ for(const invalid of [
+  request(null),request('wrong-id'),
+  request('native-trigger-id',{...event,trigger:{...event.trigger,name:'wrong-job'}})
+ ])assert.equal((await handler.fetch(invalid)).status,403);
+ assert.equal(taskCalls,0);assert.equal(noteCalls,0);
+ const valid=await handler.fetch(request('native-trigger-id'));
  assert.equal(valid.status,200);
  assert.equal((await valid.json()).ok,true);
  assert.equal(taskCalls,1);assert.equal(noteCalls,1);
