@@ -247,3 +247,13 @@
  .df-documents .page-head .actions .btn{flex:1}
  .df-doc-content,.df-doc-library{padding:13px}
 }
+
+/* M7.3: compact, accessible six-week trend visual; numbers remain in a table. */
+.df-insight-track{display:block;width:100%;max-width:200px;height:7px;
+  margin-bottom:5px;border-radius:999px;background:var(--surface-alt,#e8eeea);overflow:hidden}
+.df-insight-bar{height:100%;min-width:0;border-radius:inherit;
+  background:var(--accent,#367d6d)}
+@media(max-width:550px){
+ .df-insight-track{max-width:125px}
+ .report-table-scroll{max-width:100%;overflow-x:auto}
+}
