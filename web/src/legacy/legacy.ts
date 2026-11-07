@@ -1046,7 +1046,8 @@ if(isCloud)void loadCloudAlerts();
 if(isCloud&&alertsBackendEnabled&&'serviceWorker' in navigator&&'Notification' in window&&Notification.permission==='granted'){
  navigator.serviceWorker.getRegistration(new URL('./',document.baseURI).pathname)
   .then(reg=>reg?.pushManager.getSubscription())
-  .then(sub=>{if(!disposed&&sub){state.pushEnabled=true;if(state.page==='home')render();}})
+  .then(sub=>sub?cloudApi.isPushRegistered(sub.endpoint):false)
+  .then(registered=>{if(!disposed&&registered){state.pushEnabled=true;if(state.page==='home')render();}})
   .catch(()=>{});
 }
 if(isCloud)void loadCloudSchedule(today(),today());
