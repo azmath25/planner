@@ -83,6 +83,71 @@ export const TIME_DIRECT_TOTALS_SQL="SELECT task_id::text AS \"taskId\", "+
  "SUM(accumulated_ms)::text AS \"totalMs\" FROM dayframe.time_sessions "+
  "WHERE owner_user_id=$1 AND task_id IS NOT NULL GROUP BY task_id";
 
+/**
+ * M5.2 rollups are derived from each recorded session exactly once.
+ *
+ * Parent totals use the CURRENT task ancestry (unlimited depth). Moving a
+ * subtask reattributes its historical direct time to its new parent.
+ * Workspace totals use the IMMUTABLE workspace-at-session-start snapshot so
+ * moving a task does not rewrite historical workspace totals. Deleted-task
+ * sessions remain in the account + workspace but have no surviving task link.
+ *
+ * The unique leaf->ancestor path prevents global/workspace double counting.
+ * One SQL statement returns both the active timer and all-time aggregates so
+ * a refresh cannot mix database snapshots across different round trips.
+ */
+export const TIME_ROLLUPS_SQL=`
+WITH RECURSIVE
+records AS MATERIALIZED (
+ SELECT task_id,workspace_id_snapshot,accumulated_ms
+ FROM dayframe.time_sessions WHERE owner_user_id=$1
+),
+direct AS (
+ SELECT task_id,SUM(accumulated_ms)::bigint AS ms FROM records
+ WHERE task_id IS NOT NULL GROUP BY task_id
+),
+ancestry AS (
+ SELECT t.id AS leaf,t.id AS ancestor,ARRAY[t.id] AS visited
+ FROM direct d JOIN dayframe.tasks t ON t.id=d.task_id AND t.owner_user_id=$1
+ UNION ALL
+ SELECT a.leaf,p.id,a.visited||p.id
+ FROM ancestry a
+ JOIN dayframe.tasks c ON c.id=a.ancestor AND c.owner_user_id=$1
+ JOIN dayframe.tasks p ON p.id=c.parent_id AND p.owner_user_id=$1
+ WHERE NOT p.id=ANY(a.visited)
+),
+rolled AS (
+ SELECT a.ancestor,SUM(d.ms)::bigint AS ms
+ FROM ancestry a JOIN direct d ON d.task_id=a.leaf GROUP BY a.ancestor
+),
+workspace_totals AS (
+ SELECT workspace_id_snapshot AS workspace_id,
+  SUM(accumulated_ms)::bigint AS ms
+ FROM records GROUP BY workspace_id_snapshot
+),
+active AS (
+ SELECT task_id FROM dayframe.time_sessions
+ WHERE owner_user_id=$1 AND state IN ('running','paused') LIMIT 1
+)
+SELECT
+ (SELECT dayframe.time_session_snapshot(s)
+  FROM dayframe.time_sessions s
+  WHERE s.owner_user_id=$1 AND s.state IN ('running','paused')
+  LIMIT 1) AS session,
+ COALESCE((SELECT jsonb_agg(jsonb_build_object(
+    'taskId',r.ancestor::text,'directMs',COALESCE(d.ms,0)::text,
+    'totalMs',r.ms::text) ORDER BY r.ancestor::text)
+    FROM rolled r LEFT JOIN direct d ON d.task_id=r.ancestor),'[]'::jsonb) AS tasks,
+ COALESCE((SELECT jsonb_agg(jsonb_build_object(
+    'workspaceId',w.workspace_id::text,'totalMs',w.ms::text)
+    ORDER BY w.workspace_id::text) FROM workspace_totals w),'[]'::jsonb) AS workspaces,
+ COALESCE((SELECT SUM(accumulated_ms)::bigint FROM records),0)::text AS "accountTotalMs",
+ COALESCE((SELECT SUM(accumulated_ms)::bigint FROM records WHERE task_id IS NULL),0)::text AS "deletedTaskMs",
+ COALESCE((SELECT jsonb_agg(a.ancestor::text ORDER BY cardinality(a.visited))
+    FROM ancestry a JOIN active c ON c.task_id=a.leaf),'[]'::jsonb) AS "activeAncestorIds"
+`;
+
+
 export const ALERT_LIST_SQL =
  "WITH occurrences AS ("+
  "SELECT t.id::text AS \"taskId\",t.title,kind.kind, "+
@@ -342,9 +407,17 @@ return {async fetch(req){
     }
     if(path==='/v1/time-session'){
       if(req.method==='GET'){
-        const {rows}=await query(TIME_ACTIVE_SQL,[uid]);
-        const totals=await query(TIME_DIRECT_TOTALS_SQL,[uid]);
-        return json({session:rows[0]?.session??null,taskTotals:totals.rows},200,hdr);
+        const {rows}=await query(TIME_ROLLUPS_SQL,[uid]);
+        const row=rows[0];
+        if(!row)throw fail(503,'Time rollups unavailable');
+        const rollups={
+          tasks:row.tasks,workspaces:row.workspaces,
+          accountTotalMs:row.accountTotalMs,deletedTaskMs:row.deletedTaskMs,
+          activeAncestorIds:row.activeAncestorIds
+        };
+        return json({session:row.session??null,
+          taskTotals:row.tasks.map(task=>({taskId:task.taskId,totalMs:task.directMs})),
+          rollups},200,hdr);
       }
       if(req.method==='POST'){
         const body=await readBody(req,3000);
