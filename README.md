@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M4.2: Timed Scheduling implemented and deployed.** Neon now stores untimed daily pools and fixed-time blocks. M4.3 reliable reminders and M5 synchronized time tracking are still future milestones. The mobile website is the first product; Android is deliberately later.
+**M4.3: reminder core implemented and deployed.** Neon now stores tasks, untimed daily pools, fixed-time blocks, alert acknowledgments/snoozes and opted-in push registrations. A five-minute Neon trigger sends generic browser-push alerts to permitted devices. Real device delivery acceptance remains pending. M5 synchronized time tracking is a future milestone. The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -23,7 +23,15 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
 
-**Saved in Neon:** workspaces, active tasks, private task images, each date's untimed daily pool and fixed-time scheduled blocks. **Still device-local:** daily capacity preference, quick notes, workspace photos and timer sessions. No actual reminders are delivered yet. Use **Profile → Refresh saved data** for updated tasks/workspaces. Do not rely on local timer sessions as permanent records.
+**Saved in Neon:** workspaces, active tasks, private task images, each date's untimed daily pool and fixed-time scheduled blocks, reminder actions, notification preferences, and optional browser-push subscriptions. **Still device-local:** daily capacity preference, quick notes, workspace photos and timer sessions. Browser push requires explicit user permission and supported platform; real delivery on a user device remains to be tested. Use **Profile → Refresh saved data** for updated tasks/workspaces. Do not rely on local timer sessions as permanent records.
+
+## M4.3 — Reminders (deployed, live-device acceptance pending)
+
+Sign in, then open **Home → Reminder inbox** to see reminders and hard deadlines due or approaching within 48 hours. **Acknowledge** an alert to dismiss that occurrence, or **Snooze 1 hour** to defer it; neither changes the underlying task's hard deadline or soft reminder.
+
+To receive optional background alerts, choose **Use device time zone** and **Enable browser notifications**. Permission is requested by the browser, and a generic notification can open Dayframe even when the tab is closed on supported systems. **Disable browser notifications** removes this device's push registration. The scheduled Neon worker checks every five minutes; delivery is best-effort, not second-perfect. Unsupported/blocked browsers can still use the in-app inbox. Safari authentication and iOS push may require platform-specific changes, including installing the website, and have not been verified on a real user device.
+
+Current limitations: one soft reminder date/time per task; no recurrence, quiet hours, email delivery, configurable deadline-warning thresholds or verified physical-device notifications. See [M4.3 checkpoint](docs/CHECKPOINT_M4.3.md) and [M1–M4 audit](docs/AUDIT_M1_M4_2026-11-07.md) for acceptance status and further work.
 
 ## M4.2 — Timed Scheduling
 
@@ -35,7 +43,7 @@ Tap **Calendar** from Plan (including on mobile) to switch between **Day / Week 
 
 The **untimed daily pool and scheduled time blocks are independent**. Editing one does not automatically modify the other. Former locally saved intervals are not imported automatically into an authenticated account. The local demo remains browser-only.
 
-**Not yet delivered:** actual reminders/alerts (M4.3), server-backed timer sessions (M5) and account-wide synchronized capacity. Complex DST transitions and real signed-in cross-device acceptance tests remain separate verification work. See [M4.2 checkpoint](docs/CHECKPOINT_M4.2.md) for technical guarantees, SQL migration, tests and limitations.
+**Later milestones:** server-backed timer sessions (M5) and account-wide synchronized capacity. M4.3 subsequently added the reminder core; physical-device push acceptance remains pending. Complex DST transitions and real signed-in cross-device acceptance tests remain separate verification work. See [M4.2 checkpoint](docs/CHECKPOINT_M4.2.md) for technical guarantees, SQL migration, tests and limitations.
 
 ## M4.1 — Untimed Daily Pool
 
