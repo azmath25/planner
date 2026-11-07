@@ -20,6 +20,27 @@ export type CloudAlert={
  revision:number|null;acknowledgedAt:string|null;snoozedUntil:string|null;
 };
 export type TaskMedia={slot:'cover'|'avatar';data:string;focalY:number};
+export type CloudTimeSession={
+ id:string;taskId:string|null;taskTitle:string;workspaceIdAtStart:string;
+ state:'running'|'paused'|'stopped';startedAt:string;segmentStartedAt:string|null;
+ accumulatedMs:number;revision:number;endedAt:string|null;endReason:string|null;
+ serverNow:string;
+};
+export type CloudTimeState={session:CloudTimeSession|null;taskTotals:Record<string,number>};
+function verifyCloudTimeSession(value:unknown):value is CloudTimeSession{
+ if(!value||typeof value!=='object')return false;
+ const s=value as Partial<CloudTimeSession>;
+ return typeof s.id==='string'&&/^[\da-f-]{36}$/i.test(s.id)&&
+ (s.taskId===null||typeof s.taskId==='string')&&typeof s.taskTitle==='string'&&
+ typeof s.workspaceIdAtStart==='string'&&['running','paused','stopped'].includes(s.state||'')&&
+ typeof s.startedAt==='string'&&Number.isFinite(Date.parse(s.startedAt))&&
+ (s.segmentStartedAt===null||(typeof s.segmentStartedAt==='string'&&Number.isFinite(Date.parse(s.segmentStartedAt))))&&
+ Number.isSafeInteger(s.accumulatedMs)&&s.accumulatedMs>=0&&
+ Number.isSafeInteger(s.revision)&&s.revision>=1&&
+ typeof s.serverNow==='string'&&Number.isFinite(Date.parse(s.serverNow))&&
+ (s.endedAt===null||(typeof s.endedAt==='string'&&Number.isFinite(Date.parse(s.endedAt))));
+}
+
 export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
 export type DailyPool={day:string;revision:number;taskIds:string[]};
 export type TimedInterval={
@@ -112,6 +133,32 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async getTimeState(signal?:AbortSignal):Promise<CloudTimeState>{
+  const data=await call<{session:unknown;taskTotals:unknown}>('/v1/time-session',{signal});
+  if(data.session!==null&&!verifyCloudTimeSession(data.session))throw new Error('Invalid server time session');
+  if(!Array.isArray(data.taskTotals)||data.taskTotals.length>100000)
+   throw new Error('Invalid time totals');
+  const totals:Record<string,number>={};
+  for(const item of data.taskTotals){
+   if(!item||typeof item!=='object')throw new Error('Invalid time total');
+   const entry=item as {taskId?:unknown;totalMs?:unknown};
+   const amount=Number(entry.totalMs);
+   if(typeof entry.taskId!=='string'||!Number.isSafeInteger(amount)||amount<0)
+    throw new Error('Invalid time total');
+   totals[entry.taskId]=amount;
+  }
+  return {session:data.session as CloudTimeSession|null,taskTotals:totals};
+ },
+ async changeTimeSession(action:'start'|'pause'|'resume'|'stop'|'switch',
+  sessionId:string,revision:number,taskId?:string,previousId?:string):Promise<CloudTimeSession>{
+  const response=await call<{session:unknown}>('/v1/time-session',{
+   method:'POST',body:{action,sessionId,revision,
+    ...(taskId?{taskId}:{}),...(previousId?{previousId}:{})}
+  });
+  if(!verifyCloudTimeSession(response.session))throw new Error('Invalid server time session');
+  return response.session;
+ },
+
  async notificationPreferences():Promise<{timeZone:string|null;publicKey:string}>{
   const data=await call<{timeZone:string|null;publicKey:string}>('/v1/notification-preferences');
   if((data.timeZone!==null&&typeof data.timeZone!=='string')||
