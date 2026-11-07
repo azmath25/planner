@@ -54,7 +54,7 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  let page=0;
  while(offset!==null){
   if(++page>1000)throw new Error('Too many task pages. Please contact support.');
-  const response=await call<{tasks:unknown[];nextOffset:number|null}>('/v1/tasks?limit=100&offset='+offset,{signal});
+  const response:{tasks:unknown[];nextOffset:number|null}=await call<{tasks:unknown[];nextOffset:number|null}>('/v1/tasks?limit=100&offset='+offset,{signal});
   if(!Array.isArray(response.tasks)||!response.tasks.every(verifyTask))throw new Error('Invalid task list response.');
   tasks.push(...response.tasks);
   if(response.nextOffset!==null && (!Number.isSafeInteger(response.nextOffset)||response.nextOffset<=offset))throw new Error('Invalid task pagination.');
