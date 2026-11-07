@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL} from '../backend/src/index.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -19,7 +19,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=11;i++){
+ for(let i=1;i<=12;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -33,10 +33,10 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all eleven production migrations execute without dependency errors',async()=>{
+test('all twelve production migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,11);
- assert.equal(rows[10].version,'0011_time_sessions');
+ assert.equal(rows.length,12);
+ assert.equal(rows[11].version,'0012_weekly_targets');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -330,4 +330,100 @@ test('M5.2 nested rollups include every descendant once and preserve all-time wo
  assert.equal(snapshot.tasks.some(t=>t.taskId===other),false);
  assert.equal(snapshot.workspaces.find(w=>w.workspaceId===workspace2).totalMs,'5000');
  assert.ok(Number(snapshot.accountTotalMs)>=21000);
+});
+
+
+test('M5.3 weekly goals: revision fencing, cross-account denial, unset by zero',async()=>{
+ const owner='m53-goals',other='m53-other';
+ const workspace='f6111111-1111-4111-8111-111111111111';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Weekly goals','custom')",[workspace,owner]);
+ const save=(who,minutes,rev)=>pool.query(TIME_WEEK_TARGET_SQL,[who,workspace,minutes,rev]);
+ assert.equal((await save(other,300,0)).rows.length,0,'Cannot set another owner target');
+ assert.equal((await save(owner,300,1)).rows.length,0,'Cannot create target with stale positive revision');
+ const created=await save(owner,300,0);
+ assert.deepEqual(created.rows[0],{workspaceId:workspace,targetMinutes:300,revision:1});
+ assert.equal((await save(owner,360,0)).rows.length,0,'Duplicate create must conflict');
+ const updates=await Promise.all([save(owner,450,1),save(owner,600,1)]);
+ assert.equal(updates.filter(r=>r.rows.length===1).length,1,'Only one concurrent writer can update');
+ assert.equal(updates.filter(r=>r.rows.length===0).length,1);
+ const updated=await save(owner,0,2);
+ assert.equal(updated.rows[0].revision,3);
+ assert.equal(updated.rows[0].targetMinutes,0);
+ const row=(await pool.query('SELECT target_minutes,revision FROM dayframe.weekly_workspace_targets WHERE owner_user_id=$1 AND workspace_id=$2',[owner,workspace])).rows[0];
+ assert.deepEqual(row,{target_minutes:0,revision:3});
+});
+
+test('M5.3 weekly metrics: split crossing-Monday spans, preserve legacy remainder and fixed plans',async()=>{
+ const owner='m53-metrics';
+ const work='f6222222-2222-4222-8222-222222222222';
+ const task='f6333333-3333-4333-8333-333333333333';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Measured time','custom')",[work,owner]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Weekly task')",[task,owner,work]);
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku')",[owner]);
+ const first=(await pool.query("SELECT (date_trunc('week',now() AT TIME ZONE 'Asia/Baku') AT TIME ZONE 'Asia/Baku') AS monday")).rows[0].monday;
+ const start=new Date(first.getTime()-1000),end=new Date(first.getTime()+1000);
+ // A segment that straddles the week boundary contributes precisely one
+ // second to the current week, not two seconds (and none to next week).
+ await pool.query(`INSERT INTO dayframe.time_sessions
+ (id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,
+ started_at,segment_started_at,accumulated_ms,state,revision,ended_at,end_reason)
+ VALUES($1,$2,$3,'Boundary span',$4,$5,NULL,2000,'stopped',2,$6,'stopped')`,
+ ['f6444444-4444-4444-8444-444444444444',owner,task,work,start,end]);
+ await pool.query("INSERT INTO dayframe.time_session_segments(session_id,started_at,ended_at,duration_ms) VALUES($1,$2,$3,2000)",
+ ['f6444444-4444-4444-8444-444444444444',start,end]);
+ // Pre-M5.3 sessions only have accumulated time; do not pretend their
+ // intra-week history can be reconstructed from start/stop timestamps.
+ await pool.query(`INSERT INTO dayframe.time_sessions
+ (id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,
+ started_at,segment_started_at,accumulated_ms,state,revision,ended_at,end_reason)
+ VALUES($1,$2,$3,'Legacy accumulated',$4,$5,NULL,65000,'stopped',2,$6,'stopped')`,
+ ['f6555555-5555-4555-8555-555555555555',owner,task,work,new Date(first.getTime()+120000),new Date(first.getTime()+180000)]);
+ const monday=new Date(first);
+ const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baku',year:'numeric',month:'2-digit',day:'2-digit'}).format(monday);
+ const iso=(await pool.query("SELECT to_char((now() AT TIME ZONE 'Asia/Baku')::date-(extract(isodow from now() AT TIME ZONE 'Asia/Baku')::integer-1),'YYYY-MM-DD') AS week_day")).rows[0].week_day;
+ await pool.query('SELECT dayframe.save_scheduled_interval($1,$2,$3,$4::date,$5,$6,$7,$8)',[
+  owner,'f6666666-6666-4666-8666-666666666666',task,iso,540,630,'Asia/Baku',0
+ ]);
+ const data=(await pool.query(TIME_WEEK_SQL,[owner])).rows[0];
+ assert.equal(data.timeZone,'Asia/Baku');
+ assert.equal(data.weekStart,iso);
+ assert.equal(data.accountPlannedMinutes,'90');
+ assert.equal(data.accountActualMs,'66000'); // 1000 crossed boundary + 65000 legacy.
+ assert.equal(data.accountLegacyEstimatedMs,'65000');
+ const item=data.workspaces.find(w=>w.workspaceId===work);
+ assert.equal(item.actualMs,'66000');
+ assert.equal(item.plannedMinutes,'90');
+ assert.equal(item.legacyEstimatedMs,'65000');
+ assert.equal(item.targetMinutes,0);
+ assert.equal(data.workspaces.reduce((n,w)=>n+Number(w.actualMs),0),Number(data.accountActualMs));
+ assert.equal((await pool.query(TIME_WEEK_SQL,['another-account'])).rows[0].accountActualMs,'0');
+});
+
+test('M5.3 segment capture: paused time excluded, newly completed spans saved transactionally',async()=>{
+ const owner='m53-segment';
+ const ws='f6777777-7777-4777-8777-777777777777';
+ const task='f6888888-8888-4888-8888-888888888888';
+ const id='f6999999-9999-4999-8999-999999999999';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Segment capture','custom')",[ws,owner]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Segment task')",[task,owner,ws]);
+ const transition=(action,revision,taskId=null)=>pool.query(
+ "SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,NULL) AS s",
+ [owner,action,id,taskId,revision]);
+ await transition('start',0,task);
+ await new Promise(resolve=>setTimeout(resolve,25));
+ await transition('pause',1);
+ const paused=(await pool.query('SELECT accumulated_ms FROM dayframe.time_sessions WHERE id=$1',[id])).rows[0].accumulated_ms;
+ await new Promise(resolve=>setTimeout(resolve,35));
+ await transition('resume',2);
+ await new Promise(resolve=>setTimeout(resolve,20));
+ await transition('stop',3);
+ const session=(await pool.query('SELECT accumulated_ms FROM dayframe.time_sessions WHERE id=$1',[id])).rows[0];
+ const spans=(await pool.query('SELECT duration_ms,started_at,ended_at FROM dayframe.time_session_segments WHERE session_id=$1 ORDER BY started_at',[id])).rows;
+ assert.equal(spans.length,2);
+ assert.equal(spans.reduce((n,x)=>n+Number(x.duration_ms),0),Number(session.accumulated_ms));
+ assert.ok(Number(paused)>0);
+ assert.ok(spans.every(x=>new Date(x.ended_at)>=new Date(x.started_at)));
+ const week=(await pool.query(TIME_WEEK_SQL,[owner])).rows[0];
+ assert.equal(week.accountLegacyEstimatedMs,'0','New segment records must not be classified as legacy');
+ assert.equal(Number(week.accountActualMs),Number(session.accumulated_ms));
 });
