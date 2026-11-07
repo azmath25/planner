@@ -21,6 +21,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm install --no-audit --no-fund
+      - name: Build and syntax-check isolated browser test harness
+        run: |
+          node tests/build-workspace-archive-harness.mjs
+          node --check tests/.harness/archive-app.js
       - run: pip install playwright
       - run: python -m playwright install chromium --with-deps
       - run: python tests/workspace-archive-browser.py
