@@ -20,7 +20,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=14;i++){
+ for(let i=1;i<=15;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -34,12 +34,13 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all fourteen staged migrations execute without dependency errors',async()=>{
+test('all fifteen staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,14);
+ assert.equal(rows.length,15);
  assert.equal(rows[11].version,'0012_weekly_targets');
  assert.equal(rows[12].version,'0013_quick_notes');
  assert.equal(rows[13].version,'0014_quick_note_reminders');
+ assert.equal(rows[14].version,'0015_notification_quiet_hours');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -537,4 +538,34 @@ test('M6.1a note alert acknowledgements and snoozes use optimistic revisions',as
    new Date(Date.now()+48*60*60*1000).toISOString().slice(0,10)]);
  await assert.rejects(pool.query(NOTE_ALERT_ACTION_SQL,[owner,id,day,'10:00',2,'acknowledge',null]),
   err=>err.code==='40001');
+});
+
+test('M6.1c quiet hours respect local times, overnight windows and DST transitions',async()=>{
+ const sql="SELECT dayframe.defer_push_quiet_hours($1::timestamptz,$2,$3::time,$4::time) AS at";
+ const utc=async(instant,start,end,zone='UTC')=>
+  (await pool.query(sql,[instant,zone,start,end])).rows[0].at.toISOString();
+ assert.equal(await utc('2026-11-07T23:00:00Z','22:00','07:00'),'2026-11-08T07:00:00.000Z');
+ assert.equal(await utc('2026-11-07T06:00:00Z','22:00','07:00'),'2026-11-07T07:00:00.000Z');
+ assert.equal(await utc('2026-11-07T12:00:00Z','22:00','07:00'),'2026-11-07T12:00:00.000Z');
+ assert.equal(await utc('2026-11-07T12:30:00Z','12:00','14:00'),'2026-11-07T14:00:00.000Z');
+ assert.equal(await utc('2026-11-07T12:30:00Z',null,null),'2026-11-07T12:30:00.000Z');
+ // Berlin spring forward: 01:45 CET -> the first 03:00 CEST local end.
+ assert.equal(await utc('2026-03-29T00:45:00Z','01:00','03:00','Europe/Berlin'),
+  '2026-03-29T01:00:00.000Z');
+ // Berlin autumn fold: avoid a premature push during the second 02:00 hour.
+ assert.equal(await utc('2026-10-25T00:30:00Z','02:00','03:00','Europe/Berlin'),
+  '2026-10-25T02:00:00.000Z');
+});
+test('M6.1c quiet preferences reject partial/equal windows and preserve timezone',async()=>{
+ const owner='m61-quiet-pref';
+ await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku')",[owner]);
+ await assert.rejects(pool.query("UPDATE dayframe.notification_preferences SET quiet_start='22:00' WHERE owner_user_id=$1",[owner]),
+  err=>err.code==='23514');
+ await assert.rejects(pool.query("UPDATE dayframe.notification_preferences SET quiet_start='22:00',quiet_end='22:00' WHERE owner_user_id=$1",[owner]),
+  err=>err.code==='23514');
+ await pool.query("UPDATE dayframe.notification_preferences SET quiet_start='22:00',quiet_end='07:00' WHERE owner_user_id=$1",[owner]);
+ const row=(await pool.query("SELECT time_zone,quiet_start::text,quiet_end::text FROM dayframe.notification_preferences WHERE owner_user_id=$1",[owner])).rows[0];
+ assert.equal(row.time_zone,'Asia/Baku');
+ assert.match(row.quiet_start,/^22:00:/);
+ assert.match(row.quiet_end,/^07:00:/);
 });
