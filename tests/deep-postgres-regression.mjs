@@ -7,7 +7,7 @@ import pg from 'pg';
 import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL} from '../backend/src/index.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
-if(!/^(postgresql?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
+if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
  throw Error('Refusing non-ephemeral database.');
 const pool=new pg.Pool({connectionString,max:10});
 const A='audit-user-a',B='audit-user-b',C='audit-user-c';
