@@ -14,6 +14,7 @@ npm ci --no-audit --no-fund
 npm run test:source
 npm run test:time
 npm run test:documents
+npm run test:pwa
 node --experimental-strip-types --test tests/timeReports.test.mjs tests/timeInsights.test.mjs tests/reportCsv.test.mjs
 npm run test:api
 npm run typecheck
