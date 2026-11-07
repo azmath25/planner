@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL} from '../backend/src/index.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -231,4 +231,99 @@ test('M5.1 workspace archive closes running sessions and retains their historica
  assert.equal(rows[0].state,'stopped');
  assert.equal(rows[0].end_reason,'workspace_archived');
  assert.equal(rows[0].task_id,task);
+});
+
+
+test('M5.2 nested rollups include every descendant once and preserve all-time workspace ownership',async()=>{
+ const owner='audit-m52';
+ const workspace1='e5111111-1111-4111-8111-111111111111';
+ const workspace2='e5222222-2222-4222-8222-222222222222';
+ const root='e5333333-3333-4333-8333-333333333333';
+ const child='e5444444-4444-4444-8444-444444444444';
+ const grandchild='e5555555-5555-4555-8555-555555555555';
+ const sibling='e5666666-6666-4666-8666-666666666666';
+ const other='e5777777-7777-4777-8777-777777777777';
+ const workspaceRows=[[workspace1,'General','general'],[workspace2,'Second','custom']];
+ for(const [id,name,kind] of workspaceRows)
+  await pool.query('INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,$3,$4)',[id,owner,name,kind]);
+ for(const [id,workspace,parent,title] of [
+  [root,workspace1,null,'Parent'],
+  [child,workspace1,root,'Subtask'],
+  [grandchild,workspace1,child,'Grandchild'],
+  [sibling,workspace1,root,'Sibling'],
+  [other,workspace2,null,'Other workspace task']
+ ]){
+  await pool.query('INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,$5)',
+   [id,owner,workspace,parent,title]);
+ }
+ const add=async(id,taskId,workspace,ms)=>pool.query(`
+  INSERT INTO dayframe.time_sessions(
+   id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,
+   started_at,segment_started_at,accumulated_ms,state,revision,ended_at,end_reason)
+  VALUES($1,$2,$3,'Time snapshot',$4,now()-interval '1 hour',
+   NULL,$5,'stopped',2,now(),'stopped')`,
+   [id,owner,taskId,workspace,ms]);
+ for(const [id,task,workspace,ms] of [
+  ['e5a11111-1111-4111-8111-111111111111',root,workspace1,1000],
+  ['e5a22222-2222-4222-8222-222222222222',child,workspace1,2000],
+  ['e5a33333-3333-4333-8333-333333333333',grandchild,workspace1,3000],
+  ['e5a44444-4444-4444-8444-444444444444',sibling,workspace1,4000],
+  ['e5a55555-5555-4555-8555-555555555555',other,workspace2,5000],
+  ['e5a66666-6666-4666-8666-666666666666',null,workspace1,6000]
+ ])await add(id,task,workspace,ms);
+
+ const query=async id=owner=>(await pool.query(TIME_ROLLUPS_SQL,[id])).rows[0];
+ let snapshot=await query();
+ assert.equal(snapshot.accountTotalMs,'21000');
+ assert.equal(snapshot.deletedTaskMs,'6000');
+ const byTask=Object.fromEntries(snapshot.tasks.map(t=>[t.taskId,t]));
+ assert.deepEqual(byTask[root],{taskId:root,directMs:'1000',totalMs:'10000'});
+ assert.deepEqual(byTask[child],{taskId:child,directMs:'2000',totalMs:'5000'});
+ assert.deepEqual(byTask[grandchild],{taskId:grandchild,directMs:'3000',totalMs:'3000'});
+ assert.deepEqual(byTask[sibling],{taskId:sibling,directMs:'4000',totalMs:'4000'});
+ assert.deepEqual(byTask[other],{taskId:other,directMs:'5000',totalMs:'5000'});
+ const byWorkspace=Object.fromEntries(snapshot.workspaces.map(w=>[w.workspaceId,w.totalMs]));
+ assert.deepEqual(byWorkspace,{[workspace1]:'16000',[workspace2]:'5000'});
+ assert.equal(snapshot.tasks.reduce((n,t)=>n+Number(t.directMs),0),15000,
+  'Direct recorded time counts each attached session exactly once');
+ assert.equal(snapshot.tasks.reduce((n,t)=>n+Number(t.totalMs),0)>Number(snapshot.accountTotalMs),true,
+  'Nested totals are for individual task displays and must not be summed globally');
+ const outsider=await query('audit-m52-outsider');
+ assert.deepEqual(outsider.tasks,[]);
+ assert.deepEqual(outsider.workspaces,[]);
+ assert.equal(outsider.accountTotalMs,'0');
+
+ // A running leaf must appear in the ancestor list, but its unclosed segment
+ // is not double-counted by the SQL snapshot; the browser adds only that
+ // active segment using a monotonic clock.
+ const activeId='e5a77777-7777-4777-8777-777777777777';
+ await pool.query(`INSERT INTO dayframe.time_sessions
+ (id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,
+ started_at,segment_started_at,accumulated_ms,state,revision)
+ VALUES($1,$2,$3,'Active descendant',$4,now(),now(),0,'running',1)`,
+ [activeId,owner,grandchild,workspace1]);
+ snapshot=await query();
+ assert.equal(snapshot.session.id,activeId);
+ assert.deepEqual(new Set(snapshot.activeAncestorIds),new Set([grandchild,child,root]));
+ assert.equal(snapshot.accountTotalMs,'21000');
+ await pool.query('SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,$6)',[owner,'stop',activeId,null,1,null]);
+
+ // Parent rollups follow CURRENT tree membership. Moving a completed
+ // subtask beneath a different parent must not mutate any session record.
+ await pool.query('UPDATE dayframe.tasks SET parent_id=NULL WHERE id=$1',[child]);
+ snapshot=await query();
+ const afterMove=Object.fromEntries(snapshot.tasks.map(t=>[t.taskId,t]));
+ assert.equal(afterMove[root].totalMs,'5000');
+ assert.equal(afterMove[child].totalMs,afterMove[grandchild].totalMs==='3000'?'5000':null);
+ assert.deepEqual(Object.fromEntries(snapshot.workspaces.map(w=>[w.workspaceId,w.totalMs])),
+  {[workspace1]:snapshot.workspaces.find(w=>w.workspaceId===workspace1).totalMs,[workspace2]:'5000'});
+
+ // Deleting a task disconnects its parent attribution but preserves original
+ // workspace/global time in the immutable session snapshot.
+ await pool.query('DELETE FROM dayframe.tasks WHERE id=$1',[other]);
+ snapshot=await query();
+ assert.equal(snapshot.deletedTaskMs,'11000');
+ assert.equal(snapshot.tasks.some(t=>t.taskId===other),false);
+ assert.equal(snapshot.workspaces.find(w=>w.workspaceId===workspace2).totalMs,'5000');
+ assert.ok(Number(snapshot.accountTotalMs)>=21000);
 });
