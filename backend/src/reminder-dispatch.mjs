@@ -216,9 +216,21 @@ export async function dispatchDueNotes({sql,send,privateKey,vapid=makeVapidAutho
  return {claimed:rows.length,delivered,expired,retrying};
 }
 
-export default {async fetch(request){
+// Never treat a caller-chosen invocation ID/header match as authentication.
+// Configure a separate, random secret in the server-side scheduler AND worker.
+// The default fail-closed behavior deliberately prevents unconfigured dispatch.
+export function createDispatchHandler({
+ schedulerSecret=process.env.DAYFRAME_SCHEDULER_SECRET,
+ dispatchTasks=dispatchDue,dispatchNotes=dispatchDueNotes
+}={}){
+ return {async fetch(request){
  if(new URL(request.url).pathname!=='/dispatch'||request.method!=='POST')
   return Response.json({error:'Not found'},{status:404});
+ const supplied=request.headers.get('x-dayframe-dispatch-secret')||'';
+ if(typeof schedulerSecret!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(schedulerSecret)||
+    !/^[A-Za-z0-9_-]{32,128}$/.test(supplied)||
+    !crypto.timingSafeEqual(Buffer.from(schedulerSecret),Buffer.from(supplied)))
+   return Response.json({error:'Forbidden'},{status:403});
  const header=request.headers.get('x-neon-trigger-invocation-id');
  if(!header||header.length>256)return Response.json({error:'Forbidden'},{status:403});
  let data;
@@ -235,8 +247,10 @@ export default {async fetch(request){
    typeof data?.data?.scheduled_at!=='string')
   return Response.json({error:'Invalid schedule event'},{status:403});
  try{
-  const result=await dispatchDue();
-  const notes=await dispatchDueNotes();
+  const result=await dispatchTasks();
+  const notes=await dispatchNotes();
   return Response.json({ok:true,...result,notes});
  }catch(e){console.error('Dayframe reminder dispatch failed',e instanceof Error?e.name:'Unknown');return Response.json({error:'Delivery unavailable'},{status:503});}
 }};
+}
+export default createDispatchHandler();
