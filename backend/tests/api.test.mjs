@@ -105,8 +105,8 @@ test('task patch uses owner and optimistic revision; task deletion is reversible
   const q=queries.find(x=>x.sql.startsWith('UPDATE dayframe.tasks t'));
   assert.equal(q.args[0],'alice');assert.equal(q.args[1],TASK);assert.equal(q.args[16],1);
   assert.ok(q.sql.includes('t.revision=$17'));
-  assert.equal((await req('/v1/tasks/'+TASK,'DELETE','alice')).status,200);
-  assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice')).status,200);
+  assert.equal((await req('/v1/tasks/'+TASK,'DELETE','alice',{revision:1})).status,200);
+  assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:2})).status,200);
 });
 test('custom workspace creation and guarded rename',async()=>{
   const {req,queries}=make();
@@ -172,8 +172,8 @@ test('active workspaces and active task queries exclude archived workspaces',asy
  await req('/v1/tasks/trash','GET','alice');
  await req('/v1/tasks','POST','alice',{...task});
  await req('/v1/tasks/'+TASK,'PATCH','alice',{...task});
- await req('/v1/tasks/'+TASK,'DELETE','alice');
- await req('/v1/tasks/'+TASK+'/restore','POST','alice');
+ await req('/v1/tasks/'+TASK,'DELETE','alice',{revision:1});
+ await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:2});
  assert.match(LIST_SQL,/archived_at IS NULL/);
  const taskSql=queries.filter(x=>x.sql.includes('dayframe.tasks')&&!x.sql.startsWith('SELECT revision FROM dayframe.tasks'));
  assert.ok(taskSql.length>=6);
@@ -285,4 +285,24 @@ test('M3 stale task hierarchy and ownership operations fail closed',async()=>{
  assert.equal((await req('/v1/tasks/'+TASK+'/media/cover','PUT','alice',{data:'x'})).status,400);
  const unauth=queries.filter(q=>q.args?.[0]==='forged');
  assert.equal(unauth.length,0);
+});
+
+test('M1-M4 deep audit: task Trash and restore require the revision observed by the caller',async()=>{
+ const {req,queries}=make();
+ assert.equal((await req('/v1/tasks/'+TASK,'DELETE','alice')).status,415);
+ assert.equal((await req('/v1/tasks/'+TASK,'DELETE','alice',{revision:-1})).status,400);
+ assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice')).status,415);
+ assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:0})).status,400);
+ const result=await req('/v1/tasks/'+TASK,'DELETE','alice',{revision:9});
+ assert.equal(result.status,200);
+ const trashSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('deleted_at=now()'));
+ assert.ok(trashSql);
+ assert.deepEqual(trashSql.args,['alice',TASK,9]);
+ assert.match(trashSql.sql,/root.revision=\$3/);
+ assert.equal(queries.some(q=>q.sql.startsWith('SELECT revision FROM dayframe.tasks')),false);
+ assert.equal((await req('/v1/tasks/'+TASK+'/restore','POST','alice',{revision:12})).status,200);
+ const restoreSql=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('deleted_at='));
+ assert.ok(restoreSql);
+ assert.deepEqual(restoreSql.args,['alice',TASK,12,false]);
+ assert.match(restoreSql.sql,/root.revision=\$3/);
 });
