@@ -20,6 +20,15 @@ mockDb.notes=[
 mockDb.noteConvertCalls=[];
 mockDb.noteCreateCalls=[];
 mockDb.noteSimulateLostResponse=true;
+mockDb.quietHours={timeZone:'Asia/Baku',quietStart:null,quietEnd:null};
+mockDb.quietSaveCalls=[];
+cloudApi.notificationPreferences=async()=>({...mockDb.quietHours,
+ publicKey:'BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8'});
+cloudApi.setNotificationQuietHours=async (quietStart,quietEnd,timeZone)=>{
+ mockDb.quietSaveCalls.push({quietStart,quietEnd,timeZone});
+ mockDb.quietHours={timeZone,quietStart,quietEnd};
+};
+
 cloudApi.listQuickNotes=async()=>mockDb.notes.filter(n=>!n.deletedAt).map(n=>({...n}));
 cloudApi.listTrashedQuickNotes=async()=>mockDb.notes.filter(n=>Boolean(n.deletedAt)).map(n=>({...n}));
 cloudApi.restoreQuickNote=async(id,revision)=>{
