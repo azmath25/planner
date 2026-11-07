@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 subprocess.run(['node','tests/build-demo-harness.mjs'],cwd=ROOT,check=True)
 errors=[]
 with sync_playwright() as p:
-    browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu'])
+    browser=p.chromium.launch(headless=True,args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu'])
     page=browser.new_page(viewport={'width':390,'height':844})
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.set_content('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div></body></html>')
