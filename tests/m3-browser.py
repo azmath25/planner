@@ -2,6 +2,7 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import subprocess
+import base64
 ROOT=Path(__file__).resolve().parents[1]
 subprocess.run(['node','tests/build-m3-harness.mjs'],cwd=ROOT,check=True)
 HTML='<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div></body></html>'
@@ -70,6 +71,19 @@ def run(browser,width):
  p.locator(f'[data-action="restore-task"][data-id="{tid}"]').click()
  p.wait_for_function("() => window.__refreshCount>=3")
  assert p.evaluate("() => window.__mockDb.tasks.find(t=>t.title==='M3 nested child').deletedAt") is None
+ # Uploaded task images go through the authenticated media adapter, not localStorage.
+ p.locator(f'{nav} [data-page="tasks"]').click()
+ p.locator(f'[data-action="detail"][data-id="{tid}"]').first.click()
+ p.locator('[data-action="edit-image"][data-kind="task"][data-slot="cover"]').click()
+ png=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLfgAAAAABJRU5ErkJggg==')
+ p.locator('#media-file').set_input_files({'name':'cover.png','mimeType':'image/png','buffer':png})
+ p.wait_for_function("() => Object.values(window.__mockDb.images).some(v=>v.cover)",timeout=7000)
+ assert p.locator('.workspace-detail-cover.has-photo').count()==1
+ saved=p.evaluate("() => JSON.parse(localStorage.getItem('dayframe.m3.mock'))")
+ assert not any(key.startswith('task:') for key in saved.get('media',{})), 'Cloud task media leaked into browser-local cache'
+ p.locator('[data-action="edit-image"][data-kind="task"][data-slot="cover"]').click()
+ p.locator('[data-action="remove-image"]').click()
+ p.wait_for_function("() => Object.values(window.__mockDb.images).every(v=>!v.cover)")
  for width2 in (320,390,768,1440):
   p.set_viewport_size({'width':width2,'height':850})
   assert p.evaluate('document.documentElement.scrollWidth')<=width2+4,f'Horizontal overflow {width2}px'
