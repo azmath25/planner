@@ -776,9 +776,9 @@ function applyCloudTimeSnapshot(session){
   elapsed:session.accumulatedMs,running:session.state==='running'
  };
 }
-async function loadCloudWeek(){
+async function loadCloudWeek(preserveError=false){
  if(!isCloudTime||disposed||state.weekLoading||state.weekSaving)return;
- state.weekLoading=true;state.weekError='';
+ state.weekLoading=true;if(!preserveError)state.weekError='';
  try{
   const week=await cloudApi.getWeeklyTime();
   if(!disposed)state.timeWeek=week;
@@ -1117,13 +1117,15 @@ if(form.id==='weekly-goal-form'){
   render();return;
  }
  state.weekSaving=true;state.weekError='';render();
+ let failed=false;
  try{
   await cloudApi.saveWeeklyTarget(serverWorkspaceId(w.id),targetMinutes,row.revision);
  }catch(err){
+  failed=true;
   if(!disposed)state.weekError=err instanceof Error?err.message:'Could not save goal';
  }finally{
   state.weekSaving=false;
-  if(!disposed)void loadCloudWeek();
+  if(!disposed)void loadCloudWeek(failed);
  }
  return;
 }
@@ -1352,7 +1354,8 @@ if(isCloud)void loadCloudPool(today());
 if(isCloud)void loadCloudAlerts();
 if(isCloudTime)void loadCloudTime();
 const onTimeFocus=()=>{
- if(isCloudTime&&!document.hidden){
+ // Background refresh must not erase an in-progress weekly-goal edit.
+ if(isCloudTime&&!document.hidden&& !document.querySelector('#weekly-goal-form input:focus')){
   void loadCloudTime();
   if(state.page==='workspace'||state.page==='reports')void loadCloudWeek();
  }
