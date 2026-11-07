@@ -61,3 +61,21 @@ for(const marker of ['move_task_subtree','TASK_HISTORY','taskSubtreeUpdate','tas
  if(!m3backend.includes(marker))throw new Error('M3 API protection missing: '+marker);
 }
 console.log('PASS: M3 task management, hierarchy, auditing and private media controls wired');
+
+const m41ui=readFileSync('web/src/legacy/legacy.ts','utf8');
+const m41client=readFileSync('web/src/auth/api.ts','utf8');
+const m41backend=readFileSync('backend/src/index.mjs','utf8');
+const m41sql=readFileSync('backend/db/migrations/0007_daily_pool.sql','utf8');
+for(const marker of ['loadCloudPool(today())','changeDailyPool(','pool-sync-status',"case'pool-add'","case'pool-remove'","case'pool-up':case'pool-down'","if(isCloud)void loadCloudPool(state.planDay)",'pools:isCloud?undefined:state.pools']){
+ if(!m41ui.includes(marker))throw Error('Missing signed-in day pool integration: '+marker);
+}
+for(const marker of ['loadDailyPool','saveDailyPool','DailyPool']){
+ if(!m41client.includes(marker))throw Error('Missing daily pool client: '+marker);
+}
+for(const marker of ['DAY_POOL_GET_SQL','DAY_POOL_PUT_SQL','replace_daily_pool','taskIds:ids']){
+ if(!m41backend.includes(marker))throw Error('Missing authenticated day pool API: '+marker);
+}
+for(const marker of ['CREATE TABLE IF NOT EXISTS dayframe.daily_pools','daily_pool_task_owner','FOR UPDATE','p_expected_revision','cardinality(p_ids)']){
+ if(!m41sql.includes(marker))throw Error('Missing atomic day pool migration: '+marker);
+}
+console.log('PASS: M4.1 authenticated daily pool and unchanged local timed intervals wired');
