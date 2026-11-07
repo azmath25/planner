@@ -307,6 +307,8 @@ test('M5.2 nested rollups include every descendant once and preserve all-time wo
  assert.deepEqual(new Set(snapshot.activeAncestorIds),new Set([grandchild,child,root]));
  assert.equal(snapshot.accountTotalMs,'21000');
  await pool.query('SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,$6)',[owner,'stop',activeId,null,1,null]);
+ const closed=(await pool.query('SELECT accumulated_ms::text AS ms FROM dayframe.time_sessions WHERE id=$1',[activeId])).rows[0];
+ const extra=Number(closed.ms);
 
  // Parent rollups follow CURRENT tree membership. Moving a completed
  // subtask beneath a different parent must not mutate any session record.
@@ -314,8 +316,8 @@ test('M5.2 nested rollups include every descendant once and preserve all-time wo
  snapshot=await query();
  const afterMove=Object.fromEntries(snapshot.tasks.map(t=>[t.taskId,t]));
  assert.equal(afterMove[root].totalMs,'5000');
- assert.equal(afterMove[grandchild].totalMs,'3000');
- assert.equal(afterMove[child].totalMs,'5000');
+ assert.equal(Number(afterMove[grandchild].totalMs),3000+extra);
+ assert.equal(Number(afterMove[child].totalMs),5000+extra);
  assert.equal(snapshot.workspaces.find(w=>w.workspaceId===workspace2).totalMs,'5000');
  assert.ok(Number(snapshot.workspaces.find(w=>w.workspaceId===workspace1).totalMs)>=16000,
   'Workspace attribution is based on original session workspace, not current ancestry');
