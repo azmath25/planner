@@ -26,7 +26,65 @@ export type CloudTimeSession={
  accumulatedMs:number;revision:number;endedAt:string|null;endReason:string|null;
  serverNow:string;
 };
-export type CloudTimeState={session:CloudTimeSession|null;taskTotals:Record<string,number>};
+export type CloudTimeRollups={
+ tasks:Record<string,{directMs:number;totalMs:number}>;
+ workspaces:Record<string,number>;
+ accountTotalMs:number;
+ deletedTaskMs:number;
+ activeAncestorIds:string[];
+};
+export type CloudTimeState={
+ session:CloudTimeSession|null;
+ taskTotals:Record<string,number>;
+ rollups:CloudTimeRollups|null;
+};
+const isUuid=(id:unknown):id is string=>
+ typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+function safeTimeMs(input:unknown):number{
+ if(typeof input!=='string'&&typeof input!=='number')throw new Error('Invalid time value');
+ if(!/^(?:0|[1-9][0-9]*)$/.test(String(input)))throw new Error('Invalid time value');
+ const number=Number(input);
+ if(!Number.isSafeInteger(number)||number<0)throw new Error('Time exceeds supported precision');
+ return number;
+}
+function parseTimeRollups(input:unknown):CloudTimeRollups|null{
+ if(input===null||input===undefined)return null; // Compatibility with M5.1 mocks.
+ if(!input||typeof input!=='object')throw new Error('Invalid time rollups');
+ const data=input as Record<string,unknown>;
+ if(!Array.isArray(data.tasks)||!Array.isArray(data.workspaces)||
+  !Array.isArray(data.activeAncestorIds)||data.tasks.length>100000||
+  data.workspaces.length>10000||data.activeAncestorIds.length>100000)
+  throw new Error('Invalid time rollups');
+ const tasks:CloudTimeRollups['tasks']=Object.create(null);
+ const workspaces:CloudTimeRollups['workspaces']=Object.create(null);
+ for(const value of data.tasks){
+  if(!value||typeof value!=='object')throw new Error('Invalid task rollup');
+  const item=value as Record<string,unknown>;
+  if(!isUuid(item.taskId))throw new Error('Invalid task rollup identifier');
+  const directMs=safeTimeMs(item.directMs),totalMs=safeTimeMs(item.totalMs);
+  if(totalMs<directMs||Object.hasOwn(tasks,item.taskId))
+   throw new Error('Invalid task rollup');
+  tasks[item.taskId]={directMs,totalMs};
+ }
+ for(const value of data.workspaces){
+  if(!value||typeof value!=='object')throw new Error('Invalid workspace rollup');
+  const item=value as Record<string,unknown>;
+  if(!isUuid(item.workspaceId)||Object.hasOwn(workspaces,item.workspaceId))
+   throw new Error('Invalid workspace rollup identifier');
+  workspaces[item.workspaceId]=safeTimeMs(item.totalMs);
+ }
+ const accountTotalMs=safeTimeMs(data.accountTotalMs);
+ const deletedTaskMs=safeTimeMs(data.deletedTaskMs);
+ if(deletedTaskMs>accountTotalMs)throw new Error('Invalid deleted-task time');
+ const activeAncestorIds=data.activeAncestorIds;
+ if(!activeAncestorIds.every(isUuid)||new Set(activeAncestorIds).size!==activeAncestorIds.length)
+  throw new Error('Invalid active ancestors');
+ // Each session is credited to precisely one workspace, even if its task
+ // has since been moved or permanently deleted.
+ if(Object.values(workspaces).reduce((sum,amount)=>sum+amount,0)!==accountTotalMs)
+  throw new Error('Workspace totals do not reconcile with account total');
+ return {tasks,workspaces,accountTotalMs,deletedTaskMs,activeAncestorIds};
+}
 function verifyCloudTimeSession(value:unknown):value is CloudTimeSession{
  if(!value||typeof value!=='object')return false;
  const s=value as Partial<CloudTimeSession>;
@@ -134,7 +192,7 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
 }
 export const cloudApi={
  async getTimeState(signal?:AbortSignal):Promise<CloudTimeState>{
-  const data=await call<{session:unknown;taskTotals:unknown}>('/v1/time-session',{signal});
+  const data=await call<{session:unknown;taskTotals:unknown;rollups?:unknown}>('/v1/time-session',{signal});
   if(data.session!==null&&!verifyCloudTimeSession(data.session))throw new Error('Invalid server time session');
   if(!Array.isArray(data.taskTotals)||data.taskTotals.length>100000)
    throw new Error('Invalid time totals');
@@ -147,7 +205,13 @@ export const cloudApi={
     throw new Error('Invalid time total');
    totals[entry.taskId]=amount;
   }
-  return {session:data.session as CloudTimeSession|null,taskTotals:totals};
+  const rollups=parseTimeRollups(data.rollups);
+  // The compatibility field must agree with each task's direct recorded time.
+  if(rollups){
+   for(const [id,time] of Object.entries(totals))
+    if(rollups.tasks[id]?.directMs!==time)throw new Error('Task totals do not reconcile');
+  }
+  return {session:data.session as CloudTimeSession|null,taskTotals:totals,rollups};
  },
  async changeTimeSession(action:'start'|'pause'|'resume'|'stop'|'switch',
   sessionId:string,revision:number,taskId?:string,previousId?:string):Promise<CloudTimeSession>{
