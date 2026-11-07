@@ -51,8 +51,8 @@ function parseCloudTimeWeek(value:unknown):CloudTimeWeek{
  try{new Intl.DateTimeFormat('en-US',{timeZone:data.timeZone});}
  catch{throw new Error('Invalid weekly time zone');}
  if(typeof data.weekStart!=='string'||typeof data.weekEnd!=='string'||
-  !/^\\d{4}-\\d{2}-\\d{2}$/.test(data.weekStart)||
-  !/^\\d{4}-\\d{2}-\\d{2}$/.test(data.weekEnd)||
+  !/^\d{4}-\d{2}-\d{2}$/.test(data.weekStart)||
+  !/^\d{4}-\d{2}-\d{2}$/.test(data.weekEnd)||
   !Array.isArray(data.workspaces)||data.workspaces.length>10000)
   throw new Error('Invalid weekly time period');
  const workspaces:CloudWeeklyWorkspace[]=[];
@@ -62,6 +62,7 @@ function parseCloudTimeWeek(value:unknown):CloudTimeWeek{
   const w=entry as Record<string,unknown>;
   if(!isUuid(w.workspaceId)||ids.has(w.workspaceId)||
    (w.name!==null&&typeof w.name!=='string')||typeof w.archived!=='boolean'||
+   typeof w.targetMinutes!=='number'||typeof w.revision!=='number'||
    !Number.isSafeInteger(w.targetMinutes)||!Number.isSafeInteger(w.revision)||
    Number(w.targetMinutes)<0||Number(w.targetMinutes)>10080||Number(w.revision)<0)
     throw new Error('Invalid weekly workspace');
