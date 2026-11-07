@@ -35,7 +35,7 @@ def run(browser,width):
  start.click()
  p.wait_for_function("() => window.__mockDb.activeTimeId!==null")
  p.locator('.global-timer').wait_for()
- assert 'saved in Neon' in p.locator('.global-timer').inner_text()
+ assert 'saved in Neon' in p.locator('.global-timer').inner_text(),repr(p.locator('.global-timer').inner_text())
  p.wait_for_timeout(1100)
  p.locator('.global-timer [data-action="pause"]').click()
  p.wait_for_function("() => window.__mockDb.sessionRecords.get(window.__mockDb.activeTimeId)?.state==='paused'")
