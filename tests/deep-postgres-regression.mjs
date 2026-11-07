@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL} from '../backend/src/index.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -19,7 +19,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=12;i++){
+ for(let i=1;i<=13;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -33,10 +33,11 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all twelve production migrations execute without dependency errors',async()=>{
+test('all thirteen staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,12);
+ assert.equal(rows.length,13);
  assert.equal(rows[11].version,'0012_weekly_targets');
+ assert.equal(rows[12].version,'0013_quick_notes');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -426,4 +427,47 @@ test('M5.3 segment capture: paused time excluded, newly completed spans saved tr
  const week=(await pool.query(TIME_WEEK_SQL,[owner])).rows[0];
  assert.equal(week.accountLegacyEstimatedMs,'0','New segment records must not be classified as legacy');
  assert.equal(Number(week.accountActualMs),Number(session.accumulated_ms));
+});
+
+
+test('M6.1 note CRUD: owner isolation, stale edits and recoverable soft deletion',async()=>{
+ const owner='m61-notes-a',other='m61-notes-b';
+ const wa='f8111111-1111-4111-8111-111111111111';
+ const wb='f8222222-2222-4222-8222-222222222222';
+ const id='f8333333-3333-4333-8333-333333333333';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Personal notes','custom'),($3,$4,'Other notes','custom')",[wa,owner,wb,other]);
+ const args=[owner,id,wa,'Important idea','A note that belongs to this owner','green',true,'2026-12-01','18:00'];
+ assert.equal((await pool.query(NOTE_INSERT_SQL,args)).rows.length,1);
+ assert.equal((await pool.query(NOTE_INSERT_SQL,[other,'f8444444-4444-4444-8444-444444444444',wa,
+  'Cross-account','Cannot move into another workspace','cream',false,null,null])).rows.length,0);
+ assert.equal((await pool.query(NOTE_BY_ID_SQL,[other,id])).rows.length,0);
+ const old=(await pool.query(NOTE_BY_ID_SQL,[owner,id])).rows[0];
+ assert.equal(old.title,'Important idea');assert.equal(old.pinned,true);
+ const upd=[owner,id,wa,'Updated idea','A note that belongs to this owner','lilac',false,null,null,1];
+ assert.equal((await pool.query(NOTE_UPDATE_SQL,upd)).rows[0].revision,2);
+ assert.equal((await pool.query(NOTE_UPDATE_SQL,upd)).rows.length,0);
+ assert.equal((await pool.query(NOTE_UPDATE_SQL,[other,id,wb,'Hijack','No','cream',false,null,null,2])).rows.length,0);
+ assert.equal((await pool.query(NOTE_DELETE_SQL,[other,id,2])).rows.length,0);
+ assert.equal((await pool.query(NOTE_DELETE_SQL,[owner,id,1])).rows.length,0);
+ assert.equal((await pool.query(NOTE_DELETE_SQL,[owner,id,2])).rows.length,1);
+ assert.equal((await pool.query(NOTE_BY_ID_SQL,[owner,id])).rows.length,0);
+ assert.equal((await pool.query("SELECT count(*)::int AS count FROM dayframe.quick_notes WHERE id=$1 AND deleted_at IS NOT NULL",[id])).rows[0].count,1);
+});
+test('M6.1 note conversion is exactly-once across retries and refuses cross-account attempts',async()=>{
+ const owner='m61-convert-a',other='m61-convert-b';
+ const wa='f8555555-5555-4555-8555-555555555555';
+ const id='f8666666-6666-4666-8666-666666666666';
+ const task='f8777777-7777-4777-8777-777777777777';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Ideas','custom')",[wa,owner]);
+ await pool.query(NOTE_INSERT_SQL,[owner,id,wa,'Check this','A conversion prompt','blue',true,null,null]);
+ await assert.rejects(pool.query(NOTE_CONVERT_SQL,[other,id,1,task,30]),err=>err.code==='40001');
+ const created=await pool.query(NOTE_CONVERT_SQL,[owner,id,1,task,45]);
+ assert.equal(created.rows[0].task_id,task);
+ const retry=await pool.query(NOTE_CONVERT_SQL,[owner,id,1,task,45]);
+ assert.equal(retry.rows[0].task_id,task,'uncertain retry must be safe');
+ await assert.rejects(pool.query(NOTE_CONVERT_SQL,[owner,id,1,'f8888888-8888-4888-8888-888888888888',45]),err=>err.code==='40001');
+ const row=(await pool.query(NOTE_BY_ID_SQL,[owner,id])).rows[0];
+ assert.equal(row.convertedTaskId,task);assert.equal(row.revision,2);
+ assert.equal((await pool.query('SELECT count(*)::int AS count FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2',[owner,task])).rows[0].count,1);
+ assert.equal((await pool.query('SELECT title,notes,estimate_minutes FROM dayframe.tasks WHERE id=$1',[task])).rows[0].estimate_minutes,45);
 });
