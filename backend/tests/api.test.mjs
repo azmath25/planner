@@ -23,8 +23,11 @@ function make({rejectSql=false,denyMutations=false,hasOpenChildren=false}={}){
     if(sql.includes('FROM dayframe.task_events e'))return {rows:[{id:'1',type:'created',createdAt:'2026-11-07T12:00:00Z'}]};
     if(sql.startsWith('SELECT dayframe.move_task_subtree'))return {rows:[{}]};
     if(sql.startsWith('SELECT ')&&sql.includes('FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2'))return {rows:[{...task,id:args[1],workspace:WS,revision:2}]};
-    if(sql.startsWith('UPDATE dayframe.tasks t SET archived_at=now()'))return {rows:[{...task,archivedAt:'2026-11-07T12:00:00Z',revision:2}]};
-    if(sql.startsWith('UPDATE dayframe.tasks t SET archived_at=NULL'))return {rows:[{...task,archivedAt:null,revision:2}]};
+    if(sql.startsWith('SELECT revision FROM dayframe.tasks'))return {rows:[{revision:1}]};
+    if(sql.startsWith('WITH RECURSIVE subtree AS')){
+      if(sql.includes('SELECT id::text AS id FROM changed'))return {rows:[{id:args[1]}]};
+      return {rows:[{...task,id:args[1],archivedAt:args[3]?'2026-11-07T12:00:00Z':null,revision:2}]};
+    }
     if(sql.startsWith('DELETE FROM dayframe.tasks t'))return {rows:denyMutations?[]:[{id:args[1]}]};
     if(sql.includes('FROM dayframe.tasks')&&sql.includes('LIMIT'))return {rows:[{...task,id:args[0]==='alice'?TASK:BOB}]};
     if(sql.startsWith('INSERT INTO dayframe.tasks'))return {rows:[{...task,id:args[1],workspace:args[2],title:args[3]}]};
@@ -200,10 +203,10 @@ test('M3 task archive and restore are verified-user, revision guarded operations
   assert.equal((await req(path,'GET')).status,401);
   assert.equal((await req(path,'POST','forged',{revision:1})).status,401);
  }
- const archive=queries.find(q=>q.sql.startsWith('UPDATE dayframe.tasks t SET archived_at=now()'));
- assert.deepEqual(archive.args,['alice',TASK,1]);
- assert.match(archive.sql,/t.owner_user_id=\$1/);
- assert.match(archive.sql,/t.revision=\$3/);
+ const archive=queries.find(q=>q.sql.startsWith('WITH RECURSIVE subtree AS')&&q.sql.includes('archived_at'));
+ assert.deepEqual(archive.args,['alice',TASK,1,true]);
+ assert.match(archive.sql,/owner_user_id=\$1/);
+ assert.match(archive.sql,/root.revision=\$3/);
 });
 
 test('M3 signed-in task event history cannot leak a foreign task',async()=>{
