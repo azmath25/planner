@@ -71,7 +71,7 @@ let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?(saved.notes||[]).filter(n=>workspaces.some(w=>w.id===n.workspace)):(saved.notes||initialNotes()),
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
-scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
+scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
@@ -293,6 +293,53 @@ const taskTimeMs=t=>{
    ?Math.max(0,getElapsedMs(state.timer,timerNow())-state.timer.elapsed):0;
  return raw+segment;
 };
+
+/** Rollup display values are inclusive. Never add parent rollups to account
+ * or workspace totals: a descendant appears in multiple ancestor displays. */
+const activeTimeDeltaMs=()=>isCloudTime&&state.timer?.running
+ ?Math.max(0,getElapsedMs(state.timer,timerNow())-state.timer.elapsed):0;
+const isDescendantOf=(leafId,ancestorId)=>{
+ const visited=new Set();
+ let id=leafId;
+ while(id&&!visited.has(id)){
+  if(id===ancestorId)return true;
+  visited.add(id);
+  id=state.tasks.find(task=>task.id===id)?.parent||null;
+ }
+ return false;
+};
+const taskTimeWithSubtasksMs=task=>{
+ if(!isCloudTime){
+  return state.tasks.filter(t=>isDescendantOf(t.id,task.id))
+   .reduce((sum,t)=>sum+recordedMs(t),0)
+   +(state.timer&&isDescendantOf(state.timer.taskId,task.id)
+     ?getElapsedMs(state.timer,Date.now()):0);
+ }
+ const rollup=state.timeRollups;
+ const saved=rollup?.tasks[task.id]?.totalMs ??
+  state.tasks.filter(t=>isDescendantOf(t.id,task.id))
+   .reduce((sum,t)=>sum+(state.timeTaskTotals[t.id]||0),0);
+ const isActiveAncestor=rollup
+  ?rollup.activeAncestorIds.includes(task.id)
+  :Boolean(state.timer&&isDescendantOf(state.timer.taskId,task.id));
+ return saved+(isActiveAncestor?activeTimeDeltaMs():0);
+};
+const workspaceTimeMs=w=>{
+ if(!isCloudTime){
+  return state.tasks.filter(t=>t.workspace===w.id)
+   .reduce((sum,t)=>sum+recordedMs(t),0)
+   +(state.timer&&findTask(state.timer.taskId)?.workspace===w.id
+     ?getElapsedMs(state.timer,Date.now()):0);
+ }
+ const workspaceId=serverWorkspaceId(w.id);
+ const saved=state.timeRollups?.workspaces[workspaceId]||0;
+ return saved+(state.timeSession?.workspaceIdAtStart===workspaceId
+   ?activeTimeDeltaMs():0);
+};
+const accountTimeMs=()=>isCloudTime
+ ?(state.timeRollups?.accountTotalMs||0)+activeTimeDeltaMs()
+ :workspaces.reduce((sum,w)=>sum+workspaceTimeMs(w),0);
+
 const timeControls=(task,compact=false)=>{
   const timerDisabled=isCloudTime&&(state.timeBusy||state.timeLoading||!state.timeLoaded)?' disabled aria-disabled="true"':'';
   if(task.status==='done'||task.status==='cancelled')return `<button class="btn small secondary" data-action="reopen-task" data-id="${escapeHTML(task.id)}">${icon('refresh')} Reopen</button>`;
@@ -635,6 +682,7 @@ async function loadCloudTime(){
   if(disposed)return;
   applyCloudTimeSnapshot(data.session);
   state.timeTaskTotals=data.taskTotals;
+  state.timeRollups=data.rollups;
   state.timeLoaded=true;
   state.timeError='';
  }catch(err){
@@ -1123,7 +1171,21 @@ trackListener('keydown',e=>{if(e.key==='Escape'&&state.modal)closeModal()});
 const timerHandle = setInterval(()=>{
   document.querySelectorAll('[data-timer-display]').forEach(el=>el.textContent=formatTimer());
   const detailMetric=document.querySelector('.page-detail .metric-value[data-current-task-time]');
-  if(detailMetric){const t=findTask(state.taskId);if(t)detailMetric.textContent=formatElapsed(taskTimeMs(t));}
+  if(detailMetric){
+   const t=findTask(state.taskId);
+   if(t){
+    const own=taskTimeMs(t),all=taskTimeWithSubtasksMs(t);
+    detailMetric.textContent=formatElapsed(all);
+    const breakdown=document.querySelector('[data-task-time-breakdown]');
+    if(breakdown)breakdown.textContent='Own '+formatElapsed(own)+' · Subtasks '+formatElapsed(Math.max(0,all-own));
+   }
+  }
+  const workspaceMetric=document.querySelector('[data-current-workspace-time]');
+  if(workspaceMetric&&state.page==='workspace')
+   workspaceMetric.textContent=formatElapsed(workspaceTimeMs(workspace(state.viewWorkspace)));
+  const accountMetric=document.querySelector('[data-current-account-time]');
+  if(accountMetric&&state.page==='reports')
+   accountMetric.textContent=formatElapsed(accountTimeMs());
 },250);
 const onStorage=(event)=>{
   if(isCloud||event.key!==STORAGE||!event.newValue)return;
