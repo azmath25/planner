@@ -1,5 +1,6 @@
 import { AUTH_URL, authClient } from './client';
 import {parsePeriodReport,type PeriodReport,type ReportPeriod} from '../domain/timeReports';
+import {parseInsights,type InsightsReport} from '../domain/insights';
 
 export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
 
@@ -485,6 +486,15 @@ export const cloudApi={
   return {note:result.note,task:result.task};
  },
 
+ async getInsights(period:ReportPeriod,day:string,signal?:AbortSignal):Promise<InsightsReport>{
+  if(!['day','week','month'].includes(period)||!/^\d{4}-\d{2}-\d{2}$/.test(day))
+   throw new Error('Invalid insight request');
+  const data=await call<{insights:unknown}>(
+   '/v1/insights?period='+encodeURIComponent(period)+'&day='+encodeURIComponent(day),
+   {signal}
+  );
+  return parseInsights(data.insights);
+ },
  async getTimePeriod(period:ReportPeriod,day:string,signal?:AbortSignal):Promise<PeriodReport>{
   if(!['day','week','month'].includes(period)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day))
    throw new Error('Invalid time report request');
