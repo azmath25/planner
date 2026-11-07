@@ -33,6 +33,61 @@ export type CloudTimeRollups={
  deletedTaskMs:number;
  activeAncestorIds:string[];
 };
+export type CloudWeeklyWorkspace={
+ workspaceId:string;name:string|null;archived:boolean;
+ targetMinutes:number;revision:number;
+ actualMs:number;legacyEstimatedMs:number;plannedMinutes:number;
+};
+export type CloudTimeWeek={
+ timeZone:string;weekStart:string;weekEnd:string;
+ workspaces:CloudWeeklyWorkspace[];
+ accountActualMs:number;accountLegacyEstimatedMs:number;accountPlannedMinutes:number;
+};
+function parseCloudTimeWeek(value:unknown):CloudTimeWeek{
+ if(!value||typeof value!=='object')throw new Error('Invalid weekly time response');
+ const data=value as Record<string,unknown>;
+ if(typeof data.timeZone!=='string'||data.timeZone.length>64)
+  throw new Error('Invalid weekly time zone');
+ try{new Intl.DateTimeFormat('en-US',{timeZone:data.timeZone});}
+ catch{throw new Error('Invalid weekly time zone');}
+ if(typeof data.weekStart!=='string'||typeof data.weekEnd!=='string'||
+  !/^\\d{4}-\\d{2}-\\d{2}$/.test(data.weekStart)||
+  !/^\\d{4}-\\d{2}-\\d{2}$/.test(data.weekEnd)||
+  !Array.isArray(data.workspaces)||data.workspaces.length>10000)
+  throw new Error('Invalid weekly time period');
+ const workspaces:CloudWeeklyWorkspace[]=[];
+ const ids=new Set<string>();
+ for(const entry of data.workspaces){
+  if(!entry||typeof entry!=='object')throw new Error('Invalid weekly workspace');
+  const w=entry as Record<string,unknown>;
+  if(!isUuid(w.workspaceId)||ids.has(w.workspaceId)||
+   (w.name!==null&&typeof w.name!=='string')||typeof w.archived!=='boolean'||
+   !Number.isSafeInteger(w.targetMinutes)||!Number.isSafeInteger(w.revision)||
+   Number(w.targetMinutes)<0||Number(w.targetMinutes)>10080||Number(w.revision)<0)
+    throw new Error('Invalid weekly workspace');
+  ids.add(w.workspaceId);
+  const actualMs=safeTimeMs(w.actualMs),legacyEstimatedMs=safeTimeMs(w.legacyEstimatedMs);
+  const plannedMinutes=safeTimeMs(w.plannedMinutes);
+  if(legacyEstimatedMs>actualMs)throw new Error('Invalid historical time attribution');
+  workspaces.push({
+   workspaceId:w.workspaceId,name:w.name,archived:w.archived,
+   targetMinutes:w.targetMinutes as number,revision:w.revision as number,
+   actualMs,legacyEstimatedMs,plannedMinutes
+  });
+ }
+ const accountActualMs=safeTimeMs(data.accountActualMs),
+  accountLegacyEstimatedMs=safeTimeMs(data.accountLegacyEstimatedMs),
+  accountPlannedMinutes=safeTimeMs(data.accountPlannedMinutes);
+ if(accountLegacyEstimatedMs>accountActualMs||
+  workspaces.reduce((v,w)=>v+w.actualMs,0)!==accountActualMs||
+  workspaces.reduce((v,w)=>v+w.plannedMinutes,0)!==accountPlannedMinutes||
+  workspaces.reduce((v,w)=>v+w.legacyEstimatedMs,0)!==accountLegacyEstimatedMs)
+   throw new Error('Weekly totals do not reconcile');
+ return {
+  timeZone:data.timeZone,weekStart:data.weekStart,weekEnd:data.weekEnd,
+  workspaces,accountActualMs,accountLegacyEstimatedMs,accountPlannedMinutes
+ };
+}
 export type CloudTimeState={
  session:CloudTimeSession|null;
  taskTotals:Record<string,number>;
@@ -191,6 +246,27 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async getWeeklyTime():Promise<CloudTimeWeek>{
+  const result=await call<{week:unknown}>('/v1/time-week');
+  return parseCloudTimeWeek(result.week);
+ },
+ async saveWeeklyTarget(workspaceId:string,targetMinutes:number,revision:number):Promise<{
+  workspaceId:string;targetMinutes:number;revision:number
+ }>{
+  if(!isUuid(workspaceId)||!Number.isInteger(targetMinutes)||targetMinutes<0||
+    targetMinutes>10080||!Number.isInteger(revision)||revision<0)
+    throw new Error('Invalid weekly target');
+  const result=await call<{target:{
+   workspaceId:string;targetMinutes:number;revision:number
+  }}>('/v1/time-week/targets/'+encodeURIComponent(workspaceId),{
+   method:'PUT',body:{targetMinutes,revision}
+  });
+  const t=result.target;
+  if(!t||t.workspaceId!==workspaceId||!Number.isSafeInteger(t.targetMinutes)||
+   !Number.isSafeInteger(t.revision)||t.revision<1)
+    throw new Error('Invalid weekly target response');
+  return t;
+ },
  async getTimeState(signal?:AbortSignal):Promise<CloudTimeState>{
   const data=await call<{session:unknown;taskTotals:unknown;rollups?:unknown}>('/v1/time-session',{signal});
   if(data.session!==null&&!verifyCloudTimeSession(data.session))throw new Error('Invalid server time session');
