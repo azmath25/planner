@@ -36,10 +36,14 @@ const TASK_UPDATE="UPDATE dayframe.tasks t SET title=$4,notes=$5,status=$6,prior
 "WHERE t.owner_user_id=$1 AND t.id=$2 AND t.workspace_id=$3 AND t.revision=$17 AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
 "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
 "AND ($14::uuid IS NULL OR EXISTS(SELECT 1 FROM dayframe.tasks parent WHERE parent.id=$14 AND parent.workspace_id=$3 AND parent.owner_user_id=$1 AND parent.deleted_at IS NULL AND parent.archived_at IS NULL)) RETURNING "+TASK_FIELDS;
-const TASK_SUBTREE="WITH RECURSIVE subtree AS (SELECT root.id,ARRAY[root.id] AS path FROM dayframe.tasks root "+
+// Lock the observed root in a materialized CTE. PostgreSQL rechecks the
+// revision after a concurrent updater releases its row lock, preventing a
+// stale archive/Trash/restore request from operating on a changed subtree.
+const TASK_SUBTREE="WITH RECURSIVE locked_root AS MATERIALIZED (SELECT root.id FROM dayframe.tasks root "+
 "JOIN dayframe.workspaces w ON w.id=root.workspace_id AND w.owner_user_id=$1 WHERE root.owner_user_id=$1 AND root.id=$2 AND root.revision=$3 "+
 "AND w.deleted_at IS NULL AND w.archived_at IS NULL AND ";
-const TASK_DESCENDANTS=" UNION ALL SELECT child.id,s.path||child.id FROM dayframe.tasks child JOIN subtree s ON child.parent_id=s.id "+
+const TASK_DESCENDANTS=" FOR UPDATE OF root),subtree AS (SELECT r.id,ARRAY[r.id] AS path FROM locked_root r "+
+"UNION ALL SELECT child.id,s.path||child.id FROM dayframe.tasks child JOIN subtree s ON child.parent_id=s.id "+
 "WHERE child.owner_user_id=$1 AND NOT child.id=ANY(s.path)) ";
 function taskSubtreeUpdate(field,rootCondition,childCondition,queryResult){
  return TASK_SUBTREE+rootCondition+TASK_DESCENDANTS+
