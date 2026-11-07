@@ -509,24 +509,23 @@ return {async fetch(req){
       return json({task:rows[0]},200,hdr);
     }
     if(tm&&req.method==='DELETE'){
-      const id=uuid(tm[1],'task id');
+      const id=uuid(tm[1],'task id'),rev=revision(await readBody(req));
       const sql=TASK_SUBTREE+"root.deleted_at IS NULL AND root.archived_at IS NULL"+TASK_DESCENDANTS+
         ",changed AS (UPDATE dayframe.tasks t SET deleted_at=now(),revision=t.revision+1,updated_at=now() FROM subtree s WHERE t.id=s.id AND t.owner_user_id=$1 AND t.deleted_at IS NULL RETURNING t.id) SELECT id::text AS id FROM changed";
-      const revCheck=await query("SELECT revision FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL",[uid,id]);
-      if(!revCheck.rows.length)throw fail(404,'Task not found');
-      const {rows}=await query(sql,[uid,id,revCheck.rows[0].revision]);
-      if(!rows.length)throw fail(404,'Task not found');
+      // The caller's previously observed revision belongs in the root CTE.
+      // A read-then-delete using the newest server revision silently trashes
+      // another device's recent edit.
+      const {rows}=await query(sql,[uid,id,rev]);
+      if(!rows.some(row=>row.id===id))throw fail(409,'Task changed on another device. Refresh before moving it to Trash.');
       return json({deleted:true},200,hdr);
     }
     const restore=/^\/v1\/tasks\/([a-f0-9-]{36})\/restore$/i.exec(path);
     if(restore&&req.method==='POST'){
-      const id=uuid(restore[1],'task id');
-      const revCheck=await query("SELECT revision FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NOT NULL",[uid,id]);
-      if(!revCheck.rows.length)throw fail(404,'Task not found');
+      const id=uuid(restore[1],'task id'),rev=revision(await readBody(req));
       const sql=taskSubtreeUpdate('deleted_at','root.deleted_at IS NOT NULL','AND t.deleted_at IS NOT NULL','rows');
-      const {rows}=await query(sql,[uid,id,revCheck.rows[0].revision,false]);
+      const {rows}=await query(sql,[uid,id,rev,false]);
       const root=rows.find(row=>row.id===id);
-      if(!root)throw fail(409,'Task changed or workspace unavailable');
+      if(!root)throw fail(409,'Task changed on another device. Refresh Trash before restoring.');
       return json({task:root,affected:rows.length},200,hdr);
     }
     if(['GET','POST','PATCH','DELETE'].includes(req.method))return json({error:'Not found'},404,hdr);
