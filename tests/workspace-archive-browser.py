@@ -31,6 +31,7 @@ def run(browser,width):
  else:
   page.locator('.sidebar [data-page="tasks"]').click()
  page.locator(f'.task-row [data-action="start"][data-id="{TASK}"]').first.click()
+ page.wait_for_function("() => window.__mockDb.timeSession?.state==='running'")
  assert page.locator('.global-timer').count()==1
 
  # Navigation never loses the global timer.
@@ -46,10 +47,15 @@ def run(browser,width):
  assert 'timer' in page.locator('.modal').inner_text().lower()
  page.locator('[data-action="confirm-archive-workspace"]').click()
  page.wait_for_function("() => window.__mockDb.workspaces.find(w=>w.kind==='custom').archivedAt !== null")
+ page.wait_for_function("() => document.querySelector('.global-timer')===null")
  assert page.locator('.global-timer').count()==0
  assert page.locator(f'[data-action="workspace"][data-id="{PROJECT}"]').count()==0
+ # Server-owned timer stops on workspace archive; it no longer writes a
+ # browser-local session record.
+ history=page.evaluate("() => window.__mockDb.sessions")
+ assert history[-1]['endReason']=='workspace_archived'
  saved=page.evaluate("() => JSON.parse(localStorage.getItem('dayframe.test.archive'))")
- assert saved['sessions'][-1]['reason']=='workspace_archived'
+ assert not saved.get('sessions'), 'Neon time sessions must not be copied to browser storage'
  assert len(window_tasks:=page.evaluate("() => window.__mockDb.tasks"))==1
  assert window_tasks[0]['title']=='Example workspace task'
 
