@@ -3,6 +3,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import pg from 'pg';
 import { secureDatabaseConnectionUrl } from './db-url.mjs';
+import { validateDocumentBlocks, canonicalDocumentJSON } from './document-blocks.mjs';
 
 const ORIGIN='https://azmath25.github.io';
 const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer',vary:'Origin'};
@@ -13,6 +14,55 @@ export const BOOTSTRAP_SQL="INSERT INTO dayframe.workspaces(owner_user_id,name,k
 const WORKSPACE_FIELDS='id::text AS id,name,kind,subtitle,color,cover,revision,created_at AS "createdAt",archived_at AS "archivedAt"';
 export const LIST_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id";
 export const ARCHIVED_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC,id DESC";
+
+/* M6.2a private document library: never return documents from another owner. */
+const DOCUMENT_META_FIELDS=[
+ 'd.id::text AS id','d.workspace_id::text AS workspace',
+ 'd.task_id::text AS "taskId"','d.parent_id::text AS "parentId"',
+ 'd.title','d.revision','d.deleted_at AS "deletedAt"',
+ 'd.created_at AS "createdAt"','d.updated_at AS "updatedAt"'
+].join(',');
+const DOCUMENT_FULL_FIELDS=DOCUMENT_META_FIELDS+',d.blocks';
+export const DOCUMENT_LIST_SQL="SELECT "+DOCUMENT_META_FIELDS+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL "+
+ "AND ($2::uuid IS NULL OR d.workspace_id=$2::uuid) "+
+ "AND ($3::uuid IS NULL OR d.task_id=$3::uuid) "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "ORDER BY d.updated_at DESC,d.id DESC LIMIT $4 OFFSET $5";
+export const DOCUMENT_TRASH_SQL="SELECT "+DOCUMENT_META_FIELDS+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NOT NULL "+
+ "ORDER BY d.deleted_at DESC,d.id DESC LIMIT $2 OFFSET $3";
+export const DOCUMENT_DETAIL_SQL="SELECT "+DOCUMENT_FULL_FIELDS+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.id=$2 "+
+ "AND d.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w "+
+ "WHERE w.id=d.workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL)";
+export const DOCUMENT_INSERT_SQL="INSERT INTO dayframe.documents "+
+ "(id,owner_user_id,workspace_id,task_id,parent_id,title,blocks) "+
+ "SELECT $2,$1,w.id,$4::uuid,$5::uuid,$6,$7::jsonb FROM dayframe.workspaces w "+
+ "WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
+ "AND ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM dayframe.tasks t WHERE "+
+ "t.id=$4::uuid AND t.workspace_id=w.id AND t.owner_user_id=$1 AND "+
+ "t.deleted_at IS NULL AND t.archived_at IS NULL)) "+
+ "ON CONFLICT(id) DO NOTHING RETURNING "+DOCUMENT_FULL_FIELDS;
+export const DOCUMENT_UPDATE_SQL="UPDATE dayframe.documents d SET workspace_id=$3,task_id=$4::uuid,"+
+ "parent_id=$5::uuid,title=$6,blocks=$7::jsonb,revision=d.revision+1,updated_at=now() "+
+ "WHERE d.owner_user_id=$1 AND d.id=$2 AND d.revision=$8 AND d.deleted_at IS NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 "+
+ "AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "RETURNING "+DOCUMENT_FULL_FIELDS;
+export const DOCUMENT_DELETE_SQL="UPDATE dayframe.documents d SET deleted_at=now(),"+
+ "revision=d.revision+1,updated_at=now() WHERE d.owner_user_id=$1 AND d.id=$2 "+
+ "AND d.revision=$3 AND d.deleted_at IS NULL "+
+ "AND NOT EXISTS(SELECT 1 FROM dayframe.documents child WHERE child.owner_user_id=$1 "+
+ "AND child.parent_id=d.id AND child.deleted_at IS NULL) "+
+ "RETURNING d.id::text AS id";
+export const DOCUMENT_RESTORE_SQL="UPDATE dayframe.documents d SET deleted_at=NULL,"+
+ "revision=d.revision+1,updated_at=now() WHERE d.owner_user_id=$1 AND d.id=$2 "+
+ "AND d.revision=$3 AND d.deleted_at IS NOT NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "RETURNING "+DOCUMENT_FULL_FIELDS;
 
 /* M6.1 Quick Notes: only JWT-owner owned rows are ever returned. */
 const NOTE_FIELDS=[
@@ -494,6 +544,20 @@ function noteBody(body){
  const reminderTime=clock(body.reminderTime,reminder,'note reminder time');
  return [workspace,title,content,color,pinned,reminder,reminderTime];
 }
+function documentBody(body){
+ const workspace=uuid(body.workspace,'document workspace');
+ const taskId=body.taskId==null?null:uuid(body.taskId,'document task');
+ const parentId=body.parentId==null?null:uuid(body.parentId,'document parent');
+ const title=str(body.title,160,'document title',{required:true});
+ const blocks=validateDocumentBlocks(body.blocks);
+ return [workspace,taskId,parentId,title,JSON.stringify(blocks)];
+}
+function matchesDocument(row,args){
+ const [workspace,taskId,parentId,title,blocks]=args;
+ return row.workspace===workspace&&(row.taskId||null)===taskId&&
+  (row.parentId||null)===parentId&&row.title===title&&
+  canonicalDocumentJSON(row.blocks)===canonicalDocumentJSON(JSON.parse(blocks));
+}
 function matchesNote(row,args){
  const [workspace,title,content,color,pinned,reminder,reminderTime]=args;
  return row.workspace===workspace&&row.title===title&&row.content===content&&
@@ -779,6 +843,77 @@ return {async fetch(req){
         return json({day,revision:Number(rows[0].revision),taskIds:ids},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
+    }
+    // Private documents: no public URLs or document-content search endpoints.
+    if(path==='/v1/documents/trash'&&req.method==='GET'){
+      const params=new URL(req.url).searchParams;
+      const limit=Number(params.get('limit')??50),offset=Number(params.get('offset')??0);
+      if(!Number.isSafeInteger(limit)||limit<1||limit>100||
+       !Number.isSafeInteger(offset)||offset<0||offset>1000000)
+       throw fail(400,'Invalid document pagination');
+      const {rows}=await query(DOCUMENT_TRASH_SQL,[uid,limit+1,offset]);
+      return json({documents:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
+    const docRestore=/^\/v1\/documents\/([a-f0-9-]{36})\/restore$/i.exec(path);
+    if(docRestore&&req.method==='POST'){
+      const id=uuid(docRestore[1],'document ID'),rev=revision(await readBody(req,1500));
+      const {rows}=await query(DOCUMENT_RESTORE_SQL,[uid,id,rev]);
+      if(!rows.length)throw fail(409,'Document changed or its workspace is unavailable');
+      return json({document:rows[0]},200,hdr);
+    }
+    if(path==='/v1/documents'){
+      if(req.method==='GET'){
+       const params=new URL(req.url).searchParams;
+       const limit=Number(params.get('limit')??50),offset=Number(params.get('offset')??0);
+       if(!Number.isSafeInteger(limit)||limit<1||limit>100||
+        !Number.isSafeInteger(offset)||offset<0||offset>1000000)
+        throw fail(400,'Invalid document pagination');
+       const workspace=params.get('workspace')?uuid(params.get('workspace'),'document workspace'):null;
+       const taskId=params.get('taskId')?uuid(params.get('taskId'),'document task'):null;
+       const {rows}=await query(DOCUMENT_LIST_SQL,[uid,workspace,taskId,limit+1,offset]);
+       return json({documents:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+      }
+      if(req.method==='POST'){
+       const body=await readBody(req,220000);
+       const id=uuid(body.id,'document ID'),args=documentBody(body);
+       if(id===args[2])throw fail(400,'Document cannot be its own parent');
+       let rows;
+       try{({rows}=await query(DOCUMENT_INSERT_SQL,[uid,id,...args]));}
+       catch(error){if(['23514','23503','23505'].includes(error?.code))
+        throw fail(409,'Document workspace, task or parent unavailable');throw error;}
+       if(rows.length)return json({document:rows[0]},201,hdr);
+       const existing=await query(DOCUMENT_DETAIL_SQL,[uid,id]);
+       if(existing.rows.length&&matchesDocument(existing.rows[0],args))
+        return json({document:existing.rows[0]},200,hdr);
+       throw fail(409,'Document ID already used or workspace unavailable');
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,POST,OPTIONS'});
+    }
+    const documentId=/^\/v1\/documents\/([a-f0-9-]{36})$/i.exec(path);
+    if(documentId){
+      const id=uuid(documentId[1],'document ID');
+      if(req.method==='GET'){
+       const {rows}=await query(DOCUMENT_DETAIL_SQL,[uid,id]);
+       if(!rows.length)throw fail(404,'Document unavailable');
+       return json({document:rows[0]},200,hdr);
+      }
+      if(req.method==='PATCH'){
+       const body=await readBody(req,220000),args=documentBody(body),rev=revision(body);
+       if(id===args[2])throw fail(400,'Document cannot be its own parent');
+       let rows;
+       try{({rows}=await query(DOCUMENT_UPDATE_SQL,[uid,id,...args,rev]));}
+       catch(error){if(['23514','23503'].includes(error?.code))
+        throw fail(409,'Document hierarchy or attachment conflict');throw error;}
+       if(!rows.length)throw fail(409,'Document changed or workspace unavailable. Refresh.');
+       return json({document:rows[0]},200,hdr);
+      }
+      if(req.method==='DELETE'){
+       const rev=revision(await readBody(req,1500));
+       const {rows}=await query(DOCUMENT_DELETE_SQL,[uid,id,rev]);
+       if(!rows.length)throw fail(409,'Document changed or has undeleted child documents');
+       return json({removed:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PATCH,DELETE,OPTIONS'});
     }
     if(path==='/v1/notes/trash'&&req.method==='GET'){
       const params=new URL(req.url).searchParams;
