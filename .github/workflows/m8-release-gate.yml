@@ -16,6 +16,7 @@ jobs:
       - run: npm run test:source
       - run: npm run test:time
       - run: npm run test:documents
+      - run: npm run test:pwa
       - run: node --experimental-strip-types --test tests/timeReports.test.mjs tests/timeInsights.test.mjs tests/reportCsv.test.mjs
       - run: npm run build
       - run: npm run check:dist
