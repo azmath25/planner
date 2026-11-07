@@ -112,6 +112,23 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async notificationPreferences():Promise<{timeZone:string|null;publicKey:string}>{
+  const data=await call<{timeZone:string|null;publicKey:string}>('/v1/notification-preferences');
+  if((data.timeZone!==null&&typeof data.timeZone!=='string')||
+   typeof data.publicKey!=='string'||!/^[-_A-Za-z0-9]+$/.test(data.publicKey))
+   throw new Error('Invalid notification settings');
+  return data;
+ },
+ async setNotificationTimeZone(timeZone:string):Promise<void>{
+  await call('/v1/notification-preferences',{method:'PUT',body:{timeZone}});
+ },
+ async savePushSubscription(endpoint:string):Promise<void>{
+  await call('/v1/push-subscription',{method:'PUT',body:{endpoint}});
+ },
+ async removePushSubscription(endpoint:string):Promise<void>{
+  await call('/v1/push-subscription',{method:'DELETE',body:{endpoint}});
+ },
+
  async listAlerts(timeZone:string):Promise<CloudAlert[]>{
   const data=await call<{alerts:CloudAlert[]}>('/v1/alerts?timeZone='+encodeURIComponent(timeZone));
   if(!Array.isArray(data.alerts)||data.alerts.some(x=>!x||typeof x.taskId!=='string'||
