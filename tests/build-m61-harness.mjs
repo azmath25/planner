@@ -18,6 +18,8 @@ mockDb.notes=[
  createNote(RESEARCH_NOTE,PROJECT,'Draft outline','A research note')
 ];
 mockDb.noteConvertCalls=[];
+mockDb.noteCreateCalls=[];
+mockDb.noteSimulateLostResponse=true;
 cloudApi.listQuickNotes=async()=>mockDb.notes.filter(n=>!n.deletedAt).map(n=>({...n}));
 cloudApi.listTrashedQuickNotes=async()=>mockDb.notes.filter(n=>Boolean(n.deletedAt)).map(n=>({...n}));
 cloudApi.restoreQuickNote=async(id,revision)=>{
@@ -27,6 +29,7 @@ cloudApi.restoreQuickNote=async(id,revision)=>{
  note.deletedAt=null;note.revision++;return {...note};
 };
 cloudApi.createQuickNote=async body=>{
+ mockDb.noteCreateCalls.push({id:body.id,title:body.title});
  const prior=mockDb.notes.find(n=>n.id===body.id);
  if(prior){
   if(prior.title!==body.title)throw Object.assign(Error('Note ID already used'),{status:409});
@@ -35,6 +38,10 @@ cloudApi.createQuickNote=async body=>{
  const note={...createNote(body.id,body.workspace,body.title,body.content,body.pinned),
   color:body.color,reminder:body.reminder,reminderTime:body.reminderTime};
  mockDb.notes.unshift(note);
+ if(body.title==='Retry note'&&mockDb.noteSimulateLostResponse){
+  mockDb.noteSimulateLostResponse=false;
+  throw Error('Connection lost after save');
+ }
  return {...note};
 };
 cloudApi.updateQuickNote=async (id,body)=>{
