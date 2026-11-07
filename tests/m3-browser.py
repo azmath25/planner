@@ -75,7 +75,7 @@ def run(browser,width):
  p.locator(f'{nav} [data-page="tasks"]').click()
  p.locator(f'[data-action="detail"][data-id="{tid}"]').first.click()
  p.locator('[data-action="edit-image"][data-kind="task"][data-slot="cover"]').click()
- png=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLfgAAAAABJRU5ErkJggg==')
+ png=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAIAAADZF8uwAAAAF0lEQVR4nGOUyT3GQAgwEVQxqmgAFAEAWGYBZ7meuZQAAAAASUVORK5CYII=')
  p.locator('#media-file').set_input_files({'name':'cover.png','mimeType':'image/png','buffer':png})
  p.wait_for_function("() => Object.values(window.__mockDb.images).some(v=>v.cover)",timeout=7000)
  assert p.locator('.workspace-detail-cover.has-photo').count()==1
