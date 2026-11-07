@@ -856,7 +856,7 @@ return {async fetch(req){
     }
     // No unreviewed binary upload or public attachment transport is available.
     // Reject before reading request bodies; account auth already ran above.
-    const documentAttachment=/^\\/v1\\/documents\\/([a-f0-9-]{36})\\/attachments$/i.exec(path);
+    const documentAttachment=/^\/v1\/documents\/([a-f0-9-]{36})\/attachments$/i.exec(path);
     if(documentAttachment)
       return json({error:'Document file uploads are unavailable until private storage and scanning are approved'},415,hdr);
     // M6.3: search is authenticated, bounded and returns metadata only.
