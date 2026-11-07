@@ -75,6 +75,8 @@ def run(browser,width):
  assert p.get_by_text('over capacity',exact=False).count()>=1
  # Browser remount and calendar views use the same saved intervals.
  p.evaluate('() => mountApp()')
+ navigation(p,width,'plan')
+ assert p.locator('.page-plan [data-page="calendar"]').count()==1, 'Mobile and desktop need a Calendar entry in Plan'
  navigation(p,width,'calendar')
  p.locator('[data-action="calendar-view"][data-value="month"]').click()
  p.locator('#calendar-anchor').fill(other)
