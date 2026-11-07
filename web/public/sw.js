@@ -3,7 +3,6 @@ self.addEventListener('push', event => {
  event.waitUntil(self.registration.showNotification('Dayframe reminder', {
   body:'Open Dayframe to review your due tasks and reminders.',
   tag:'dayframe-reminders',renotify:false,
-  icon:'./favicon.svg',
   data:{url:self.registration.scope}
  }));
 });
