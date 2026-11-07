@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
  createHandler,NOTES_LIST_SQL,NOTE_BY_ID_SQL,NOTE_INSERT_SQL,
- NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_CONVERT_SQL
+ NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL
 } from '../src/index.mjs';
 const NOTE='a1111111-1111-4111-8111-111111111111';
 const WS='b2222222-2222-4222-8222-222222222222';
@@ -10,7 +10,7 @@ const TASK='c3333333-3333-4333-8333-333333333333';
 const item=(id=NOTE)=>({
  id,workspace:WS,title:'A note',content:'Remember this',color:'lilac',
  pinned:true,reminder:'2026-12-01',reminderTime:'14:00',
- convertedTaskId:null,convertedAt:null,revision:1,
+ convertedTaskId:null,convertedAt:null,deletedAt:null,revision:1,
  createdAt:'2026-11-07T00:00:00Z',updatedAt:'2026-11-07T00:00:00Z'
 });
 const input={workspace:WS,title:'A note',content:'Remember this',color:'lilac',
@@ -23,6 +23,8 @@ const create=async(custom={})=>{
    calls.push({sql,args});
    if(custom.run)return custom.run(sql,args);
    if(sql===NOTES_LIST_SQL)return {rows:args[0]==='owner-a'?[item()]:[]};
+   if(sql===NOTES_TRASH_SQL)return {rows:[{...item(),deletedAt:'2026-11-07T12:00:00Z'}]};
+   if(sql===NOTE_RESTORE_SQL)return {rows:[{...item(),revision:3}]};
    if(sql===NOTE_INSERT_SQL)return {rows:[item()]};
    if(sql===NOTE_BY_ID_SQL)return {rows:[item()]};
    if(sql===NOTE_UPDATE_SQL)return {rows:[{...item(),revision:2}]};
@@ -108,4 +110,27 @@ test('M6.1 note input validation and stale conversion handling',async()=>{
  });
  assert.equal(stale.status,409);
  assert.doesNotMatch(await stale.text(),/SQL|password|DATABASE_URL/i);
+});
+
+
+test('M6.1 trash listing and restore are account-owned and revision-fenced',async()=>{
+ const {request,calls}=await create();
+ const trash=await request('/v1/notes/trash?limit=20&offset=0','GET','owner-b');
+ assert.equal(trash.status,200);
+ assert.equal((await trash.json()).notes[0].deletedAt,'2026-11-07T12:00:00Z');
+ assert.deepEqual(calls[0],{sql:NOTES_TRASH_SQL,args:['owner-b',21,0]});
+ const restored=await request('/v1/notes/'+NOTE+'/restore','POST','owner-a',{revision:2,owner_user_id:'owner-b'});
+ assert.equal(restored.status,200);
+ assert.equal((await restored.json()).note.deletedAt,null);
+ assert.deepEqual(calls[1],{sql:NOTE_RESTORE_SQL,args:['owner-a',NOTE,2]});
+ assert.equal((await request('/v1/notes/'+NOTE+'/restore','POST','owner-a',{revision:0})).status,400);
+});
+test('M6.1 conflicting restore returns safe message',async()=>{
+ const {request}=await create({run:async(sql)=>{
+  if(sql===NOTE_RESTORE_SQL)return {rows:[]};
+  throw Error('Unexpected SQL');
+ }});
+ const response=await request('/v1/notes/'+NOTE+'/restore','POST','owner-a',{revision:2});
+ assert.equal(response.status,409);
+ assert.doesNotMatch(await response.text(),/database|password|SELECT|secret/i);
 });
