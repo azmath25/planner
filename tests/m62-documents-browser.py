@@ -40,6 +40,39 @@ def run(browser,width):
  assert p.evaluate('window.__docMock.items.find(x=>x.id===window.__docMock.seed).revision')==2
  assert p.evaluate('window.__documentDirty') is False
 
+ # Autosave debounces ordinary title changes without another click.
+ p.get_by_label('Document title').fill('Autosaved research plan')
+ p.wait_for_function('window.__docMock.updates.length===2',timeout=8500)
+ assert p.evaluate('window.__docMock.items.find(x=>x.id===window.__docMock.seed).title')=='Autosaved research plan'
+ p.wait_for_function('window.__documentDirty===false')
+
+ # Backend search only returns document metadata.
+ p.get_by_label('Search private documents').fill('Autosaved')
+ p.wait_for_function('window.__docMock.searches.length>=1',timeout=8500)
+ assert p.evaluate('window.__docMock.searches.at(-1).q')=='Autosaved'
+ assert p.get_by_role('button',name='Autosaved research plan').count()==1
+ p.get_by_label('Search private documents').fill('')
+
+ # JSON export is explicit and authenticated through the mock API.
+ with p.expect_download() as saved_file:
+  p.get_by_role('button',name='Download saved JSON').click()
+ assert saved_file.value.suggested_filename.startswith('dayframe-document-')
+ assert p.evaluate('window.__docMock.exports.length')==1
+
+ # A second-device edit causes a conflict; the draft stays copyable/exportable.
+ p.evaluate('window.__docMock.items.find(x=>x.id===window.__docMock.seed).revision++')
+ p.get_by_label('Document title').fill('My unsaved conflicting version')
+ p.get_by_text('Conflict — local draft preserved').wait_for(timeout=8500)
+ assert p.get_by_label('Document title').input_value()=='My unsaved conflicting version'
+ assert p.evaluate('window.__docMock.items.find(x=>x.id===window.__docMock.seed).title')=='Autosaved research plan'
+ with p.expect_download() as draft_file:
+  p.get_by_role('button',name='Download local draft').click()
+ assert draft_file.value.suggested_filename.startswith('dayframe-unsaved-draft-')
+ p.once('dialog',lambda dlg:dlg.accept())
+ p.get_by_role('button',name='Reload server version').click()
+ p.wait_for_function("() => document.querySelector('[aria-label=\"Document title\"]')?.value==='Autosaved research plan'")
+ assert p.evaluate('window.__documentDirty') is False
+
  p.get_by_role('button',name='New child page').click()
  p.wait_for_function('window.__docMock.creations.length===1')
  created=p.evaluate('window.__docMock.creations[0]')
