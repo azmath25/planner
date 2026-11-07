@@ -140,6 +140,17 @@ function tasksPage(){
  <div class="filters task-filter-row">${filters.map(([v,l])=>`<button class="filter ${state.filter===v?'active':''}" data-action="filter" data-value="${v}" aria-pressed="${state.filter===v}">${l}</button>`).join('')}</div>
  <div class="card task-list-card">${results.length?results.map(t=>taskRow(t)).join(''):`<div class="empty">${icon('list')}<h3>No matching tasks</h3><p>Change your filters or add something new.</p></div>`}</div>`;
 }
+function archivedTasksPage(){
+ const back='<button class="btn secondary" data-action="nav" data-page="tasks">'+icon('back')+' All tasks</button>';
+ const rows=state.archivedTasks.map(t=>
+   '<div class="task-row"><div class="task-info"><strong class="task-title">'+escapeHTML(t.title)+'</strong>'+
+   '<div class="task-meta">'+escapeHTML(workspace(t.workspace).name)+' · '+escapeHTML(t.status)+'</div></div>'+
+   '<button class="btn secondary small" data-action="unarchive-task" data-id="'+escapeHTML(t.id)+'">'+icon('refresh')+' Restore</button></div>'
+ ).join('');
+ return titleHead('Safe keeping','Archived tasks','Archived tasks and subtasks remain in Neon, but leave active lists.',back)+
+  '<div class="card task-list-card">'+(state.taskArchiveBusy?'<p role="status" class="subtitle">Loading archive…</p>':
+    rows||'<div class="empty"><h3>No archived tasks</h3><p>Use Archive from a task detail page to keep it out of active views.</p></div>')+'</div>';
+}
 function trashPage(){
  return titleHead('Recoverable items','Task Trash','Deleted tasks can be restored. Permanent deletion is not enabled.',
  `<button class="btn secondary" data-action="nav" data-page="tasks">${icon('back')} Back to tasks</button>`)
@@ -252,10 +263,15 @@ function profilePage(){
   </div>
  </section>`;
 }
-function render(){const view=state.page==='workspace-archive'?archivedWorkspacesPage():state.page==='profile'?profilePage():state.page==='home'?home():state.page==='tasks'?tasksPage():state.page==='trash'?trashPage():state.page==='plan'?plan():state.page==='workspaces'?workspacesPage():state.page==='workspace'?workspacePage():state.page==='notes'?notesPage():state.page==='reports'?reportsPage():state.page==='calendar'?calendarPage():state.page==='detail'?taskDetail():settingsPage();layout(view)}
+function render(){const view=state.page==='task-archive'?archivedTasksPage():state.page==='workspace-archive'?archivedWorkspacesPage():state.page==='profile'?profilePage():state.page==='home'?home():state.page==='tasks'?tasksPage():state.page==='trash'?trashPage():state.page==='plan'?plan():state.page==='workspaces'?workspacesPage():state.page==='workspace'?workspacePage():state.page==='notes'?notesPage():state.page==='reports'?reportsPage():state.page==='calendar'?calendarPage():state.page==='detail'?taskDetail():settingsPage();layout(view)}
 function navigate(page){
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
+ if(page==='task-archive'&&isCloud){
+  state.taskArchiveBusy=true;render();
+  cloudApi.listArchivedTasks().then(rows=>{state.archivedTasks=rows.map(localTask);})
+   .catch(saveError).finally(()=>{state.taskArchiveBusy=false;if(state.page==='task-archive')render();});
+ }
  if(page==='workspace-archive'&&isCloud){
   state.archiveBusy=true;render();
   cloudApi.listArchivedWorkspaces().then(rows=>{state.archivedWorkspaces=rows.map(localWorkspace);})
