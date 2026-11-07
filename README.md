@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M5.1: authenticated time sessions implemented and deployed.** Neon now owns the running/paused timer, server timestamps and saved direct-task time totals, alongside workspaces, tasks, day plans and opted-in reminders. M4.3 browser push was confirmed on one real browser; device-by-device acceptance remains open. M5.2 rollups and M5.3 targets are future milestones. The mobile website is the first product; Android is deliberately later.
+**M5.2: nested task and workspace time totals implemented and deployed.** A parent now includes its recorded subtasks at every depth, showing own and descendant time separately. Each historical session counts once toward account/workspace totals; a prominent Add task button in each workspace preselects that workspace. Neon also owns the running/paused timer, tasks, planning and opt-in reminders. M4.3 browser push was confirmed on one real browser; device-by-device acceptance remains open. M5.3 targets are a future milestone. The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -23,7 +23,13 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
 
-**Saved in Neon:** workspaces, tasks and private task images, untimed daily pools, scheduled blocks, reminder actions/push registrations, and M5.1 server-clock time sessions with direct task totals. **Still device-local:** daily capacity, quick notes, workspace photos and *older* browser-only timer history. No automatic import of previous local sessions or already-running local timers was performed, to avoid duplicate time. The user confirmed receiving a browser reminder; additional devices and Safari still need testing. Use **Profile → Refresh saved data** to reload account data.
+**Saved in Neon:** workspaces, tasks and private task images, untimed daily pools, scheduled blocks, reminder actions/push registrations, and M5.1/M5.2 server-clock sessions with direct, nested, workspace and account all-time totals. **Still device-local:** daily capacity, quick notes, workspace photos and *older* browser-only timer history. No automatic import of previous local sessions or already-running local timers was performed, to avoid duplicate time. The user confirmed receiving a browser reminder; additional devices and Safari still need testing. Use **Profile → Refresh saved data** to reload account data.
+
+## M5.2 — Task, workspace and account time rollups
+
+Open a parent task to see **Recorded time**, separated into **Own time** and **Subtasks**. All descendants, including nested grandchildren, count toward their ancestors, but each session is counted only once in the **workspace** and **account** totals. Task hierarchy uses current parent membership; historical workspace time is credited to the workspace in which the session began. Time from a permanently deleted task remains in the original workspace/account total.
+
+Each workspace detail page has an **Add task** button that opens task creation with the workspace already selected. The workspace Time card and authenticated Reports account/workspace summary use saved Neon data, not sample time. Daily/weekly/monthly charts and targets remain for M7/M5.3. See [M5.2 checkpoint](docs/CHECKPOINT_M5.2.md). Older browser-only timer records are not automatically imported.
 
 ## M5.1 — Time Sessions (deployed, real-device acceptance pending)
 
