@@ -17,6 +17,16 @@ export type TaskInput=Pick<CloudTask,'workspace'|'title'|'notes'|'status'|'prior
 export type TaskEvent={id:string;type:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null;createdAt:string};
 export type TaskMedia={slot:'cover'|'avatar';data:string;focalY:number};
 export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
+export type DailyPool={day:string;revision:number;taskIds:string[]};
+function assertDailyPool(value:unknown,day:string):DailyPool{
+ if(!value||typeof value!=='object')throw new Error('Invalid day pool response');
+ const item=value as Partial<DailyPool>;
+ if(item.day!==day||!Number.isSafeInteger(item.revision)||item.revision!<0||
+  !Array.isArray(item.taskIds)||item.taskIds.length>100||
+  item.taskIds.some(id=>typeof id!=='string')||
+  new Set(item.taskIds).size!==item.taskIds.length)throw new Error('Invalid day pool data');
+ return item as DailyPool;
+}
 export class ApiFailure extends Error {
   constructor(message:string,readonly status:number) {super(message);}
 }
@@ -86,6 +96,18 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async loadDailyPool(day:string,signal?:AbortSignal):Promise<DailyPool>{
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw new Error('Invalid planning date');
+  return assertDailyPool(await call('/v1/daily-pool/'+day,{signal}),day);
+ },
+ async saveDailyPool(day:string,revision:number,taskIds:string[]):Promise<DailyPool>{
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isSafeInteger(revision)||revision<0||
+   !Array.isArray(taskIds)||taskIds.length>100||new Set(taskIds).size!==taskIds.length){
+   throw new Error('Invalid daily pool changes');
+  }
+  return assertDailyPool(await call('/v1/daily-pool/'+day,{method:'PUT',body:{revision,taskIds}}),day);
+ },
+
  async listArchivedWorkspaces():Promise<CloudWorkspace[]>{
   const data=await call<{workspaces:unknown[]}>('/v1/workspaces/archived');
   if(!Array.isArray(data.workspaces)||!data.workspaces.every(verifyWorkspace)||
