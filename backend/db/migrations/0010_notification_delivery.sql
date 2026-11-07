@@ -65,7 +65,11 @@ BEGIN
    AND a.task_id=o.task_id AND a.kind=o.kind AND a.source_day=o.day AND a.source_time=o.clock
   WHERE o.day IS NOT NULL AND a.acknowledged_at IS NULL
  ), eligible AS (
-  SELECT * FROM due d WHERE fire_at<=now() AND fire_at>=now()-interval '7 days'\n   AND NOT EXISTS (SELECT 1 FROM dayframe.notification_deliveries nd\n    WHERE nd.owner_user_id=d.owner_user_id AND nd.task_id=d.task_id\n     AND nd.kind=d.kind AND nd.source_day=d.day AND nd.source_time=d.clock\n     AND nd.send_after=d.fire_at AND nd.endpoint=d.endpoint)
+  SELECT * FROM due d WHERE fire_at<=now() AND fire_at>=now()-interval '7 days'
+   AND NOT EXISTS (SELECT 1 FROM dayframe.notification_deliveries nd
+    WHERE nd.owner_user_id=d.owner_user_id AND nd.task_id=d.task_id
+     AND nd.kind=d.kind AND nd.source_day=d.day AND nd.source_time=d.clock
+     AND nd.send_after=d.fire_at AND nd.endpoint=d.endpoint)
   ORDER BY fire_at LIMIT p_limit
  ), inserted AS (
   INSERT INTO dayframe.notification_deliveries
