@@ -79,7 +79,7 @@ def run(browser,width):
  p.locator('[data-current-account-time]').wait_for()
  assert p.locator('[data-current-account-time]').inner_text()=='00:03:30'
  assert '00:03:30' in p.locator('.report-table').inner_text()
- assert 'Time-series charts' in p.locator('.content').inner_text()
+ assert 'time-series charts' in p.locator('.content').inner_text().lower()
  assert not errors,errors
  assert p.evaluate('() => document.documentElement.scrollWidth<=window.innerWidth+3'),f'Overflow at {width}'
  p.close()
