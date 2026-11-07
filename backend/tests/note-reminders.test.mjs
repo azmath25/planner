@@ -4,7 +4,7 @@ import {
  createHandler,ALERT_LIST_SQL,NOTE_ALERT_LIST_SQL,NOTE_ALERT_ACTION_SQL
 } from '../src/index.mjs';
 import {
- dispatchDueNotes,NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL
+ dispatchDueNotes,NOTE_CLAIM_SQL,NOTE_ELIGIBLE_SQL,PUSH_QUIET_SQL
 } from '../src/reminder-dispatch.mjs';
 
 const N='b1111111-1111-4111-8111-111111111111';
@@ -98,6 +98,7 @@ test('M6.1a valid note push contains no title/body and is sent at most once per 
  const sql=async(statement)=>{
   if(statement===NOTE_CLAIM_SQL)return {rows:[{id:20,endpoint,attempts:1}]};
   if(statement===NOTE_ELIGIBLE_SQL)return {rows:[{'?column?':1}]};
+  if(statement===PUSH_QUIET_SQL)return {rows:[{not_before:new Date(0)}]};
   if(statement.includes("status='delivered'")){statusWrites++;return {rows:[]};}
   throw Error('Unexpected SQL');
  };
@@ -113,10 +114,31 @@ test('M6.1a retryable push response uses exponential backoff',async()=>{
  const sql=async(statement)=>{
   if(statement===NOTE_CLAIM_SQL)return {rows:[{id:21,endpoint,attempts:2}]};
   if(statement===NOTE_ELIGIBLE_SQL)return {rows:[{'?column?':1}]};
+  if(statement===PUSH_QUIET_SQL)return {rows:[{not_before:new Date(0)}]};
   if(statement.includes("status=CASE WHEN attempts>=6")){retries++;return {rows:[]};}
   throw Error('Unexpected SQL');
  };
  const r=await dispatchDueNotes({sql,vapid:()=> 'vapid token',send:async()=>({ok:false,status:503})});
  assert.deepEqual(r,{claimed:1,delivered:0,expired:0,retrying:1});
  assert.equal(retries,1);
+});
+
+test('M6.1c do not send note push after entering quiet hours during an earlier retry',async()=>{
+ const endpoint='https://fcm.googleapis.com/fcm/send/quiet';
+ const future=new Date(Date.now()+60*60*1000);
+ const actions=[];let sent=0;
+ const sql=async(statement,args)=>{
+  actions.push({statement,args});
+  if(statement===NOTE_CLAIM_SQL)return {rows:[{id:77,owner_user_id:'alice',endpoint,attempts:1}]};
+  if(statement===NOTE_ELIGIBLE_SQL)return {rows:[{'?column?':1}]};
+  if(statement===PUSH_QUIET_SQL)return {rows:[{not_before:future}]};
+  if(statement.includes("status='retry',next_attempt_at=$2::timestamptz"))return {rows:[]};
+  throw Error('Unexpected statement');
+ };
+ const r=await dispatchDueNotes({sql,vapid:()=> 'unused',send:()=>{
+  sent++;throw Error('Quiet hours breached');
+ }});
+ assert.equal(sent,0);
+ assert.deepEqual(r,{claimed:1,delivered:0,expired:0,retrying:1});
+ assert.ok(actions.some(x=>x.statement===PUSH_QUIET_SQL&&x.args[0]==='alice'));
 });
