@@ -530,13 +530,14 @@ function archivedWorkspacesPage(){
 function workspacesPage(){return `${titleHead('All your worlds','Workspaces','General is always here. Build dedicated spaces for everything else.')}<div class="info-banner">${icon('layers')} Home and the day planner always combine tasks from every workspace.</div>${workspaceCards()}<div class="section"><div class="card"><h2>Why separate workspaces?</h2><p class="subtitle">Each workspace has its own tasks, quick notes, documents, time reports and eventual profile or cover images. Long-term tasks live inside workspaces and have their own scoped reports too.</p><div style="margin-top:15px"><button class="btn secondary small" data-action="modal-workspace">${icon('plus')} Create workspace</button>${isCloud?`<button class="btn secondary small" data-action="nav" data-page="workspace-archive">${icon('folder')} Archived workspaces</button>`:''}</div></div></div>`}
 function workspacePage(){const w=workspace(state.viewWorkspace);return `<div style="margin-bottom:13px"><button class="btn ghost small" data-action="nav" data-page="workspaces">${icon('back')} All workspaces</button></div>${coverFrame('workspace',w.id,w.cover,'folder')}<div class="detail-options media-toolbar">${photoButton('workspace',w.id,'cover','Edit cover')}${photoButton('workspace',w.id,'avatar','Edit avatar')}${w.kind==='custom'?`<button class="btn secondary small" data-action="modal-workspace-edit" data-id="${escapeHTML(w.id)}">${icon('edit')} Edit workspace</button>`:''}${isCloud&&w.kind==='custom'?`<button type="button" class="btn secondary small" data-action="archive-workspace" data-id="${escapeHTML(w.id)}">${icon('folder')} Archive</button>`:''}</div>${titleHead('Workspace',escapeHTML(w.name),escapeHTML(w.subtitle),`<button type="button" class="btn" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button>`)}<div class="metrics" style="margin:0 0 19px"><div class="card metric"><div class="metric-label">Open tasks</div><div class="metric-value">${state.tasks.filter(t=>t.workspace===w.id&&t.status==='open').length}</div></div><div class="card metric"><div class="metric-label">Notes</div><div class="metric-value">${state.notes.filter(n=>n.workspace===w.id).length}</div></div><div class="card metric"><div class="metric-label">Recorded time</div><div class="metric-value" data-current-workspace-time>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(workspaceTimeMs(w))}</div><div class="metric-note">${isCloudTime?'Historical sessions originally recorded here':'Direct time spent on tasks here'}</div></div></div>${weekWorkspaceBlock(w)}<div class="dash-grid"><div class="card"><div class="card-title"><h2>Workspace tasks</h2><button type="button" class="btn small secondary" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button></div>${state.tasks.filter(t=>t.workspace===w.id).map(t=>taskRow(t)).join('')||'<p class="tiny">No tasks in this workspace yet. Use Add task to create the first one.</p>'}</div><div class="card"><div class="card-title"><h2>Workspace notes</h2><button class="text-link" data-action="modal-note" data-id="${w.id}">Quick note</button></div>${state.notes.filter(n=>n.workspace===w.id).map(n=>`<div class="alert-row"><div class="document-icon">${icon('note')}</div><div><strong>${escapeHTML(n.title)}</strong><p>${escapeHTML(n.content.slice(0,90))}</p></div></div>`).join('')||'<p class="tiny">No notes yet.</p>'}<p class="banner-note">Rich documents and cover image uploads are specified for later milestones.</p></div></div>`}
 function notesPage(){
- const workspaceNotes=state.notes.filter(n=>workspaces.some(w=>w.id===n.workspace));
+ const trashed=isCloud&&state.noteMode==='trash';
+ const workspaceNotes=(trashed?state.noteTrash:state.notes).filter(n=>workspaces.some(w=>w.id===n.workspace));
  const query=state.noteSearch.trim().toLocaleLowerCase();
  const notes=workspaceNotes.filter(n=>(state.noteFilter==='all'||state.noteFilter==='pinned'&&n.pinned||
   state.noteFilter===n.workspace)&&(!query||[n.title,n.content,workspace(n.workspace).name]
   .some(value=>String(value||'').toLocaleLowerCase().includes(query))))
-  .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||
-   String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+  .sort((a,b)=>trashed?String(b.deletedAt||'').localeCompare(String(a.deletedAt||'')):
+   Number(b.pinned)-Number(a.pinned)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
  const header=titleHead('Capture thoughts','Notes & documents',
   isCloud?'Quick notes saved to your Dayframe account.':'Quick notes in your local preview.',
   `<button class="btn" data-action="modal-note" ${state.noteBusy?'disabled':''}>${icon('plus')} Quick note</button>`);
@@ -560,14 +561,16 @@ function notesPage(){
   return `<article class="note ${color}">
    <div style="display:flex;gap:8px;align-items:flex-start;justify-content:space-between">
     <h3>${escapeHTML(n.title)}</h3>
-    <button type="button" data-action="toggle-note-pin" data-id="${escapeHTML(n.id)}"
+    ${!trashed?`<button type="button" data-action="toggle-note-pin" data-id="${escapeHTML(n.id)}"
      class="mini-btn" ${disabled} aria-pressed="${Boolean(n.pinned)}"
-     aria-label="${n.pinned?'Unpin':'Pin'} ${escapeHTML(n.title)}">${icon('pin')} ${n.pinned?'Pinned':'Pin'}</button>
+     aria-label="${n.pinned?'Unpin':'Pin'} ${escapeHTML(n.title)}">${icon('pin')} ${n.pinned?'Pinned':'Pin'}</button>`:''}
    </div>
    <p style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHTML(n.content)}</p>
    ${reminder}<div>${converted}</div>
    <div class="note-foot" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <span style="margin-right:auto">${escapeHTML(workspace(n.workspace).name)}</span>
+${trashed?`<button type="button" class="mini-btn" data-action="restore-note"
+      data-id="${escapeHTML(n.id)}" ${disabled} aria-label="Restore ${escapeHTML(n.title)}">Restore note</button>`:`
     <button type="button" class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}"
      ${disabled} aria-label="Edit ${escapeHTML(n.title)}">${icon('edit')} Edit</button>
     ${canView?`<button type="button" class="mini-btn" data-action="detail" data-id="${escapeHTML(n.convertedTaskId)}">Open task</button>`:''}
@@ -575,17 +578,25 @@ function notesPage(){
      ${disabled} aria-label="Convert ${escapeHTML(n.title)} to task">To task</button>`:''}
     <button type="button" data-action="delete-note" data-id="${escapeHTML(n.id)}"
      class="mini-btn" ${disabled} title="Remove note with confirmation"
-     aria-label="Delete ${escapeHTML(n.title)}">${icon('trash')}</button>
+     aria-label="Delete ${escapeHTML(n.title)}">${icon('trash')}</button>`}
    </div>
   </article>`;
  }).join('');
  return `${header}
- <div class="section-head"><h2>Quick notes</h2><span class="pill gray">${workspaceNotes.length} notes</span></div>
+ <div class="section-head"><h2>${trashed?'Deleted notes':'Quick notes'}</h2><span class="pill gray">${workspaceNotes.length} notes</span></div>
+ ${isCloud?`<div class="actions" role="group" aria-label="Notes folders" style="margin-bottom:12px">
+  <button type="button" class="btn small ${!trashed?'':'secondary'}" data-action="show-active-notes" aria-pressed="${!trashed}">My notes</button>
+  <button type="button" class="btn small ${trashed?'':'secondary'}" data-action="show-note-trash" aria-pressed="${trashed}">Recently deleted</button>
+ </div>`:''}
+ ${trashed?'<p class="tiny">Deleted notes remain in your account until a future retention policy is introduced. To restore notes from an archived workspace, restore that workspace first.</p>':''}
  ${filters}
- ${state.noteError?`<div class="info-banner" role="alert">${escapeHTML(state.noteError)}
-  <button type="button" class="btn small secondary" data-action="refresh-notes">Retry</button></div>`:''}
- ${isCloud&&state.noteLoading&&!state.noteLoaded?'<p class="subtitle" role="status">Loading account notes…</p>':''}
- ${!state.noteLoading&&state.noteLoaded&&notes.length===0?'<div class="card"><p>No notes match your selection. Create one or change the filter.</p></div>':''}
+ ${(trashed?state.noteTrashError:state.noteError)?`<div class="info-banner" role="alert">${escapeHTML(trashed?state.noteTrashError:state.noteError)}
+  <button type="button" class="btn small secondary" data-action="${trashed?'refresh-note-trash':'refresh-notes'}">Retry</button></div>`:''}
+ ${isCloud&&(trashed?state.noteTrashLoading&&!state.noteTrashLoaded:state.noteLoading&&!state.noteLoaded)?
+   '<p class="subtitle" role="status">Loading saved notes…</p>':''}
+ ${!(trashed?state.noteTrashLoading:state.noteLoading)&&
+   (trashed?state.noteTrashLoaded:state.noteLoaded)&&notes.length===0?
+   `<div class="card"><p>${trashed?'No deleted notes to restore.':'No notes match your selection. Create one or change the filter.'}</p></div>`:''}
  <div class="note-grid">${cards}</div>
  <div class="section"><div class="section-head"><h2>Rich documents</h2>
   <span class="pill gray">M6.2 planned</span></div>
@@ -1116,6 +1127,29 @@ case'convert-note':{
  state.noteError='';state.modal='note-convert';state.modalTask=id;render();break;
 }
 case'refresh-notes':if(isCloud)void loadCloudNotes();break;
+case'show-active-notes':state.noteMode='active';state.noteError='';render();
+ if(isCloud&&!state.noteLoaded)void loadCloudNotes();break;
+case'show-note-trash':if(!isCloud)break;
+ state.noteMode='trash';state.noteTrashError='';render();void loadCloudTrashedNotes();break;
+case'refresh-note-trash':if(isCloud)void loadCloudTrashedNotes();break;
+case'restore-note':{
+ if(!isCloud||state.noteBusy)break;
+ const note=state.noteTrash.find(n=>n.id===id);
+ if(!note)break;
+ state.noteBusy=true;state.noteTrashError='';render();
+ try{
+  const restored=await cloudApi.restoreQuickNote(note.id,note.revision);
+  if(disposed)break;
+  state.noteTrash=state.noteTrash.filter(n=>n.id!==id);
+  upsertQuickNote(restored);
+ }catch(err){
+  if(!disposed)state.noteTrashError=err instanceof Error?err.message:'Could not restore note';
+ }finally{
+  state.noteBusy=false;
+  if(!disposed)render();
+ }
+ break;
+}
 case'toggle-note-pin':{
  const n=state.notes.find(x=>x.id===id);
  if(!n||state.noteBusy)break;
