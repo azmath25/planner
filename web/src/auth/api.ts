@@ -1,5 +1,6 @@
 import { AUTH_URL, authClient } from './client';
 import {parsePeriodReport,type PeriodReport,type ReportPeriod} from '../domain/timeReports';
+import {parseTimeInsights,type TimeInsights} from '../domain/timeInsights';
 import {parseInsights,type InsightsReport} from '../domain/insights';
 
 export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
@@ -494,6 +495,14 @@ export const cloudApi={
    {signal}
   );
   return parseInsights(data.insights);
+ },
+ async getTimeInsights(period:ReportPeriod,day:string,signal?:AbortSignal):Promise<TimeInsights>{
+  if(!['day','week','month'].includes(period)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day))
+   throw new Error('Invalid insights request');
+  const data=await call<{insights:unknown}>(
+   '/v1/time-insights?period='+encodeURIComponent(period)+'&day='+encodeURIComponent(day),{signal}
+  );
+  return parseTimeInsights(data.insights);
  },
  async getTimePeriod(period:ReportPeriod,day:string,signal?:AbortSignal):Promise<PeriodReport>{
   if(!['day','week','month'].includes(period)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day))
