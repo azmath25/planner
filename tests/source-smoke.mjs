@@ -30,3 +30,11 @@ const authScreen=readFileSync('web/src/components/AuthScreen.tsx','utf8');
 if(!authScreen.includes('onPreview')||!react.includes('LocalPreview'))throw new Error('Safari login escape hatch missing');
 if(!client.includes("credentials:'include'")||!client.includes("'/token'"))throw new Error('Uncached managed Auth token fallback missing');
 console.log('PASS: Local demo is available without bypassing Neon authentication');
+
+const profile=readFileSync('web/src/legacy/legacy.ts','utf8');
+if(react.includes('account-topbar')||react.includes('account-local-notice'))throw new Error('Obsolete account horizontal bar present');
+for(const marker of ["state.page==='profile'?profilePage()","data-page=\"profile\"","case'account-sign-out'","account.onSignOut","escapeHTML(accountName)"]){
+ if(!profile.includes(marker))throw new Error('Missing accessible profile navigation or safe sign-out '+marker);
+}
+if(!react.includes('email={session.data.user.email')||!react.includes('onSignOut={signOut}'))throw new Error('Profile account identity or sign-out callback not wired');
+console.log('PASS: Profile identity and sign-out accessible without account top bar');

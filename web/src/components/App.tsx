@@ -20,11 +20,16 @@ class ErrorBoundary extends Component<BoundaryProps,BoundaryState>{
   return this.props.children;
  }
 }
-function Dayframe({userId,snapshot}:{userId:string;snapshot:CloudSnapshot}){
+function Dayframe({userId,snapshot,displayName,email,onSignOut,onRefresh}:{
+ userId:string;snapshot:CloudSnapshot;displayName:string;email:string;
+ onSignOut:()=>Promise<void>;onRefresh:()=>void;
+}){
  useEffect(()=>{
   // Cloud tasks/workspaces are the only source of truth for these records.
   // Plans, quick notes, images, and timer sessions remain labeled local previews.
-  const dispose=mountLegacyDayframe('dayframe.user-preview.'+encodeURIComponent(userId),snapshot);
+  const dispose=mountLegacyDayframe('dayframe.user-preview.'+encodeURIComponent(userId),snapshot,{
+   name:displayName,email,onSignOut,onRefresh
+  });
   const shortcut=(event:KeyboardEvent)=>{
    const node=event.target;
    if(node instanceof HTMLElement&&node.closest('input,textarea,select,[contenteditable="true"]'))return;
@@ -36,26 +41,19 @@ function Dayframe({userId,snapshot}:{userId:string;snapshot:CloudSnapshot}){
   window.addEventListener('keydown',shortcut);
   document.documentElement.dataset.demoStorage=getDemoStorageStatus();
   return ()=>{window.removeEventListener('keydown',shortcut);dispose();};
- },[userId,snapshot]);
+ },[userId,snapshot,displayName,email]);
  return <div id="app" data-react-host="dayframe"/>;
 }
 // Local demonstration works even when the browser cannot retain a
 // third-party Neon Auth session. It never calls an authenticated data API.
 function LocalPreview({onExit}:{onExit:()=>void}){
  useEffect(()=>{
-  const dispose=mountLegacyDayframe('dayframe.local-only-preview.1');
+  const dispose=mountLegacyDayframe('dayframe.local-only-preview.1',null,{name:'Local demo',email:'',onSignOut:onExit});
   return ()=>dispose();
  },[]);
- return <div className="authed-app">
-  <div className="account-topbar" role="status">
-   <span className="account-identity"><strong>Local demonstration</strong> · No account data</span>
-   <span className="account-local-notice">Preview items stay only in this browser</span>
-   <button type="button" className="account-signout" onClick={onExit}>Return to sign in</button>
-  </div>
-  <div id="app" data-react-host="local-preview"/>
- </div>;
+ return <div className="authed-app"><div id="app" data-react-host="local-preview"/></div>;
 }
-function SignedIn({userId,displayName}:{userId:string;displayName:string}){
+function SignedIn({userId,displayName,email}:{userId:string;displayName:string;email:string}){
  const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null);
  const [error,setError]=useState('');
  const [retry,setRetry]=useState(0);
@@ -71,29 +69,32 @@ function SignedIn({userId,displayName}:{userId:string;displayName:string}){
   return ()=>controller.abort();
  },[userId,retry]);
  async function signOut(){
+  if(signingOut)return;
   setSigningOut(true);
   try{
    const result=await authClient.signOut();
-   if(result.error)setError(result.error.message||'Sign-out failed');
-  }catch{setError('Sign-out is unavailable. Try again.');}
-  finally{setSigningOut(false);}
+   if(result.error)throw new Error(result.error.message||'Sign out failed. Please retry.');
+   // Ensure the profile no longer displays account data if the session SDK
+   // has stale state after a successful sign-out.
+   window.location.reload();
+  }catch(error){
+   setSigningOut(false);
+   throw error;
+  }
  }
  return <div className="authed-app">
-  <div className="account-topbar" aria-label="Account and data status">
-   <span className="account-identity">◈ <strong>{displayName}</strong> · <span>{snapshot?'Workspaces and tasks saved in Neon':'Connecting…'}</span></span>
-   <span className="account-local-notice">Tasks/workspaces sync · Planner, notes, photos and timers are still local</span>
-   <div className="account-controls">
-    <button type="button" className="account-signout" onClick={()=>setRetry(x=>x+1)} aria-label="Refresh saved tasks and workspaces">Refresh</button>
-    <button type="button" className="account-signout" disabled={signingOut} onClick={signOut}>{signingOut?'Signing out…':'Sign out'}</button>
-   </div>
-  </div>
   {!snapshot ? <main className="auth-page auth-wait" aria-live="polite">
    <section className="auth-card">
+    <p className="auth-kicker">{error?'PROFILE · CONNECTION':'DAYFRAME · ACCOUNT'}</p>
     <h1>{error?'Cannot load your workspace':'Loading your tasks'}</h1>
+    <p className="auth-subtitle">{displayName}</p>
     <p>{error||'Getting your saved workspaces and tasks from Neon…'}</p>
-    {error&&<button type="button" className="auth-submit" onClick={()=>setRetry(x=>x+1)}>Retry</button>}
+    {error&&<div className="profile-actions" style={{justifyContent:'center',marginTop:20}}>
+      <button type="button" className="auth-submit" onClick={()=>setRetry(x=>x+1)}>Retry</button>
+      <button type="button" className="btn secondary" disabled={signingOut} onClick={()=>{void signOut().catch(e=>setError(e instanceof Error?e.message:'Sign out failed'));}}>Sign out</button>
+    </div>}
    </section>
-  </main> : <Dayframe userId={userId} snapshot={snapshot}/>}
+  </main> : <Dayframe userId={userId} snapshot={snapshot} displayName={displayName} email={email} onSignOut={signOut} onRefresh={()=>setRetry(x=>x+1)}/>}
  </div>;
 }
 export function App(){
@@ -101,7 +102,7 @@ export function App(){
  const session=authClient.useSession();
  return <ErrorBoundary>
   {session.data?.user
-    ? <SignedIn key={session.data.user.id} userId={session.data.user.id} displayName={session.data.user.name||session.data.user.email||'Account'}/>
+    ? <SignedIn key={session.data.user.id} userId={session.data.user.id} displayName={session.data.user.name||session.data.user.email||'Account'} email={session.data.user.email||''}/>
     : localPreview
       ? <LocalPreview onExit={()=>setLocalPreview(false)}/>
       : session.isPending
