@@ -177,6 +177,13 @@ return {async fetch(req){
       const {rows}=await query(TASK_LIST,[uid,limit+1,offset]);
       return json({tasks:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
     }
+    if(path==='/v1/tasks/archived'&&req.method==='GET'){
+      const params=new URL(req.url).searchParams;
+      const offset=Number(params.get('offset')??0),limit=Number(params.get('limit')??100);
+      if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||!Number.isSafeInteger(limit)||limit<1||limit>200)throw fail(400,'Invalid pagination');
+      const {rows}=await query(TASK_ARCHIVED,[uid,limit+1,offset]);
+      return json({tasks:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
     if(path==='/v1/tasks/trash'&&req.method==='GET'){
       const params=new URL(req.url).searchParams;
       const offset=Number(params.get('offset')??0),limit=Number(params.get('limit')??100);
@@ -193,16 +200,59 @@ return {async fetch(req){
       if(existing.rows.length&&matchesTask(existing.rows[0],args))return json({task:existing.rows[0]},200,hdr);
       throw fail(409,'Task id already exists or workspace unavailable');
     }
+    const taskAction=/^\\/v1\\/tasks\\/([a-f0-9-]{36})\\/(archive|unarchive|move|events|permanent)$/i.exec(path);
+    if(taskAction){
+      const id=uuid(taskAction[1],'task id'),action=taskAction[2];
+      if(action==='events'&&req.method==='GET'){
+        const limit=Number(new URL(req.url).searchParams.get('limit')??50);
+        if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw fail(400,'Invalid event limit');
+        const {rows}=await query(TASK_HISTORY,[uid,id,limit]);
+        return json({events:rows},200,hdr);
+      }
+      if(action==='archive'&&req.method==='POST'){
+        const rev=revision(await readBody(req));
+        const {rows}=await query("UPDATE dayframe.tasks t SET archived_at=now(),revision=revision+1,updated_at=now() WHERE t.id=$2 AND t.owner_user_id=$1 AND t.revision=$3 AND t.deleted_at IS NULL AND t.archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS,[uid,id,rev]);
+        if(!rows.length)throw fail(409,'Task changed or unavailable');
+        return json({task:rows[0]},200,hdr);
+      }
+      if(action==='unarchive'&&req.method==='POST'){
+        const rev=revision(await readBody(req));
+        const {rows}=await query("UPDATE dayframe.tasks t SET archived_at=NULL,revision=revision+1,updated_at=now() WHERE t.id=$2 AND t.owner_user_id=$1 AND t.revision=$3 AND t.deleted_at IS NULL AND t.archived_at IS NOT NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=t.workspace_id AND w.owner_user_id=$1 AND w.archived_at IS NULL AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS,[uid,id,rev]);
+        if(!rows.length)throw fail(409,'Task changed or unavailable');
+        return json({task:rows[0]},200,hdr);
+      }
+      if(action==='move'&&req.method==='POST'){
+        const body=await readBody(req),rev=revision(body);
+        const target=uuid(body.workspace,'destination workspace'),parent=body.parent==null?null:uuid(body.parent,'new parent');
+        await query("SELECT dayframe.move_task_subtree($1,$2,$3,$4,$5)",[uid,id,target,parent,rev]);
+        const {rows}=await query("SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2",[uid,id]);
+        if(!rows.length)throw fail(409,'Task changed or unavailable');
+        return json({task:rows[0]},200,hdr);
+      }
+      if(action==='permanent'&&req.method==='DELETE'){
+        const body=await readBody(req),rev=revision(body);
+        if(body.confirm!=='DELETE')throw fail(400,'Type DELETE to confirm permanent removal');
+        const {rows}=await query("DELETE FROM dayframe.tasks t WHERE t.owner_user_id=$1 AND t.id=$2 AND t.revision=$3 AND t.deleted_at IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dayframe.tasks child WHERE child.parent_id=t.id AND child.owner_user_id=$1) RETURNING t.id",[uid,id,rev]);
+        if(!rows.length)throw fail(409,'Task not in Trash, changed or has subtasks');
+        return json({permanentlyDeleted:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,hdr);
+    }
     const tm=/^\/v1\/tasks\/([a-f0-9-]{36})$/i.exec(path);
     if(tm&&req.method==='PATCH'){
       const id=uuid(tm[1],'task id'),body=await readBody(req),args=taskBody(body),rev=revision(body);
+      if(body.status==='done'&&!body.allowOpenChildren){
+        const {rows:children}=await query("WITH RECURSIVE descendants AS (SELECT id,parent_id,ARRAY[id] AS path FROM dayframe.tasks WHERE parent_id=$2 AND owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL UNION ALL SELECT t.id,t.parent_id,d.path||t.id FROM dayframe.tasks t JOIN descendants d ON t.parent_id=d.id WHERE t.owner_user_id=$1 AND t.deleted_at IS NULL AND t.archived_at IS NULL AND NOT t.id=ANY(d.path)) SELECT 1 FROM descendants d JOIN dayframe.tasks t ON t.id=d.id WHERE t.status='open' LIMIT 1",[uid,id]);
+        if(children.length)throw fail(409,'Finish or explicitly keep open subtasks before completing this task');
+      }
+      if(body.allowOpenChildren!==undefined&&typeof body.allowOpenChildren!=='boolean')throw fail(400,'Invalid subtask completion option');
       const {rows}=await query(TASK_UPDATE,[uid,id,...args,rev]);
       if(!rows.length)throw fail(409,'Task changed or workspace unavailable');
       return json({task:rows[0]},200,hdr);
     }
     if(tm&&req.method==='DELETE'){
       const id=uuid(tm[1],'task id');
-      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING id",[uid,id]);
+      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) RETURNING id",[uid,id]);
       if(!rows.length)throw fail(404,'Task not found');
       return json({deleted:true},200,hdr);
     }
@@ -217,7 +267,7 @@ return {async fetch(req){
     return json({error:'Method not allowed'},405,hdr);
   }catch(error){
     if(error?.status)return json({error:error.message},error.status,hdr);
-    if(['23503','23505'].includes(error?.code))return json({error:'Workspace, parent task, or revision conflict'},409,hdr);
+    if(['40001','23503','23505'].includes(error?.code))return json({error:'Workspace, parent task, or revision conflict'},409,hdr);
     if(['23514','22001','22007','22008'].includes(error?.code))return json({error:'Invalid task or workspace fields'},400,hdr);
     // Never leak SQL, credentials, user identity or data through errors/logs.
     console.error('Dayframe data request failed',error instanceof Error?error.name:'UnknownError');
