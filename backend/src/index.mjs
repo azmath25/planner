@@ -93,7 +93,8 @@ export const ALERT_LIST_SQL =
  "ORDER BY \"dueAt\",o.\"taskId\",o.kind LIMIT 100";
 export const NOTIFICATION_PREF_GET_SQL="SELECT time_zone AS \"timeZone\" FROM dayframe.notification_preferences WHERE owner_user_id=$1";
 export const NOTIFICATION_PREF_SAVE_SQL="INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,$2) ON CONFLICT(owner_user_id) DO UPDATE SET time_zone=EXCLUDED.time_zone,updated_at=now() RETURNING time_zone AS \"timeZone\"";
-export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($2,$1) ON CONFLICT(endpoint) DO UPDATE SET owner_user_id=EXCLUDED.owner_user_id,updated_at=now()";
+export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($2,$1) "+
+"ON CONFLICT(endpoint) DO UPDATE SET updated_at=now() WHERE dayframe.push_subscriptions.owner_user_id=EXCLUDED.owner_user_id RETURNING endpoint";
 export const PUSH_SUB_STATUS_SQL="SELECT 1 AS registered FROM dayframe.push_subscriptions WHERE owner_user_id=$1 AND endpoint=$2";
 export const PUSH_SUB_DELETE_SQL="DELETE FROM dayframe.push_subscriptions WHERE endpoint=$2 AND owner_user_id=$1 RETURNING endpoint";
 export const PUSH_PUBLIC_KEY='BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8';
@@ -317,7 +318,8 @@ return {async fetch(req){
       if(req.method==='PUT'){
         const body=await readBody(req,5000);
         const endpoint=pushEndpoint(body.endpoint);
-        await query(PUSH_SUB_SAVE_SQL,[uid,endpoint]);
+        const {rows}=await query(PUSH_SUB_SAVE_SQL,[uid,endpoint]);
+        if(!rows.length)throw fail(409,'This browser push endpoint is already associated with another account. Refresh and retry.');
         return json({saved:true},200,hdr);
       }
       if(req.method==='DELETE'){
