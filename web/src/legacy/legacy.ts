@@ -68,7 +68,7 @@ const initialTasks=()=>[
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
-const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
+const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
@@ -676,7 +676,66 @@ function weeklyReportsPanel(){
   ${state.weekError?`<p class="tiny" role="alert">${escapeHTML(state.weekError)}</p>`:''}
  </section>`;
 }
-function reportsPage(){const periods=[['day','Daily'],['week','Weekly'],['month','Monthly']];const series=state.reportPeriod==='day'?[3,4,2,6,5,4,2]:state.reportPeriod==='week'?[4,6,3,7,5,2,1]:[2,5,4,6,5,7,4];const labels=state.reportPeriod==='day'?['8','10','12','14','16','18','20']:state.reportPeriod==='week'?['Mon','Tue','Wed','Thu','Fri','Sat','Sun']:['W1','W2','W3','W4','W5','W6','W7'];
+function signedInReportsPage(){
+ const period=state.reportPeriod,report=state.periodReport;
+ const controls=`<div class="filters" style="display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:17px">
+  <div class="actions" role="group" aria-label="Report period">
+   ${[['day','Day'],['week','Week'],['month','Month']].map(([kind,label])=>
+    `<button type="button" class="filter ${kind===period?'active':''}"
+       aria-pressed="${kind===period}" data-action="report-period" data-value="${kind}">${label}</button>`).join('')}
+  </div>
+  <label class="field-wrap"><span class="form-label">Date within the period</span>
+   <input id="report-anchor" class="field" type="date" value="${escapeHTML(state.reportAnchor)}"/></label>
+  <button type="button" class="btn secondary small" data-action="refresh-period"
+    ${state.periodLoading?'disabled':''}>Refresh report</button>
+ </div>`;
+ const header=titleHead('Account activity','Reports',
+  'Saved focus sessions and fixed planned intervals; historical gaps are identified explicitly.');
+ if(!report)return header+controls+
+  `<div class="card"><p role="${state.periodError?'alert':'status'}">${escapeHTML(state.periodError||'Loading saved period report…')}</p></div>`;
+ const workspaceRows=report.workspaces.filter(w=>w.recordedMs||w.legacyEstimatedMs||w.plannedMinutes);
+ const wsHtml=workspaceRows.length?workspaceRows.map(w=>
+  `<tr><td>${escapeHTML(w.name||'Deleted workspace')} ${w.archived?'(archived)':''}</td>
+    <td>${formatElapsed(w.recordedMs)}</td>
+    <td>${minsText(w.plannedMinutes)}</td>
+    <td>${w.legacyEstimatedMs?formatElapsed(w.legacyEstimatedMs):'—'}</td></tr>`).join(''):
+   '<tr><td colspan="4">No saved activity in this period</td></tr>';
+ const longTerms=report.longTermTasks.filter(t=>t.recordedMs||t.plannedMinutes);
+ const taskHtml=longTerms.length?longTerms.map(t=>
+  `<tr><td>${escapeHTML(t.title)} ${t.status!=='open'?'('+escapeHTML(t.status)+')':''}</td>
+    <td>${formatElapsed(t.recordedMs)}</td><td>${minsText(t.plannedMinutes)}</td></tr>`).join(''):
+   '<tr><td colspan="3">No long-term task activity in this period</td></tr>';
+ return header+controls+`
+  ${state.periodLoading?'<p class="tiny" role="status">Refreshing the account report…</p>':''}
+  ${state.periodError?`<p class="info-banner" role="alert">${escapeHTML(state.periodError)}</p>`:''}
+  <p class="subtitle">Period: ${escapeHTML(report.startDay)} to ${escapeHTML(report.endDayExclusive)} (end exclusive),
+   ${escapeHTML(report.timeZone)}. ${report.runningIncluded?'Active running time is included at report request time.':''}</p>
+  <div class="report-cards">
+   <div class="card metric"><div class="metric-label">Recorded focus time</div>
+    <div class="metric-value">${formatElapsed(report.accountRecordedMs)}</div><div class="metric-note">Exact segment overlap</div></div>
+   <div class="card metric"><div class="metric-label">Fixed plan</div>
+    <div class="metric-value">${minsText(report.accountPlannedMinutes)}</div>
+    <div class="metric-note">Scheduled intervals only, not flexible pool tasks</div></div>
+   <div class="card metric"><div class="metric-label">Historical time estimate</div>
+    <div class="metric-value">${formatElapsed(report.accountLegacyEstimatedMs)}</div>
+    <div class="metric-note">Separate from recorded time; session-start attribution</div></div>
+  </div>
+  ${report.accountLegacyEstimatedMs?'<div class="info-banner">Older sessions lack detailed segment timestamps. Their remaining duration is estimated into the period of the session start and is not included in exact recorded totals.</div>':''}
+  <div class="section card"><div class="card-title"><h2>By workspace</h2></div>
+   <div class="report-table-scroll"><table class="report-table"><thead><tr>
+    <th>Workspace</th><th>Recorded</th><th>Fixed plan</th><th>Legacy estimate</th>
+   </tr></thead><tbody>${wsHtml}<tr><th>Account total</th>
+    <td>${formatElapsed(report.accountRecordedMs)}</td><td>${minsText(report.accountPlannedMinutes)}</td>
+    <td>${formatElapsed(report.accountLegacyEstimatedMs)}</td></tr></tbody></table></div>
+  </div>
+  <div class="section card"><div class="card-title"><h2>Long-term task progress</h2></div>
+   <p class="tiny">Includes current descendants once per long-term task. Nested long-term totals may overlap; never add them together as account totals. Deleted-task time remains in workspace/account history.</p>
+   <div class="report-table-scroll"><table class="report-table"><thead><tr>
+    <th>Task</th><th>Recorded</th><th>Fixed plan</th></tr></thead>
+    <tbody>${taskHtml}</tbody></table></div>
+  </div>`;
+}
+function reportsPage(){if(isCloudTime)return signedInReportsPage();const periods=[['day','Daily'],['week','Weekly'],['month','Monthly']];const series=state.reportPeriod==='day'?[3,4,2,6,5,4,2]:state.reportPeriod==='week'?[4,6,3,7,5,2,1]:[2,5,4,6,5,7,4];const labels=state.reportPeriod==='day'?['8','10','12','14','16','18','20']:state.reportPeriod==='week'?['Mon','Tue','Wed','Thu','Fri','Sat','Sun']:['W1','W2','W3','W4','W5','W6','W7'];
  const rows=isCloudTime?
   Object.entries(state.timeRollups?.workspaces||{}).map(([id,ms])=>{
    const w=workspaces.find(x=>serverWorkspaceId(x.id)===id);
@@ -997,7 +1056,8 @@ function navigate(page){
  window.scrollTo({top:0,behavior:'instant'});render();
  if(isCloud&&page==='home')void loadCloudAlerts();
  if(isCloud&&['notes','workspace'].includes(page))void loadCloudNotes();
- if(isCloudTime&&(page==='workspace'||page==='reports'))void loadCloudWeek();
+ if(isCloudTime&&page==='workspace')void loadCloudWeek();
+ if(isCloudTime&&page==='reports')void loadCloudPeriod();
  if(isCloud&&page==='plan')void loadCloudSchedule(state.planDay,state.planDay);
  if(isCloud&&page==='calendar'){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
  if(page==='task-archive'&&isCloud){
@@ -1045,6 +1105,26 @@ async function loadCloudWeek(preserveError=false){
  }finally{
   state.weekLoading=false;
   if(!disposed&&(state.page==='workspace'||state.page==='reports'))render();
+ }
+}
+let periodReportRequest=0;
+async function loadCloudPeriod(){
+ if(!isCloudTime||disposed)return;
+ const request=++periodReportRequest;
+ state.periodLoading=true;state.periodError='';state.periodReport=null;
+ if(state.page==='reports')render();
+ try{
+  const report=await cloudApi.getTimePeriod(state.reportPeriod,state.reportAnchor);
+  if(disposed||periodReportRequest!==request)return;
+  state.periodReport=report;
+ }catch(err){
+  if(!disposed&&periodReportRequest===request)
+   state.periodError=err instanceof Error?err.message:'Could not load period report';
+ }finally{
+  if(!disposed&&periodReportRequest===request){
+   state.periodLoading=false;
+   if(state.page==='reports')render();
+  }
  }
 }
 async function loadCloudTime(){
@@ -1210,6 +1290,7 @@ case'documents-task':{
 case'refresh-alerts':void loadCloudAlerts();break;
 case'time-retry':void loadCloudTime();break;
 case'refresh-week':void loadCloudWeek();break;
+ case'refresh-period':if(isCloudTime)void loadCloudPeriod();break;
 case'enable-push':void enableBrowserPush();break;
 case'disable-push':void disableBrowserPush();break;
 case'use-device-zone':void setCurrentNotificationZone();break;
@@ -1351,7 +1432,9 @@ case'unschedule':{
   persist();
  }
  render();break;
-}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
+}case'report-period':if(['day','week','month'].includes(b.dataset.value)){
+  state.reportPeriod=b.dataset.value;render();if(isCloudTime)void loadCloudPeriod();
+ }break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
  const m=state.mediaTarget;if(!m)break;
  if(isCloud&&m.kind==='task'){
   try{await cloudApi.deleteTaskMedia(m.id,m.slot);}
@@ -1746,7 +1829,15 @@ if(e.target.id==='note-search'){
  render();const input=$('#note-search');input?.focus();input?.setSelectionRange(pos,pos);
 }
 });
-trackListener('change',async e=>{if(e.target.id==='media-file'){
+trackListener('change',async e=>{
+ if(e.target.id==='report-anchor'&&isCloudTime){
+  const value=e.target.value;
+  if(/^\\d{4}-\\d{2}-\\d{2}$/.test(value)&&value>='2000-01-01'&&value<='2100-12-31'){
+   state.reportAnchor=value;void loadCloudPeriod();
+  }
+  return;
+ }
+ if(e.target.id==='media-file'){
  const file=e.target.files?.[0],m=state.mediaTarget;
  if(!m||!file)return;
  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){alert('Choose a JPEG, PNG or WebP image under 5 MB.');return;}
