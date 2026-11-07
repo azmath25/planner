@@ -50,6 +50,18 @@ function taskSubtreeUpdate(field,rootCondition,childCondition,queryResult){
 const TASK_HISTORY="SELECT e.event_id::text AS id,e.event_type AS type,e.before_state AS before,e.after_state AS after,e.created_at AS \"createdAt\" FROM dayframe.task_events e "+
 "WHERE e.owner_user_id=$1 AND e.task_id=$2 AND EXISTS(SELECT 1 FROM dayframe.tasks t WHERE t.id=e.task_id AND t.owner_user_id=$1) ORDER BY e.event_id DESC LIMIT $3";
 
+// One statement yields a consistent revision and ordered active IDs.
+export const DAY_POOL_GET_SQL =
+"SELECT COALESCE(p.revision,0) AS revision, "+
+"COALESCE((SELECT json_agg(i.task_id::text ORDER BY i.position) "+
+"FROM dayframe.daily_pool_items i JOIN dayframe.tasks t ON t.id=i.task_id AND t.owner_user_id=$1 "+
+"JOIN dayframe.workspaces w ON w.id=t.workspace_id AND w.owner_user_id=$1 "+
+"WHERE i.owner_user_id=$1 AND i.plan_day=$2::date "+
+"AND t.status='open' AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
+"AND w.deleted_at IS NULL AND w.archived_at IS NULL),'[]'::json) AS \"taskIds\" "+
+"FROM (SELECT 1) seed LEFT JOIN dayframe.daily_pools p ON p.owner_user_id=$1 AND p.plan_day=$2::date";
+export const DAY_POOL_PUT_SQL="SELECT dayframe.replace_daily_pool($1,$2::date,$3,$4::uuid[]) AS revision";
+
 let jwks,pool;
 async function verifyNeonToken(token) {
   if(!process.env.NEON_AUTH_BASE_URL||!process.env.NEON_AUTH_JWKS_URL) throw Error('Missing auth configuration');
@@ -182,6 +194,27 @@ return {async fetch(req){
       const {rows}=await query("UPDATE dayframe.workspaces SET name=$3,subtitle=$4,color=$5,cover=$6,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NULL AND revision=$7 RETURNING "+WORKSPACE_FIELDS,[uid,id,name,subtitle,color,cover,rev]);
       if(!rows.length)throw fail(409,'Workspace changed or unavailable');
       return json({workspace:rows[0]},200,hdr);
+    }
+    const poolMatch=/^\/v1\/daily-pool\/([0-9]{4}-[0-9]{2}-[0-9]{2})$/.exec(path);
+    if(poolMatch){
+      const day=date(poolMatch[1],'plan date');
+      if(day<'2000-01-01'||day>'2100-12-31')throw fail(400,'Invalid planning date');
+      if(req.method==='GET'){
+        const {rows}=await query(DAY_POOL_GET_SQL,[uid,day]);
+        return json({day,revision:Number(rows?.[0]?.revision??0),taskIds:rows?.[0]?.taskIds??[]},200,hdr);
+      }
+      if(req.method==='PUT'){
+        const body=await readBody(req);
+        const expected=body.revision;
+        if(!Number.isSafeInteger(expected)||expected<0)throw fail(400,'Invalid pool revision');
+        const ids=body.taskIds;
+        if(!Array.isArray(ids)||ids.length>100)throw fail(400,'Daily pool must contain at most 100 tasks');
+        ids.forEach(id=>uuid(id,'task id'));
+        if(new Set(ids.map(id=>id.toLowerCase())).size!==ids.length)throw fail(400,'Duplicate daily pool task');
+        const {rows}=await query(DAY_POOL_PUT_SQL,[uid,day,expected,ids]);
+        return json({day,revision:Number(rows[0].revision),taskIds:ids},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
     }
     if(path==='/v1/tasks'&&req.method==='GET'){
       const params=new URL(req.url).searchParams;
