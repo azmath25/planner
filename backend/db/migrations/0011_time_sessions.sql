@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS dayframe.time_sessions (
  updated_at timestamptz NOT NULL DEFAULT now(),
  CONSTRAINT time_sessions_task_owned FOREIGN KEY(task_id,owner_user_id)
   REFERENCES dayframe.tasks(id,owner_user_id) ON DELETE SET NULL (task_id),
- CONSTRAINT time_sessions_state_check CHECK(
+ CONSTRAINT time_sessions_lifecycle_check CHECK(
   (state='running' AND segment_started_at IS NOT NULL AND ended_at IS NULL AND end_reason IS NULL)
   OR (state='paused' AND segment_started_at IS NULL AND ended_at IS NULL AND end_reason IS NULL)
   OR (state='stopped' AND segment_started_at IS NULL AND ended_at IS NOT NULL AND end_reason IS NOT NULL)
