@@ -58,7 +58,7 @@ def run(browser,width):
  p.locator('#start').fill('13:00')
  p.locator('#end').fill('14:00')
  p.locator('#schedule-form button[type="submit"]').click()
- p.wait_for_function("(id)=>window.__mockDb.intervals.get(id)?.day!==undefined",arg=second)
+ p.wait_for_function("(data)=>window.__mockDb.intervals.get(data.id)?.day===data.day",arg={'id':second,'day':other})
  assert p.evaluate("(id)=>window.__mockDb.intervals.get(id).day",second)==other
  assert p.evaluate("(id)=>window.__mockDb.intervals.get(id).revision",second)==2
  p.locator('#plan-day').fill(other)
@@ -66,8 +66,8 @@ def run(browser,width):
  p.locator('.time-card-actions [data-action="edit-interval"]').first.wait_for()
  assert p.locator('.time-card').count()==1
  # A long block gives a capacity warning, not a hard scheduling failure.
- new_interval(p,other,'01:00','08:00')
  p.once('dialog',lambda dialog:dialog.accept())
+ new_interval(p,other,'01:00','08:00')
  p.wait_for_function('() => window.__mockDb.intervals.size===3')
  assert p.get_by_text('over capacity',exact=False).count()>=1
  # Browser remount and calendar views use the same saved intervals.
