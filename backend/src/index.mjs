@@ -22,7 +22,7 @@ const TASK_FIELDS=[
 ].join(',');
 const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
 const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC LIMIT $2 OFFSET $3";
-const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2";
+const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL";
 const TASK_INSERT="INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,notes,status,priority,estimate_minutes,long_term,deadline,deadline_time,reminder,reminder_time,parent_id) "+
 "SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
 const TASK_UPDATE="UPDATE dayframe.tasks t SET workspace_id=$3,title=$4,notes=$5,status=$6,priority=$7,estimate_minutes=$8,long_term=$9,deadline=$10,deadline_time=$11,reminder=$12,reminder_time=$13,parent_id=$14,revision=t.revision+1,updated_at=now() WHERE t.owner_user_id=$1 AND t.id=$2 AND t.revision=$15 AND t.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS;
@@ -90,6 +90,15 @@ function workspaceBody(body){
   return [name,subtitle,color,cover];
 }
 function revision(body){const rev=Number(body.revision);if(!Number.isSafeInteger(rev)||rev<1)throw fail(400,'Invalid revision');return rev;}
+function matchesTask(existing,args){
+  const [workspace,title,notes,status,priority,estimate,long,deadline,deadlineTime,reminder,reminderTime,parent]=args;
+  const nullable=value=>value===''||value==null?null:value;
+  return existing.workspace===workspace&&existing.title===title&&existing.notes===notes&&
+    existing.status===status&&existing.priority===priority&&Number(existing.estimate)===estimate&&
+    existing.long===long&&nullable(existing.deadline)===deadline&&
+    nullable(existing.deadlineTime)===deadlineTime&&nullable(existing.reminder)===reminder&&
+    nullable(existing.reminderTime)===reminderTime&&nullable(existing.parent)===parent;
+}
 function authHeaders(request){
   const trusted=request.headers.get('origin')===ORIGIN;
   return {...HEADERS,...(trusted?{'access-control-allow-origin':ORIGIN}:{})};
@@ -109,7 +118,8 @@ return {async fetch(req){
   if(!match||match[1].length>8192)return json({error:'Unauthorized'},401,hdr);
   let uid;try{uid=await verifyToken(match[1]);if(typeof uid!=='string'||!uid||uid.length>256)throw Error('Subject');}catch{return json({error:'Unauthorized'},401,hdr);}
   try{
-    if(path==='/v1/me'||path==='/v1/workspaces'&&req.method==='GET'){
+    if(path==='/v1/me'&&req.method!=='GET')return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+    if((path==='/v1/me'||path==='/v1/workspaces')&&req.method==='GET'){
       await query(BOOTSTRAP_SQL,[uid]);
       const {rows}=await query(LIST_SQL,[uid]);
       if(!rows?.some(x=>x.kind==='general'))throw fail(503,'Workspace unavailable');
@@ -149,7 +159,7 @@ return {async fetch(req){
       const {rows}=await query(TASK_INSERT,[uid,id,...args]);
       if(rows.length)return json({task:rows[0]},201,hdr);
       const existing=await query(TASK_BY_ID,[uid,id]);
-      if(existing.rows.length&&existing.rows[0].title===args[1]&&existing.rows[0].workspace===args[0])return json({task:existing.rows[0]},200,hdr);
+      if(existing.rows.length&&matchesTask(existing.rows[0],args))return json({task:existing.rows[0]},200,hdr);
       throw fail(409,'Task id already exists or workspace unavailable');
     }
     const tm=/^\/v1\/tasks\/([a-f0-9-]{36})$/i.exec(path);
@@ -176,6 +186,8 @@ return {async fetch(req){
     return json({error:'Method not allowed'},405,hdr);
   }catch(error){
     if(error?.status)return json({error:error.message},error.status,hdr);
+    if(['23503','23505'].includes(error?.code))return json({error:'Workspace, parent task, or revision conflict'},409,hdr);
+    if(['23514','22001','22007','22008'].includes(error?.code))return json({error:'Invalid task or workspace fields'},400,hdr);
     // Never leak SQL, credentials, user identity or data through errors/logs.
     console.error('Dayframe data request failed',error instanceof Error?error.name:'UnknownError');
     return json({error:'Data service unavailable'},503,hdr);
