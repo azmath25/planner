@@ -10,8 +10,11 @@ export type CloudTask={
   id:string;workspace:string;parent:string|null;title:string;notes:string;
   status:'open'|'done'|'cancelled';priority:'low'|'medium'|'high';estimate:number;long:boolean;
   deadline:string|null;deadlineTime:string|null;reminder:string|null;reminderTime:string|null;
+  pinned:boolean;tags:string[];archivedAt:string|null;completedAt:string|null;cancelledAt:string|null;
   revision:number;createdAt:string;updatedAt:string;
 };
+export type TaskInput=Pick<CloudTask,'workspace'|'title'|'notes'|'status'|'priority'|'estimate'|'long'|'parent'|'deadline'|'deadlineTime'|'reminder'|'reminderTime'|'pinned'|'tags'>;
+export type TaskEvent={id:string;type:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null;createdAt:string};
 export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
 export class ApiFailure extends Error {
   constructor(message:string,readonly status:number) {super(message);}
@@ -102,11 +105,40 @@ export const cloudApi={
  async updateWorkspace(id:string,body:{name:string;subtitle?:string;color?:string;cover?:string;revision:number}):Promise<CloudWorkspace>{
   return (await call<{workspace:CloudWorkspace}>('/v1/workspaces/'+encodeURIComponent(id),{method:'PATCH',body})).workspace;
  },
- async createTask(body:Omit<CloudTask,'createdAt'|'updatedAt'|'revision'>):Promise<CloudTask>{
+ async createTask(body:TaskInput&{id:string}):Promise<CloudTask>{
   return (await call<{task:CloudTask}>('/v1/tasks',{method:'POST',body})).task;
  },
- async updateTask(id:string,body:Omit<CloudTask,'id'|'createdAt'|'updatedAt'>):Promise<CloudTask>{
+ async updateTask(id:string,body:TaskInput&{revision:number;allowOpenChildren?:boolean}):Promise<CloudTask>{
   return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id),{method:'PATCH',body})).task;
+ },
+ async listArchivedTasks():Promise<CloudTask[]>{
+  const tasks:CloudTask[]=[];let offset:number|null=0;
+  for(let pages=0;offset!==null;pages++){
+   if(pages>1000)throw new Error('Too many archived task pages.');
+   const result:{tasks:unknown[];nextOffset:number|null}=await call('/v1/tasks/archived?limit=100&offset='+offset);
+   if(!Array.isArray(result.tasks)||!result.tasks.every(verifyTask))throw new Error('Invalid archive response.');
+   tasks.push(...result.tasks);
+   if(result.nextOffset!==null&&(!Number.isSafeInteger(result.nextOffset)||result.nextOffset<=offset))throw new Error('Invalid archive pagination.');
+   offset=result.nextOffset;
+  }
+  return tasks;
+ },
+ async archiveTask(id:string,revision:number):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/archive',{method:'POST',body:{revision}})).task;
+ },
+ async unarchiveTask(id:string,revision:number):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/unarchive',{method:'POST',body:{revision}})).task;
+ },
+ async moveTask(id:string,body:{workspace:string;parent:string|null;revision:number}):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/move',{method:'POST',body})).task;
+ },
+ async taskEvents(id:string):Promise<TaskEvent[]>{
+  const result=await call<{events:TaskEvent[]}>('/v1/tasks/'+encodeURIComponent(id)+'/events?limit=60');
+  if(!Array.isArray(result.events))throw new Error('Invalid task history');
+  return result.events;
+ },
+ async permanentlyDeleteTask(id:string,revision:number,confirm:string):Promise<void>{
+  await call('/v1/tasks/'+encodeURIComponent(id)+'/permanent',{method:'DELETE',body:{revision,confirm}});
  },
  async trashTask(id:string):Promise<void>{
   await call('/v1/tasks/'+encodeURIComponent(id),{method:'DELETE'});
