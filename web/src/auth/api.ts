@@ -15,6 +15,7 @@ export type CloudTask={
 };
 export type TaskInput=Pick<CloudTask,'workspace'|'title'|'notes'|'status'|'priority'|'estimate'|'long'|'parent'|'deadline'|'deadlineTime'|'reminder'|'reminderTime'|'pinned'|'tags'>;
 export type TaskEvent={id:string;type:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null;createdAt:string};
+export type TaskMedia={slot:'cover'|'avatar';data:string;focalY:number};
 export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
 export class ApiFailure extends Error {
   constructor(message:string,readonly status:number) {super(message);}
@@ -139,6 +140,23 @@ export const cloudApi={
  },
  async permanentlyDeleteTask(id:string,revision:number,confirm:string):Promise<void>{
   await call('/v1/tasks/'+encodeURIComponent(id)+'/permanent',{method:'DELETE',body:{revision,confirm}});
+ },
+ async getTaskMedia(id:string):Promise<TaskMedia[]>{
+  const response=await call<{images:unknown[]}>('/v1/tasks/'+encodeURIComponent(id)+'/media');
+  if(!Array.isArray(response.images))throw new Error('Invalid task image response');
+  return response.images.filter((image):image is TaskMedia=>!!image&&typeof image==='object'&&
+   'slot' in image&&(image.slot==='cover'||image.slot==='avatar')&&
+   'data' in image&&typeof image.data==='string'&&/^data:image\/(jpeg|png|webp);base64,/.test(image.data)&&
+   'focalY' in image&&typeof image.focalY==='number');
+ },
+ async saveTaskMedia(id:string,slot:'cover'|'avatar',data:string,focalY=50):Promise<void>{
+  await call('/v1/tasks/'+encodeURIComponent(id)+'/media/'+slot,{method:'PUT',body:{data,focalY}});
+ },
+ async setTaskMediaFocal(id:string,slot:'cover'|'avatar',focalY:number):Promise<void>{
+  await call('/v1/tasks/'+encodeURIComponent(id)+'/media/'+slot,{method:'PATCH',body:{focalY}});
+ },
+ async deleteTaskMedia(id:string,slot:'cover'|'avatar'):Promise<void>{
+  await call('/v1/tasks/'+encodeURIComponent(id)+'/media/'+slot,{method:'DELETE'});
  },
  async trashTask(id:string):Promise<void>{
   await call('/v1/tasks/'+encodeURIComponent(id),{method:'DELETE'});
