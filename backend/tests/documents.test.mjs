@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
  createHandler,DOCUMENT_LIST_SQL,DOCUMENT_DETAIL_SQL,DOCUMENT_INSERT_SQL,
- DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_TRASH_SQL,DOCUMENT_RESTORE_SQL
+ DOCUMENT_UPDATE_SQL,DOCUMENT_DELETE_SQL,DOCUMENT_TRASH_SQL,DOCUMENT_RESTORE_SQL,DOCUMENT_SEARCH_SQL
 } from '../src/index.mjs';
 import {validateDocumentBlocks,canonicalDocumentJSON} from '../src/document-blocks.mjs';
 const ID='d1111111-1111-4111-8111-111111111111';
@@ -100,4 +100,50 @@ test('M6.2a stale updates, leaf-only soft delete and account-scoped restore retu
  assert.equal((await request('/v1/documents/'+ID,'DELETE','bob',{revision:1})).status,409);
  assert.equal((await request('/v1/documents/'+ID+'/restore','POST','bob',{revision:1})).status,409);
  assert.doesNotMatch(await update.text(),/SELECT|relation|password|DATABASE_URL/);
+});
+
+test('M6.3b authenticated search uses literal text and returns metadata only',async()=>{
+ const {request,calls}=setup(async(sql,args)=>{
+  if(sql===DOCUMENT_SEARCH_SQL)return {rows:args[0]==='alice'?[
+   {id:ID,workspace:WS,taskId:null,parentId:null,title:'Planning document',
+    revision:1,deletedAt:null,updatedAt:item.updatedAt,createdAt:item.createdAt}
+  ]:[]};
+  throw Error('Unexpected query');
+ });
+ const missing=await request('/v1/documents/search?q=private');
+ assert.equal(missing.status,200);
+ const data=await missing.json();
+ assert.equal(data.documents.length,1);
+ assert.equal(data.documents[0].blocks,undefined,'search must not return document bodies');
+ assert.deepEqual(calls[0],{sql:DOCUMENT_SEARCH_SQL,args:['alice',null,null,'private',51,0]});
+ const owner=await request('/v1/documents/search?q=private','GET','bob');
+ assert.equal(owner.status,200);assert.equal((await owner.json()).documents.length,0);
+ assert.equal((await request('/v1/documents/search?q=private','GET',null)).status,401);
+ assert.match(DOCUMENT_SEARCH_SQL,/d.owner_user_id=\$1/);
+ assert.match(DOCUMENT_SEARCH_SQL,/strpos\(lower\(d.blocks::text\),lower\(\$4\)\)/);
+ assert.doesNotMatch(DOCUMENT_SEARCH_SQL,/ILIKE/);
+ for(const query of ['a','x'.repeat(121),'%00']){
+  const r=await request('/v1/documents/search?q='+encodeURIComponent(query));
+  assert.equal(r.status,400);
+ }
+ assert.equal((await request('/v1/documents/search?q=math&limit=1000')).status,400);
+});
+test('M6.3b JSON export is owner-only, private, no-store and bounded to a single document',async()=>{
+ const {request,calls}=setup();
+ const unauth=await request('/v1/documents/'+ID+'/export','GET',null);
+ assert.equal(unauth.status,401);
+ const foreign=await request('/v1/documents/'+ID+'/export','GET','bob');
+ assert.equal(foreign.status,404);
+ const response=await request('/v1/documents/'+ID+'/export','GET','alice');
+ assert.equal(response.status,200);
+ assert.match(response.headers.get('content-type')||'',/application\/json/);
+ assert.equal(response.headers.get('cache-control'),'no-store');
+ assert.match(response.headers.get('content-disposition')||'',/attachment/);
+ assert.equal(response.headers.get('access-control-allow-origin'),null);
+ const data=await response.json();
+ assert.equal(data.schema,'dayframe.document.export.v1');
+ assert.equal(data.document.id,ID);
+ assert.equal(data.document.blocks[0].content[0].text,'Private text only');
+ assert.deepEqual(calls.at(-1),{sql:DOCUMENT_DETAIL_SQL,args:['alice',ID]});
+ assert.equal((await request('/v1/documents/'+ID+'/export','POST','alice',{any:'thing'})).status,405);
 });
