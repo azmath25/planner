@@ -49,3 +49,15 @@ for(const marker of ['archivedWorkspacesPage()','case\x27confirm-archive-workspa
 }
 if(!readFileSync('web/src/styles.css','utf8').includes('@media(max-width:480px){.archive-workspace-row'))throw new Error('Missing mobile restore layout');
 console.log('PASS: Workspace archive, restore and mobile controls wired with General protection');
+
+const m3=readFileSync('web/src/legacy/legacy.ts','utf8'),m3client=readFileSync('web/src/auth/api.ts','utf8'),m3backend=readFileSync('backend/src/index.mjs','utf8');
+for(const marker of ['#task-sort','task-priority','task-tags',"case'cancel-task'","case'add-subtask'","case'confirm-archive-task'","case'unarchive-task'","case'modal-permanent-task'","move-task-form",'loadTaskMedia']){
+ if(!m3.includes(marker))throw new Error('M3 task control missing: '+marker);
+}
+for(const marker of ['archiveTask','moveTask','taskEvents','permanentlyDeleteTask','getTaskMedia','saveTaskMedia']){
+ if(!m3client.includes(marker))throw new Error('M3 authenticated client missing: '+marker);
+}
+for(const marker of ['move_task_subtree','TASK_HISTORY','taskSubtreeUpdate','task_media','allowOpenChildren']){
+ if(!m3backend.includes(marker))throw new Error('M3 API protection missing: '+marker);
+}
+console.log('PASS: M3 task management, hierarchy, auditing and private media controls wired');
