@@ -491,6 +491,8 @@ function render(){const view=state.page==='task-archive'?archivedTasksPage():sta
 function navigate(page){
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
+ if(isCloud&&page==='plan')void loadCloudSchedule(state.planDay,state.planDay);
+ if(isCloud&&page==='calendar'){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
  if(page==='task-archive'&&isCloud){
   state.taskArchiveBusy=true;render();
   cloudApi.listArchivedTasks().then(rows=>{state.archivedTasks=rows.map(localTask);})
@@ -594,7 +596,37 @@ case'archive-workspace':{
  if(!isCloud||!workspaces.some(w=>w.id===id&&w.kind==='custom'))break;
  state.modal='archive-workspace';state.modalTask=id;render();break;
 }case'modal-task':state.modal='task';state.modalTask=id||null;state.subtaskParent=null;render();break;
-case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;render();break;case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
+case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;state.scheduleEditId=null;state.scheduleError='';render();break;
+case'edit-interval':{
+ const slot=state.scheduled.find(x=>x.id===id);
+ if(!slot||state.scheduleBusy)break;
+ state.scheduleEditId=slot.id;state.modalTask=null;state.scheduleError='';state.modal='schedule';render();break;
+}
+case'schedule-retry':{
+ if(isCloud)void loadCloudSchedule(state.planDay,state.planDay);break;
+}
+case'calendar-retry':{
+ if(isCloud){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}break;
+}
+case'calendar-view':{
+ state.calendarView=b.dataset.value;render();
+ if(isCloud){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}break;
+}
+case'calendar-prev':case'calendar-next':case'calendar-today':{
+ const step=a==='calendar-prev'?-1:1;
+ if(a==='calendar-today')state.calendarAnchor=today();
+ else if(state.calendarView==='month'){
+  const d=new Date(state.calendarAnchor+'T12:00:00Z');
+  d.setUTCMonth(d.getUTCMonth()+step,1);
+  state.calendarAnchor=d.toISOString().slice(0,10);
+ }else state.calendarAnchor=dayAdd(state.calendarAnchor,state.calendarView==='week'?step*7:step);
+ render();if(isCloud){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}break;
+}
+case'calendar-open-day':{
+ const day=b.dataset.day;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(day))break;
+ state.planDay=day;navigate('plan');if(isCloud)void loadCloudPool(day);break;
+}case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
  state.taskTab=b.dataset.value;render();
  if(state.taskTab==='history'&&isCloud){
   state.taskEventsBusy=true;state.taskEvents=[];render();
@@ -618,8 +650,20 @@ case'pool-up':case'pool-down':{
 case'pool-retry':if(isCloud)await loadCloudPool(state.planDay);break;
 case'unschedule':{
  const interval=state.scheduled.find(x=>x.id===id);
- if(!isCloud&&interval&&!state.pool.includes(interval.taskId))state.pool.push(interval.taskId);
- state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break;
+ if(!interval||state.scheduleBusy)break;
+ if(!window.confirm('Remove this timed block? The task and its deadlines will remain unchanged.'))break;
+ if(isCloud){
+  const saved=await changeTimedSchedule(async()=>{
+   await cloudApi.deleteTimedInterval(interval.id,interval.revision);
+   return {id:interval.id,removed:true};
+  });
+  if(!saved)break;
+ }else{
+  if(!state.pool.includes(interval.taskId))state.pool.push(interval.taskId);
+  state.scheduled=state.scheduled.filter(x=>x.id!==id);
+  persist();
+ }
+ render();break;
 }case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
  const m=state.mediaTarget;if(!m)break;
  if(isCloud&&m.kind==='task'){
@@ -798,7 +842,39 @@ if(form.id==='workspace-form'){
  state.modal=null;state.modalTask=null;persist();render();
 }
 if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
-if(form.id==='schedule-form'){const start=String(data.get('start')),end=String(data.get('end'));if(parseClock(end)<=parseClock(start)){alert('End time must be later than start time.');return}const taskId=String(data.get('task'));if(!findTask(taskId))return;state.scheduled.push({id:newId(),taskId,day:state.planDay,start,end});if(!isCloud){if(remainingUnscheduled(findTask(taskId),state.planDay)>0){if(!state.pool.includes(taskId))state.pool.push(taskId)}else state.pool=state.pool.filter(x=>x!==taskId)}state.modal=null;state.modalTask=null;persist();render()}});
+if(form.id==='schedule-form'){
+ const start=String(data.get('start')||''),end=String(data.get('end')||'');
+ const day=String(data.get('day')||''),taskId=String(data.get('task')||'');
+ const zone=String(data.get('timeZone')||'UTC');
+ const current=state.scheduleEditId?state.scheduled.find(slot=>slot.id===state.scheduleEditId):null;
+ const failForm=message=>{const element=document.querySelector('.schedule-form-error');if(element)element.textContent=message;};
+ if(!findTask(taskId)||!/^\d{4}-\d{2}-\d{2}$/.test(day)){failForm('Select an active task and a valid date.');return;}
+ if(!/^\d\d:\d\d$/.test(start)||!/^\d\d:\d\d$/.test(end)||parseClock(end)<=parseClock(start)){
+  failForm('End time must be later than start time. Create two blocks for an overnight task.');return;
+ }
+ if(state.scheduled.some(slot=>slot.id!==current?.id&&slot.day===day&&slot.start<end&&start<slot.end)){
+  failForm('That interval overlaps another scheduled block. Choose a free time.');return;
+ }
+ const minutes=state.scheduled.filter(slot=>slot.id!==current?.id&&slot.day===day)
+  .reduce((total,slot)=>total+parseClock(slot.end)-parseClock(slot.start),0)+parseClock(end)-parseClock(start);
+ if(minutes>state.capacity*60&&!window.confirm('Scheduled blocks exceed your local daily capacity of '+state.capacity+' hours. Save anyway?'))return;
+ if(isCloud){
+  if(state.scheduleBusy)return;
+  const payload={id:current?.id||crypto.randomUUID(),taskId,day,start,end,timeZone:zone,revision:current?.revision||0};
+  const saved=await changeTimedSchedule(()=>cloudApi.saveTimedInterval(payload));
+  if(!saved)return;
+ }else{
+  if(current)Object.assign(current,{taskId,day,start,end,revision:(current.revision||1)+1,timeZone:zone});
+  else state.scheduled.push({id:newId(),taskId,day,start,end,revision:1,timeZone:zone});
+  if(remainingUnscheduled(findTask(taskId),day)>0){
+   if(day===state.planDay&&!state.pool.includes(taskId))state.pool.push(taskId);
+  }
+  persist();
+ }
+ state.modal=null;state.modalTask=null;state.scheduleEditId=null;
+ render();
+}
+});
 trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos)}});
 trackListener('change',async e=>{if(e.target.id==='media-file'){
  const file=e.target.files?.[0],m=state.mediaTarget;
@@ -850,7 +926,14 @@ trackListener('change',async e=>{if(e.target.id==='media-file'){
   state.tasks.filter(t=>t.workspace===dest&&t.status==='open'&&!ids.has(t.id))
    .map(t=>'<option value="'+escapeHTML(t.id)+'">'+escapeHTML(t.title)+'</option>').join('');
  return;
-}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){state.planDay=e.target.value;render();if(isCloud)void loadCloudPool(state.planDay)}if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
+}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){
+ state.planDay=e.target.value;render();
+ if(isCloud){void loadCloudPool(state.planDay);void loadCloudSchedule(state.planDay,state.planDay);}
+}
+if(e.target.id==='calendar-anchor'){
+ state.calendarAnchor=e.target.value;render();
+ if(isCloud){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
+}if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
 trackListener('keydown',e=>{if(e.key==='Escape'&&state.modal)closeModal()});
 const timerHandle = setInterval(()=>{
   document.querySelectorAll('[data-timer-display]').forEach(el=>el.textContent=formatTimer());
