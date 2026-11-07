@@ -180,7 +180,7 @@ export async function dispatchDueNotes({sql,send,privateKey,vapid=makeVapidAutho
  if(!sql)await query('SELECT dayframe.enqueue_due_note_push($1)',[250]);
  const rows=sql?(await query(NOTE_CLAIM_SQL,[BATCH])).rows:await claimNotes();
  let delivered=0,expired=0,retrying=0;
- for(const {id,endpoint,attempts} of rows){
+ for(const {id,endpoint,attempts,owner_user_id} of rows){
   try{
    const valid=await query(NOTE_ELIGIBLE_SQL,[id]);
    if(!valid.rows.length||!isApprovedPushEndpoint(endpoint)){
@@ -189,7 +189,7 @@ export async function dispatchDueNotes({sql,send,privateKey,vapid=makeVapidAutho
    }
    // Check quiet hours again before sending (also covers retries originally
    // due before the quiet window opened).
-   const quiet=(await query(PUSH_QUIET_SQL,[row.owner_user_id])).rows[0]?.not_before;
+   const quiet=(await query(PUSH_QUIET_SQL,[owner_user_id])).rows[0]?.not_before;
    if(quiet&&new Date(quiet).getTime()>Date.now()+1000){
     await query("UPDATE dayframe.note_notification_deliveries SET status='retry',next_attempt_at=$2::timestamptz WHERE id=$1 AND status='sending'",[id,quiet]);
     retrying++;continue;
