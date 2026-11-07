@@ -43,6 +43,13 @@ BEGIN
  IF EXISTS(
   SELECT 1 FROM dayframe.scheduled_intervals s
   WHERE s.owner_user_id=NEW.owner_user_id AND s.plan_day=NEW.plan_day
+    AND s.id IS DISTINCT FROM NEW.id AND s.time_zone<>NEW.time_zone
+ ) THEN
+  RAISE EXCEPTION 'All blocks on one date must use the same time zone' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(
+  SELECT 1 FROM dayframe.scheduled_intervals s
+  WHERE s.owner_user_id=NEW.owner_user_id AND s.plan_day=NEW.plan_day
     AND s.id IS DISTINCT FROM NEW.id
     AND s.start_minute<NEW.end_minute AND NEW.start_minute<s.end_minute
  ) THEN
