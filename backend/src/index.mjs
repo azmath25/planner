@@ -331,6 +331,26 @@ export const ALERT_LIST_SQL =
  "WHERE ((o.day+o.clock) AT TIME ZONE COALESCE((SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1), $2)) <= now()+interval '48 hours' "+
  "AND a.acknowledged_at IS NULL AND (a.snoozed_until IS NULL OR a.snoozed_until<=now()) "+
  "ORDER BY \"dueAt\",o.\"taskId\",o.kind LIMIT 100";
+// M6.1a: notes are a distinct alert source. Keep task-alert APIs unchanged.
+export const NOTE_ALERT_LIST_SQL=
+ "SELECT n.id::text AS \"noteId\",n.title,'note'::text AS kind,"+
+ "n.reminder::text AS day,to_char(COALESCE(n.reminder_time,'09:00'::time),'HH24:MI') AS time,"+
+ "((n.reminder+COALESCE(n.reminder_time,'09:00'::time)) AT TIME ZONE "+
+ "COALESCE((SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1),$2)) AS \"dueAt\","+
+ "a.revision,a.acknowledged_at AS \"acknowledgedAt\",a.snoozed_until AS \"snoozedUntil\" "+
+ "FROM dayframe.quick_notes n "+
+ "JOIN dayframe.workspaces w ON w.id=n.workspace_id AND w.owner_user_id=n.owner_user_id "+
+ "LEFT JOIN dayframe.note_alert_actions a ON a.owner_user_id=n.owner_user_id "+
+ "AND a.note_id=n.id AND a.source_day=n.reminder AND "+
+ "a.source_time=COALESCE(n.reminder_time,'09:00'::time) "+
+ "WHERE n.owner_user_id=$1 AND n.reminder IS NOT NULL AND n.deleted_at IS NULL "+
+ "AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
+ "AND ((n.reminder+COALESCE(n.reminder_time,'09:00'::time)) AT TIME ZONE "+
+ "COALESCE((SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1),$2))<=now()+interval '48 hours' "+
+ "AND a.acknowledged_at IS NULL AND (a.snoozed_until IS NULL OR a.snoozed_until<=now()) "+
+ "ORDER BY \"dueAt\",n.id LIMIT 100";
+export const NOTE_ALERT_ACTION_SQL=
+ "SELECT dayframe.update_note_alert($1,$2,$3::date,$4::time,$5,$6,$7::timestamptz) AS revision";
 export const NOTIFICATION_PREF_GET_SQL="SELECT time_zone AS \"timeZone\" FROM dayframe.notification_preferences WHERE owner_user_id=$1";
 export const NOTIFICATION_PREF_SAVE_SQL="INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,$2) ON CONFLICT(owner_user_id) DO UPDATE SET time_zone=EXCLUDED.time_zone,updated_at=now() RETURNING time_zone AS \"timeZone\"";
 export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint,owner_user_id) VALUES($2,$1) "+
@@ -641,6 +661,19 @@ return {async fetch(req){
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,POST,OPTIONS'});
     }
+    // One account-wide inbox response, so notes do not add a browser round trip.
+    if(path==='/v1/alerts/combined'){
+      if(req.method!=='GET')return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+      const zone=alertZone(new URL(req.url).searchParams.get('timeZone')||'');
+      const [{rows:tasks},{rows:notes}]=await Promise.all([
+        query(ALERT_LIST_SQL,[uid,zone]),query(NOTE_ALERT_LIST_SQL,[uid,zone])
+      ]);
+      const alerts=[...tasks,...notes].sort((a,b)=>
+        new Date(a.dueAt).getTime()-new Date(b.dueAt).getTime()||
+        String(a.taskId||a.noteId).localeCompare(String(b.taskId||b.noteId))
+      ).slice(0,100);
+      return json({alerts,timeZone:zone},200,hdr);
+    }
     if(path==='/v1/alerts'){
       if(req.method==='GET'){
         const zone=alertZone(new URL(req.url).searchParams.get('timeZone')||'');
@@ -667,6 +700,30 @@ return {async fetch(req){
       }else if(body.until!==undefined&&body.until!==null)throw fail(400,'Unexpected snooze time');
       const {rows}=await query(ALERT_ACTION_SQL,[uid,id,kind,day,time,body.revision,body.action,until]);
       return json({revision:Number(rows[0].revision)},200,hdr);
+    }
+    const noteAlertId=/^\\/v1\\/note-alerts\\/([a-f0-9-]{36})$/i.exec(path);
+    if(noteAlertId){
+      if(req.method!=='POST')return json({error:'Method not allowed'},405,{...hdr,allow:'POST,OPTIONS'});
+      const body=await readBody(req);
+      const id=uuid(noteAlertId[1],'alert note');
+      const day=date(body.day,'alert date'),time=clock(body.time,day,'alert time');
+      if(!day||!time)throw fail(400,'Invalid note alert occurrence');
+      if(!Number.isSafeInteger(body.revision)||body.revision<0)throw fail(400,'Invalid alert revision');
+      if(!['acknowledge','snooze','reset'].includes(body.action))throw fail(400,'Invalid alert action');
+      let until=null;
+      if(body.action==='snooze'){
+        if(typeof body.until!=='string'||!/^\\d{4}-\\d\\d-\\d\\dT/.test(body.until)||!/[Zz]|[+-]\\d\\d:\\d\\d$/.test(body.until))throw fail(400,'Invalid snooze time');
+        until=new Date(body.until);
+        if(!Number.isFinite(until.valueOf())||until.valueOf()<=Date.now()||until.valueOf()>Date.now()+30*86400000)throw fail(400,'Snooze must be within 30 days');
+        until=until.toISOString();
+      }else if(body.until!==undefined&&body.until!==null)throw fail(400,'Unexpected snooze time');
+      try{
+       const {rows}=await query(NOTE_ALERT_ACTION_SQL,[uid,id,day,time,body.revision,body.action,until]);
+       return json({revision:Number(rows[0].revision)},200,hdr);
+      }catch(error){
+       if(error?.code==='40001')throw fail(409,'Note reminder changed or unavailable. Refresh alerts.');
+       throw error;
+      }
     }
     const timedId=/^\/v1\/timed-intervals\/([a-f0-9-]{36})$/i.exec(path);
     if(timedId){
