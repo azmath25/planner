@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Dayframe">
+ <rect x="0" y="0" width="512" height="512" rx="115" fill="#1f6257"/>
+ <rect x="93" y="102" width="326" height="308" rx="57" fill="#f7f8f7"/>
+ <path d="M145 174h147" stroke="#1f6257" stroke-linecap="round" stroke-width="32"/>
+ <path d="M145 239h222" stroke="#9cc5ae" stroke-linecap="round" stroke-width="28"/>
+ <path d="M145 305h120" stroke="#9cc5ae" stroke-linecap="round" stroke-width="28"/>
+ <circle cx="335" cy="311" r="46" fill="#d6b968"/>
+ <path d="m315 313 15 16 29-36" fill="none" stroke="#1f6257" stroke-linecap="round" stroke-linejoin="round" stroke-width="11"/>
+</svg>
