@@ -23,6 +23,10 @@ function make({rejectSql=false,denyMutations=false,hasOpenChildren=false}={}){
     if(sql.includes('FROM dayframe.task_events e'))return {rows:[{id:'1',type:'created',createdAt:'2026-11-07T12:00:00Z'}]};
     if(sql.startsWith('SELECT dayframe.move_task_subtree'))return {rows:[{}]};
     if(sql.startsWith('SELECT ')&&sql.includes('FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2'))return {rows:[{...task,id:args[1],workspace:WS,revision:2}]};
+    if(sql.includes('FROM dayframe.task_media m JOIN dayframe.tasks t'))return {rows:[{slot:'cover',mime:'image/webp',base64:'UklGRgAAAABXRUJQ',focalY:50}]};
+    if(sql.startsWith('INSERT INTO dayframe.task_media'))return {rows:[{slot:args[2]}]};
+    if(sql.startsWith('UPDATE dayframe.task_media m'))return {rows:[{slot:args[2]}]};
+    if(sql.startsWith('DELETE FROM dayframe.task_media m'))return {rows:[{slot:args[2]}]};
     if(sql.startsWith('SELECT revision FROM dayframe.tasks'))return {rows:[{revision:1}]};
     if(sql.startsWith('WITH RECURSIVE subtree AS')){
       if(sql.includes('SELECT id::text AS id FROM changed'))return {rows:[{id:args[1]}]};
@@ -249,4 +253,36 @@ test('M3 parent completion requires handling open subtasks',async()=>{
  assert.equal(bad.status,409);
  assert.match((await bad.json()).error,/open subtasks/);
  assert.equal((await req('/v1/tasks/'+TASK,'PATCH','alice',{...task,status:'done',allowOpenChildren:true})).status,200);
+});
+
+test('M3 task image API enforces owner identity, allowed image bytes and position',async()=>{
+ const {req,queries}=make();
+ const webp=Buffer.concat([Buffer.from('RIFF'),Buffer.from([16,0,0,0]),Buffer.from('WEBP'),Buffer.from([86,80,56,56,0,0,0,0])]);
+ const body={data:'data:image/webp;base64,'+webp.toString('base64'),focalY:70};
+ const path='/v1/tasks/'+TASK+'/media/cover';
+ assert.equal((await req(path,'PUT',null,body)).status,401);
+ assert.equal((await req(path,'PUT','forged',body)).status,401);
+ assert.equal((await req(path,'PUT','alice',body)).status,200);
+ const sql=queries.find(q=>q.sql.startsWith('INSERT INTO dayframe.task_media'));
+ assert.deepEqual(sql.args.slice(0,4),['alice',TASK,'cover','image/webp']);
+ assert.match(sql.sql,/owner_user_id=\$1/);
+ assert.match(sql.sql,/ON CONFLICT\(task_id,slot\)/);
+ assert.equal((await req(path,'PUT','alice',{...body,data:body.data.replace('image/webp','image/png')})).status,400);
+ assert.equal((await req(path,'PUT','alice',{...body,focalY:101})).status,400);
+ assert.equal((await req(path,'PUT','alice',{...body,data:'data:image/svg+xml;base64,PHN2Zz4='})).status,400);
+ const response=await req('/v1/tasks/'+TASK+'/media','GET','alice');
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).images[0].slot,'cover');
+ assert.equal((await req(path,'PATCH','alice',{focalY:5})).status,200);
+ assert.equal((await req(path,'DELETE','alice')).status,200);
+});
+
+test('M3 stale task hierarchy and ownership operations fail closed',async()=>{
+ const {req,queries}=make({denyMutations:true});
+ assert.equal((await req('/v1/tasks/'+TASK+'/permanent','DELETE','forged',{revision:1,confirm:'DELETE'})).status,401);
+ assert.equal((await req('/v1/tasks/'+TASK+'/move','POST','alice',{revision:0,workspace:WS})).status,400);
+ assert.equal((await req('/v1/tasks/'+TASK+'/move','POST','alice',{revision:1,workspace:BOB,parent:'bogus'})).status,400);
+ assert.equal((await req('/v1/tasks/'+TASK+'/media/cover','PUT','alice',{data:'x'})).status,400);
+ const unauth=queries.filter(q=>q.args?.[0]==='forged');
+ assert.equal(unauth.length,0);
 });
