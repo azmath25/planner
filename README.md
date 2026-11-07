@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M4.1: Neon-saved untimed daily pool implemented.** M3 task management is complete; timed intervals and reminders are separate future milestones. The mobile website is the first product; Android is deliberately later.
+**M4.2: Timed Scheduling implemented and deployed.** Neon now stores untimed daily pools and fixed-time blocks. M4.3 reliable reminders and M5 synchronized time tracking are still future milestones. The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -23,7 +23,19 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
 
-**Saved in Neon:** workspaces, active tasks, private task images, and each date's manually ordered untimed pool. **Still device-local:** fixed-time intervals, capacity, quick notes, workspace photos and timer sessions. No actual reminders are delivered yet. Use **Profile → Refresh saved data** for updated tasks/workspaces. Do not rely on local timer sessions as permanent records.
+**Saved in Neon:** workspaces, active tasks, private task images, each date's untimed daily pool and fixed-time scheduled blocks. **Still device-local:** daily capacity preference, quick notes, workspace photos and timer sessions. No actual reminders are delivered yet. Use **Profile → Refresh saved data** for updated tasks/workspaces. Do not rely on local timer sessions as permanent records.
+
+## M4.2 — Timed Scheduling
+
+From **Plan**, select **Add interval**. Choose an open task and set a date, start time and end time. You can split one task across several days by adding more than one interval. Use **Edit** on a timed block to change its task, clock times or date; use **Remove** to release its scheduled time without deleting the underlying task or changing its deadlines and reminders.
+
+Signed-in interval records are saved in Neon, including an IANA time zone and a revision. **Overlapping blocks on the same day are rejected atomically**; adjacent blocks are allowed. Each day uses one time zone, so the wall-clock schedule remains internally consistent. The available-hours setting remains a **local preference**: overcapacity gives a warning/confirmation, not an automatic reschedule or server failure.
+
+Tap **Calendar** from Plan (including on mobile) to switch between **Day / Week / Month** and choose a date or edit a block. Archived tasks' reserved time is shown instead of silently causing hidden overlaps. Calendar views fetch owner-scoped intervals from Neon, with stale-edit protection.
+
+The **untimed daily pool and scheduled time blocks are independent**. Editing one does not automatically modify the other. Former locally saved intervals are not imported automatically into an authenticated account. The local demo remains browser-only.
+
+**Not yet delivered:** actual reminders/alerts (M4.3), server-backed timer sessions (M5) and account-wide synchronized capacity. Complex DST transitions and real signed-in cross-device acceptance tests remain separate verification work. See [M4.2 checkpoint](docs/CHECKPOINT_M4.2.md) for technical guarantees, SQL migration, tests and limitations.
 
 ## M4.1 — Untimed Daily Pool
 
@@ -31,7 +43,7 @@ Open **Plan**, choose a date and use **Add to day** to select open tasks from an
 
 Signed-in accounts save the **ordered untimed pool in Neon** per account and calendar date. The pool loads on sign-in and when you switch days. Concurrent changes from another device are revision-checked: if an update is stale, Dayframe refreshes the saved pool instead of overwriting it. Each date supports up to 100 distinct open tasks. The standalone local demo continues storing its example daily pools in the browser.
 
-**M4.1 boundary:** Fixed-time intervals, available hours/capacity, notifications, notes and time sessions remain local. The timed part of Plan will be addressed in M4.2. A task may be selected in both its untimed pool and a local timed interval; changing a local timed interval does not silently rewrite the cloud pool. Previously stored local pools are not automatically imported.
+**At the M4.1 checkpoint:** Fixed-time intervals, available hours/capacity, notifications, notes and time sessions were still local. M4.2 has subsequently synchronized fixed-time intervals to Neon. A task may be selected in both its untimed pool and a timed interval; changing an interval does not silently rewrite the cloud pool. Previously stored local pools are not automatically imported.
 
 See [M4.1 checkpoint](docs/CHECKPOINT_M4.1.md) for verified behavior and limitations.
 
@@ -47,7 +59,7 @@ See [M3 checkpoint](docs/CHECKPOINT_M3.md) for verified tests, database migratio
 
 ## M2.3-W: archive and restore custom workspaces
 
-From **Workspaces**, open a custom workspace and select **Archive**. The confirmation preserves the workspace and its tasks in Neon, but hides them from active Home, Tasks, Calendar and Plan views. Workspaces → **Archived workspaces** lists archived custom spaces and provides **Restore**. General cannot be archived; workspace-level time sessions, notes and day plans are still stored locally and are not deleted. If a local timer is running for an archived workspace, it is stopped and saved locally before the workspace is hidden.
+From **Workspaces**, open a custom workspace and select **Archive**. The confirmation preserves the workspace and its tasks in Neon and hides them from active task lists. Any previously reserved timed blocks remain visible in Calendar/Plan as archived reservations until they are removed or the workspace is restored. Workspaces → **Archived workspaces** lists archived custom spaces and provides **Restore**. General cannot be archived; workspace-level time sessions, notes and day plans are still stored locally and are not deleted. If a local timer is running for an archived workspace, it is stopped and saved locally before the workspace is hidden.
 
 Backend enforces ownership, `revision` on archive/restore, and protects General in both SQL and API. See `docs/CHECKPOINT_M2.3-W.md`.
 
