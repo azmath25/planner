@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M2.2: Neon Auth and permanent General workspace; timer preview preserved.** The mobile website is the first product; Android is deliberately later.
+**M2.3: saved Neon workspaces and tasks with recoverable Trash.** The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -21,7 +21,21 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 
 ### Preview safety
 
-After sign-in, a unique General workspace is created in Neon. **Task and timer screens are still only browser-local demos**, now namespaced per signed-in account. No persistent task tracking or notifications are connected. Do not rely on this prototype for actual reminders, critical deadlines, confidential content or recorded time.
+After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
+
+**Still local:** the daily pool, timed intervals, quick notes, photos and time-tracking sessions, including the global timer. These remain account-namespaced browser previews; they are NOT synchronized between devices. No actual reminder notifications have been enabled. Use Refresh in the account bar to fetch cloud updates created elsewhere. Never rely on the current local timer as your sole permanent record.
+
+## M2.3 persisted workspaces and tasks
+
+- Neon tables: `dayframe.workspaces` (custom records, permanent General) and `dayframe.tasks` with composite owner/workspace and owner/parent foreign keys.
+- Protected API: `GET/POST /v1/workspaces`, `PATCH /v1/workspaces/:id`, `GET/POST /v1/tasks`, `PATCH/DELETE /v1/tasks/:id`, `GET /v1/tasks/trash`, `POST /v1/tasks/:id/restore`.
+- Task deletion moves records to recoverable Trash, not permanent removal. General cannot be renamed or deleted.
+- Task status, title, estimate, notes, priorities, long-term flag and independent hard/soft deadlines are saved with revision checks for stale editors.
+- The backend derives user ownership exclusively from a verified Neon JWT; browser-supplied owner IDs grant no access.
+- Partial backend migration and UI tests: `npm run test:api`, `npm run test:source`; live security smoke: `node --test tests/live-api-smoke.mjs`.
+- No account has been populated with demonstration tasks. Add the tasks you want to keep.
+
+See `docs/CHECKPOINT_M2.3.md` for scope and verification limitations.
 
 ## Browser-local time tracking (timer UX slice)
 
