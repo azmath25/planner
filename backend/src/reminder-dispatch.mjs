@@ -18,10 +18,10 @@ export function isApprovedPushEndpoint(value){
     h.endsWith('.notify.windows.com'));
  }catch{return false;}
 }
-export function makeVapidAuthorization(endpoint,privateKey,nowSeconds=Math.floor(Date.now()/1000)){
+export function makeVapidAuthorization(endpoint,privateKey,nowSeconds=Math.floor(Date.now()/1000),publicKey=VAPID_PUBLIC_KEY){
  if(!isApprovedPushEndpoint(endpoint))throw Error('Unsupported push endpoint');
  if(typeof privateKey!=='string'||!/^[\w-]{42,44}$/.test(privateKey))throw Error('Missing VAPID private key');
- const raw=Buffer.from(VAPID_PUBLIC_KEY,'base64url');
+ const raw=Buffer.from(publicKey,'base64url');
  if(raw.length!==65||raw[0]!==4)throw Error('Invalid VAPID public key');
  const key=crypto.createPrivateKey({key:{
   kty:'EC',crv:'P-256',x:b64(raw.subarray(1,33)),y:b64(raw.subarray(33,65)),d:privateKey
@@ -32,7 +32,7 @@ export function makeVapidAuthorization(endpoint,privateKey,nowSeconds=Math.floor
  }));
  const input=header+'.'+payload;
  const signature=crypto.sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'});
- return 'vapid t='+input+'.'+b64(signature)+', k='+VAPID_PUBLIC_KEY;
+ return 'vapid t='+input+'.'+b64(signature)+', k='+publicKey;
 }
 function db(){
  if(!process.env.DATABASE_URL)throw Error('Database not configured');
@@ -85,7 +85,7 @@ async function claim(limit=BATCH){
  }catch(e){await client.query('ROLLBACK');throw e;}
  finally{client.release();}
 }
-export async function dispatchDue({sql,send,privateKey}={}){
+export async function dispatchDue({sql,send,privateKey,vapid=makeVapidAuthorization}={}){
  const query=sql??((statement,params)=>db().query(statement,params));
  const push=send??((endpoint,authorization)=>fetch(endpoint,{
    method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
@@ -101,7 +101,7 @@ export async function dispatchDue({sql,send,privateKey}={}){
    if(!valid.rows.length||!isApprovedPushEndpoint(endpoint)){
     await query("UPDATE dayframe.notification_deliveries SET status='expired' WHERE id=$1 AND status='sending'",[id]);expired++;continue;
    }
-   const response=await push(endpoint,makeVapidAuthorization(endpoint,privateKey??process.env.VAPID_PRIVATE_KEY));
+   const response=await push(endpoint,vapid(endpoint,privateKey??process.env.VAPID_PRIVATE_KEY));
    if(response.ok){
     await query("UPDATE dayframe.notification_deliveries SET status='delivered',sent_at=now(),last_status=$2 WHERE id=$1 AND status='sending'",[id,response.status]);delivered++;continue;
    }
