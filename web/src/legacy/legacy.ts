@@ -84,6 +84,13 @@ const coverFrame=(kind,id,coverClass,avatarIcon)=>`<div class="workspace-detail-
 
 const openTasks=()=>state.tasks.filter(t=>t.status!=='done'&&t.status!=='cancelled');
 const findTask=id=>state.tasks.find(t=>t.id===id);
+const subtreeIds=id=>{
+ const seen=new Set([id]);let changed=true;
+ while(changed){changed=false;
+  for(const task of state.tasks)if(task.parent&&seen.has(task.parent)&&!seen.has(task.id)){seen.add(task.id);changed=true;}
+ }
+ return seen;
+};
 const fmtTime=(str)=>str?str:'—';
 const formatTimer=()=>formatElapsed(getElapsedMs(state.timer,Date.now()));
 const taskTimeMs=t=>recordedMs(t)+((state.timer?.taskId===t.id)?getElapsedMs(state.timer,Date.now()):0);
@@ -415,7 +422,10 @@ case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')
    .catch(saveError).finally(()=>{state.taskEventsBusy=false;if(state.taskTab==='history')render();});
  }
  break;
-}case'toggle-task':await toggleTask(id);break;case'reopen-task':{const task=findTask(id);if(task&&task.status!=='open')await toggleTask(id);break;}case'cancel-task':await cancelTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{const m=state.mediaTarget;if(m){delete state.media[mediaKey(m.kind,m.id,m.slot)];delete state.mediaPos[mediaKey(m.kind,m.id,m.slot)];}state.modal=null;persist();render();break;}case'modal-delete-task':state.modal='delete-task';state.modalTask=id;render();break;case'confirm-archive-workspace':{
+}case'toggle-task':await toggleTask(id);break;case'reopen-task':{const task=findTask(id);if(task&&task.status!=='open')await toggleTask(id);break;}case'cancel-task':await cancelTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{const m=state.mediaTarget;if(m){delete state.media[mediaKey(m.kind,m.id,m.slot)];delete state.mediaPos[mediaKey(m.kind,m.id,m.slot)];}state.modal=null;persist();render();break;}case'modal-delete-task':state.modal='delete-task';state.modalTask=id;render();break;
+case'modal-archive-task':if(isCloud&&findTask(id)){state.modal='archive-task-confirm';state.modalTask=id;render();}break;
+case'modal-move-task':if(isCloud&&findTask(id)){state.modal='move-task';state.modalTask=id;render();setTimeout(()=>{const select=document.querySelector('#move-workspace');if(select)select.dispatchEvent(new Event('change',{bubbles:true}));},0);}break;
+case'modal-permanent-task':if(isCloud&&state.trashed.some(t=>t.id===id)){state.modal='permanent-task';state.modalTask=id;render();}break;case'confirm-archive-workspace':{
  if(!isCloud||state.cloudBusy)break;
  const w=workspaces.find(item=>item.id===state.modalTask);
  if(!w||w.kind!=='custom')break;
@@ -430,8 +440,30 @@ case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')
  state.modal=null;state.modalTask=null;state.page='workspaces';
  persist();render();break;
 }
+case'confirm-archive-task':{
+ if(!isCloud||state.cloudBusy)break;
+ const task=findTask(state.modalTask);if(!task)break;
+ const ids=subtreeIds(task.id);state.cloudBusy=true;
+ try{await cloudApi.archiveTask(task.id,task.revision);}
+ catch(err){saveError(err);break;}finally{state.cloudBusy=false;}
+ if(state.timer&&ids.has(state.timer.taskId))recordAndStop('task_archived');
+ state.tasks=state.tasks.filter(t=>!ids.has(t.id));
+ state.modal=null;state.modalTask=null;state.page='tasks';persist();render();break;
+}
+case'unarchive-task':{
+ if(!isCloud||state.cloudBusy)break;
+ const task=state.archivedTasks.find(t=>t.id===id);if(!task)break;
+ state.cloudBusy=true;
+ try{
+  await cloudApi.unarchiveTask(id,task.revision);
+  if(typeof account.onRefresh==='function')account.onRefresh();
+  else location.reload();
+ }catch(err){saveError(err);}
+ finally{state.cloudBusy=false;}
+ break;
+}
 case'confirm-delete-task':{
- const tid=state.modalTask;
+ const tid=state.modalTask,affected=subtreeIds(tid);
  if(isCloud){
   if(state.cloudBusy)return;
   state.cloudBusy=true;
@@ -439,11 +471,11 @@ case'confirm-delete-task':{
   catch(err){saveError(err);return;}
   finally{state.cloudBusy=false;}
  }
- if(state.timer?.taskId===tid)recordAndStop('stopped');
- state.tasks=state.tasks.filter(t=>t.id!==tid);
- for(const day of Object.keys(state.pools))state.pools[day]=state.pools[day].filter(x=>x!==tid);
- state.scheduled=state.scheduled.filter(s=>s.taskId!==tid);
- if(!isCloud)state.sessions=state.sessions.filter(x=>x.taskId!==tid);
+ if(state.timer&&affected.has(state.timer.taskId))recordAndStop('stopped');
+ state.tasks=state.tasks.filter(t=>!affected.has(t.id));
+ for(const day of Object.keys(state.pools))state.pools[day]=state.pools[day].filter(x=>!affected.has(x));
+ state.scheduled=state.scheduled.filter(s=>!affected.has(s.taskId));
+ if(!isCloud)state.sessions=state.sessions.filter(x=>!affected.has(x.taskId));
  state.modal=null;state.modalTask=null;state.page='tasks';persist();render();break;
 }
 case'restore-workspace':{
@@ -464,11 +496,9 @@ case'restore-task':{
  if(!isCloud||state.cloudBusy)return;
  state.cloudBusy=true;
  try{
-  const row=await cloudApi.restoreTask(id);
-  const task=localTask(row);
-  task.spentMs=state.sessions.filter(x=>x.taskId===task.id).reduce((n,x)=>n+(Number(x.durationMs)||0),0);
-  state.tasks.unshift(task);
-  state.trashed=state.trashed.filter(x=>x.id!==task.id);
+  await cloudApi.restoreTask(id);
+  if(typeof account.onRefresh==='function')account.onRefresh();
+  else location.reload();
  }catch(err){saveError(err);return;}
  finally{state.cloudBusy=false;}
  persist();render();break;
@@ -506,6 +536,34 @@ trackListener('submit',async e=>{e.preventDefault();const form=e.target;const da
  else state.tasks.unshift({id:newId(),spent:0,status:'open',priority:'medium',parent:null,...entry});
  state.modal=null;state.modalTask=null;state.subtaskParent=null;persist();render();
 }
+if(form.id==='move-task-form'){
+ if(!isCloud||state.cloudBusy)return;
+ const task=findTask(state.modalTask);if(!task)return;
+ const dest=String(data.get('workspace')||'');
+ const parent=String(data.get('parent')||'')||null;
+ state.cloudBusy=true;
+ try{
+  await cloudApi.moveTask(task.id,{workspace:serverWorkspaceId(dest),parent,revision:task.revision});
+  if(typeof account.onRefresh==='function')account.onRefresh();
+  else location.reload();
+ }catch(err){saveError(err);}
+ finally{state.cloudBusy=false;}
+ return;
+}
+if(form.id==='permanent-task-form'){
+ if(!isCloud||state.cloudBusy)return;
+ const task=state.trashed.find(t=>t.id===state.modalTask);if(!task)return;
+ const confirmation=String(data.get('confirm')||'');
+ if(confirmation!=='DELETE'){alert('Type DELETE exactly to confirm.');return;}
+ state.cloudBusy=true;
+ try{
+  await cloudApi.permanentlyDeleteTask(task.id,task.revision,confirmation);
+  state.trashed=state.trashed.filter(x=>x.id!==task.id);
+  state.modal=null;state.modalTask=null;render();
+ }catch(err){saveError(err);}
+ finally{state.cloudBusy=false;}
+ return;
+}
 if(form.id==='workspace-form'){
  if(!isCloud||state.cloudBusy)return;
  const existing=state.modal==='workspace-edit'?workspaces.find(w=>w.id===state.modalTask):null;
@@ -535,7 +593,16 @@ if(form.id==='workspace-form'){
 if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
 if(form.id==='schedule-form'){const start=String(data.get('start')),end=String(data.get('end'));if(parseClock(end)<=parseClock(start)){alert('End time must be later than start time.');return}const taskId=String(data.get('task'));if(!findTask(taskId))return;state.scheduled.push({id:newId(),taskId,day:state.planDay,start,end});if(remainingUnscheduled(findTask(taskId),state.planDay)>0){if(!state.pool.includes(taskId))state.pool.push(taskId)}else state.pool=state.pool.filter(x=>x!==taskId);state.modal=null;state.modalTask=null;persist();render()}});
 trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos)}});
-trackListener('change',async e=>{if(e.target.id==='media-file'){const file=e.target.files?.[0];const m=state.mediaTarget;if(!m||!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){alert('Choose a JPEG, PNG or WebP image under 5 MB.');return;}try{const image=await createImageBitmap(file);const maxW=m.slot==='avatar'?400:1400,maxH=m.slot==='avatar'?400:900;const scale=Math.min(1,maxW/image.width,maxH/image.height);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const encoded=canvas.toDataURL('image/webp',.72);image.close?.();if(encoded.length>950000){alert('Image is too large after compression. Try a smaller picture.');return;}const key=mediaKey(m.kind,m.id,m.slot);const previous=state.media[key];state.media[key]=encoded;if(!persist()){if(previous)state.media[key]=previous;else delete state.media[key];alert('Local preview storage is full. Please use a smaller picture or remove another photo.');return;}state.modal=null;render();}catch(err){console.error('Image preview failed',err);alert('Could not read that picture. Try another image.')}return;}if(e.target.id==='density-select'){state.density=e.target.value;persist();render();return;}if(e.target.id==='cover-style-select'){state.coverStyle=e.target.value;persist();render();return;}if(e.target.id==='media-position'){const m=state.mediaTarget;if(m){state.mediaPos[mediaKey(m.kind,m.id,m.slot)]=Number(e.target.value);persist();render();}return;}if(e.target.id==='task-sort'){state.taskSort=e.target.value;persist();render();return;}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){state.planDay=e.target.value;render()}if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
+trackListener('change',async e=>{if(e.target.id==='media-file'){const file=e.target.files?.[0];const m=state.mediaTarget;if(!m||!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){alert('Choose a JPEG, PNG or WebP image under 5 MB.');return;}try{const image=await createImageBitmap(file);const maxW=m.slot==='avatar'?400:1400,maxH=m.slot==='avatar'?400:900;const scale=Math.min(1,maxW/image.width,maxH/image.height);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const encoded=canvas.toDataURL('image/webp',.72);image.close?.();if(encoded.length>950000){alert('Image is too large after compression. Try a smaller picture.');return;}const key=mediaKey(m.kind,m.id,m.slot);const previous=state.media[key];state.media[key]=encoded;if(!persist()){if(previous)state.media[key]=previous;else delete state.media[key];alert('Local preview storage is full. Please use a smaller picture or remove another photo.');return;}state.modal=null;render();}catch(err){console.error('Image preview failed',err);alert('Could not read that picture. Try another image.')}return;}if(e.target.id==='density-select'){state.density=e.target.value;persist();render();return;}if(e.target.id==='cover-style-select'){state.coverStyle=e.target.value;persist();render();return;}if(e.target.id==='media-position'){const m=state.mediaTarget;if(m){state.mediaPos[mediaKey(m.kind,m.id,m.slot)]=Number(e.target.value);persist();render();}return;}if(e.target.id==='task-sort'){state.taskSort=e.target.value;persist();render();return;}if(e.target.id==='move-workspace'){
+ const select=document.querySelector('#move-parent');
+ const task=findTask(state.modalTask);if(!select||!task)return;
+ const dest=e.target.value;
+ const ids=subtreeIds(task.id);
+ select.innerHTML='<option value="">Top-level task</option>'+
+  state.tasks.filter(t=>t.workspace===dest&&t.status==='open'&&!ids.has(t.id))
+   .map(t=>'<option value="'+escapeHTML(t.id)+'">'+escapeHTML(t.title)+'</option>').join('');
+ return;
+}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){state.planDay=e.target.value;render()}if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
 trackListener('keydown',e=>{if(e.key==='Escape'&&state.modal)closeModal()});
 const timerHandle = setInterval(()=>{
   document.querySelectorAll('[data-timer-display]').forEach(el=>el.textContent=formatTimer());
