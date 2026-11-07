@@ -1,65 +1,182 @@
-// Dayframe M2.2: all user routes require a server-verified Managed Neon Auth JWT.
+// M2.3 Dayframe API: all resource authorization is derived from verified Neon JWT sub.
+// Ownership is enforced again by composite database foreign keys. Never trust client owner IDs.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import pg from 'pg';
 
-const ORIGIN = 'https://azmath25.github.io';
-const COMMON = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', vary: 'Origin' };
-export const BOOTSTRAP_SQL = `INSERT INTO dayframe.workspaces(owner_user_id,name,kind) VALUES($1,'General','general') ON CONFLICT (owner_user_id) WHERE kind = 'general' DO NOTHING`;
-export const LIST_SQL = `SELECT id::text AS id,name,kind,created_at AS "createdAt" FROM dayframe.workspaces WHERE owner_user_id=$1 ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id`;
-const response = (body, status, headers) => Response.json(body, {status, headers:{...headers,'content-type':'application/json; charset=utf-8'}});
-let jwks, pool;
+const ORIGIN='https://azmath25.github.io';
+const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer',vary:'Origin'};
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const json=(body,status,headers)=>Response.json(body,{status,headers:{...headers,'content-type':'application/json; charset=utf-8'}});
+const fail=(code,msg)=>Object.assign(new Error(msg),{status:code});
+export const BOOTSTRAP_SQL="INSERT INTO dayframe.workspaces(owner_user_id,name,kind) VALUES($1,'General','general') ON CONFLICT (owner_user_id) WHERE kind = 'general' DO NOTHING";
+const WORKSPACE_FIELDS="id::text AS id,name,kind,subtitle,color,cover,revision,created_at AS \"createdAt\"";
+export const LIST_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id";
+const TASK_FIELDS=[
+  'id::text AS id','workspace_id::text AS workspace','parent_id::text AS parent',
+  'title','notes','status','priority','estimate_minutes AS estimate',
+  'long_term AS long','deadline::text AS deadline',
+  "to_char(deadline_time,'HH24:MI') AS \"deadlineTime\"",
+  'reminder::text AS reminder',
+  "to_char(reminder_time,'HH24:MI') AS \"reminderTime\"",
+  'revision','created_at AS "createdAt"','updated_at AS "updatedAt"'
+].join(',');
+const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
+const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC LIMIT 100";
+const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2";
+const TASK_INSERT="INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,notes,status,priority,estimate_minutes,long_term,deadline,deadline_time,reminder,reminder_time,parent_id) "+
+"SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
+const TASK_UPDATE="UPDATE dayframe.tasks t SET workspace_id=$3,title=$4,notes=$5,status=$6,priority=$7,estimate_minutes=$8,long_term=$9,deadline=$10,deadline_time=$11,reminder=$12,reminder_time=$13,parent_id=$14,revision=t.revision+1,updated_at=now() WHERE t.owner_user_id=$1 AND t.id=$2 AND t.revision=$15 AND t.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL) RETURNING "+TASK_FIELDS;
+
+let jwks,pool;
 async function verifyNeonToken(token) {
-  if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_JWKS_URL) throw Error('Missing auth configuration');
-  jwks ??= createRemoteJWKSet(new URL(process.env.NEON_AUTH_JWKS_URL));
-  const {payload} = await jwtVerify(token,jwks,{issuer:new URL(process.env.NEON_AUTH_BASE_URL).origin,algorithms:['EdDSA']});
-  if (typeof payload.sub !== 'string' || !payload.sub || payload.sub.length>256) throw Error('Invalid subject');
+  if(!process.env.NEON_AUTH_BASE_URL||!process.env.NEON_AUTH_JWKS_URL) throw Error('Missing auth configuration');
+  jwks??=createRemoteJWKSet(new URL(process.env.NEON_AUTH_JWKS_URL));
+  const {payload}=await jwtVerify(token,jwks,{issuer:new URL(process.env.NEON_AUTH_BASE_URL).origin,algorithms:['EdDSA']});
+  if(typeof payload.sub!=='string'||!payload.sub||payload.sub.length>256) throw Error('Invalid subject');
   return payload.sub;
 }
-async function runSql(sql, args) {
-  if (!process.env.DATABASE_URL) throw Error('Missing database configuration');
-  if (!pool) {
-    pool = new pg.Pool({connectionString:process.env.DATABASE_URL,max:4});
-    pool.on('error',()=>console.error('Dayframe database pool disconnected'));
-  }
+async function runSql(sql,args){
+  if(!process.env.DATABASE_URL) throw Error('Missing database configuration');
+  if(!pool){pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:4});pool.on('error',()=>console.error('Dayframe database pool disconnected'));}
   return pool.query(sql,args);
 }
-export function createHandler({verifyToken=verifyNeonToken,query=runSql}={}) {
-  return {async fetch(request) {
-    const path = new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    const trusted = request.headers.get('origin')===ORIGIN;
-    const headers = {...COMMON,...(trusted?{'access-control-allow-origin':ORIGIN}:{})};
-    const app = path.startsWith('/v1/');
-    if(request.method==='OPTIONS') {
-      if(!app && !['/','/health'].includes(path)) return response({error:'Not found'},404,headers);
-      if(!trusted) return response({error:'Origin not allowed'},403,headers);
-      return new Response(null,{status:204,headers:{...headers,'access-control-allow-methods':'GET, OPTIONS','access-control-allow-headers':'authorization,content-type','access-control-max-age':'600'}});
+async function readBody(req){
+  if(!String(req.headers.get('content-type')||'').toLowerCase().startsWith('application/json')) throw fail(415,'Expected JSON');
+  if(Number(req.headers.get('content-length')||0)>25000) throw fail(413,'Request too large');
+  const text=await req.text();
+  if(text.length>25000) throw fail(413,'Request too large');
+  let data;try{data=JSON.parse(text)}catch{throw fail(400,'Invalid JSON');}
+  if(!data||Array.isArray(data)||typeof data!=='object') throw fail(400,'Invalid JSON object');
+  return data;
+}
+function str(value,max,label,{required=false}={}){
+  if(typeof value!=='string') throw fail(400,'Invalid '+label);
+  const s=value.trim();
+  if(s.length>max||(required&&!s)) throw fail(400,'Invalid '+label);
+  return s;
+}
+function date(value,label){
+  if(value===null||value===undefined||value==='')return null;
+  if(typeof value!=='string'||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) throw fail(400,'Invalid '+label);
+  const d=new Date(value+'T00:00:00Z');
+  if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==value) throw fail(400,'Invalid '+label);
+  return value;
+}
+function clock(value,day,label){
+  if(value===null||value===undefined||value==='')return null;
+  if(!day||typeof value!=='string'||!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value)) throw fail(400,'Invalid '+label);
+  return value;
+}
+function uuid(s,label){if(typeof s!=='string'||!UUID.test(s)) throw fail(400,'Invalid '+label);return s;}
+function taskBody(body){
+  const title=str(body.title,160,'task title',{required:true});
+  const workspace=uuid(body.workspace,'workspace');
+  const notes=str(body.notes??'',10000,'notes');
+  const status=body.status??'open',priority=body.priority??'medium';
+  if(!['open','done','cancelled'].includes(status)||!['low','medium','high'].includes(priority))throw fail(400,'Invalid task status or priority');
+  const estimate=Number(body.estimate??30);
+  if(!Number.isSafeInteger(estimate)||estimate<1||estimate>100000)throw fail(400,'Invalid estimate');
+  if(typeof body.long!=='boolean'&&body.long!==undefined)throw fail(400,'Invalid long-term flag');
+  const hard=date(body.deadline,'deadline'),rem=date(body.reminder,'reminder');
+  const parent=body.parent==null?null:uuid(body.parent,'parent task');
+  return [workspace,title,notes,status,priority,estimate,Boolean(body.long),hard,clock(body.deadlineTime,hard,'deadline time'),rem,clock(body.reminderTime,rem,'reminder time'),parent];
+}
+function workspaceBody(body){
+  const name=str(body.name,120,'workspace name',{required:true});
+  const subtitle=str(body.subtitle??'',180,'workspace description');
+  const color=body.color??'#85a99d',cover=body.cover??'general';
+  if(typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color))throw fail(400,'Invalid workspace color');
+  if(typeof cover!=='string'||!['general','research','dev','custom'].includes(cover))throw fail(400,'Invalid workspace cover');
+  return [name,subtitle,color,cover];
+}
+function revision(body){const rev=Number(body.revision);if(!Number.isSafeInteger(rev)||rev<1)throw fail(400,'Invalid revision');return rev;}
+function authHeaders(request){
+  const trusted=request.headers.get('origin')===ORIGIN;
+  return {...HEADERS,...(trusted?{'access-control-allow-origin':ORIGIN}:{})};
+}
+export function createHandler({verifyToken=verifyNeonToken,query=runSql}={}){
+return {async fetch(req){
+  const path=new URL(req.url).pathname.replace(/\/+$/,'')||'/';
+  const hdr=authHeaders(req);
+  if(req.method==='OPTIONS'){
+    if(!path.startsWith('/v1/')&&!['/','/health'].includes(path))return json({error:'Not found'},404,hdr);
+    if(req.headers.get('origin')!==ORIGIN)return json({error:'Origin not allowed'},403,hdr);
+    return new Response(null,{status:204,headers:{...hdr,'access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','access-control-allow-headers':'authorization,content-type','access-control-max-age':'600'}});
+  }
+  if(path==='/'||path==='/health')return req.method==='GET'?json({service:'dayframe',status:'ok',stage:'persistent-workspaces-tasks'},200,hdr):json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+  if(!path.startsWith('/v1/'))return json({error:'Not found'},404,hdr);
+  const match=/^Bearer ([A-Za-z0-9_.\-]+)$/i.exec(req.headers.get('authorization')||'');
+  if(!match||match[1].length>8192)return json({error:'Unauthorized'},401,hdr);
+  let uid;try{uid=await verifyToken(match[1]);if(typeof uid!=='string'||!uid||uid.length>256)throw Error('Subject');}catch{return json({error:'Unauthorized'},401,hdr);}
+  try{
+    if(path==='/v1/me'||path==='/v1/workspaces'&&req.method==='GET'){
+      await query(BOOTSTRAP_SQL,[uid]);
+      const {rows}=await query(LIST_SQL,[uid]);
+      if(!rows?.some(x=>x.kind==='general'))throw fail(503,'Workspace unavailable');
+      if(path==='/v1/me')return json({user:{id:uid},generalWorkspace:rows.find(x=>x.kind==='general')},200,hdr);
+      return json({workspaces:rows},200,hdr);
     }
-    if(path==='/' || path==='/health') {
-      if(request.method!=='GET') return response({error:'Method not allowed'},405,{...headers,allow:'GET, OPTIONS'});
-      return response({service:'dayframe',status:'ok',stage:'auth-workspaces'},200,headers);
+    if(path==='/v1/workspaces'&&req.method==='POST'){
+      const [name,subtitle,color,cover]=workspaceBody(await readBody(req));
+      const {rows}=await query("INSERT INTO dayframe.workspaces(owner_user_id,kind,name,subtitle,color,cover) VALUES($1,'custom',$2,$3,$4,$5) RETURNING "+WORKSPACE_FIELDS,[uid,name,subtitle,color,cover]);
+      return json({workspace:rows[0]},201,hdr);
     }
-    if(!app) return response({error:'Not found'},404,headers);
-    const match = /^Bearer ([A-Za-z0-9_.\-]+)$/i.exec(request.headers.get('authorization')||'');
-    if(!match || match[1].length>8192) return response({error:'Unauthorized'},401,headers);
-    let userId;
-    try {
-      userId=await verifyToken(match[1]);
-      if(typeof userId!=='string' || !userId || userId.length>256) throw Error('Invalid identity');
-    }catch{return response({error:'Unauthorized'},401,headers);}
-    if(path!=='/v1/me' && path!=='/v1/workspaces') return response({error:'Not found'},404,headers);
-    if(request.method!=='GET') return response({error:'Method not allowed'},405,{...headers,allow:'GET, OPTIONS'});
-    try {
-      await query(BOOTSTRAP_SQL,[userId]);
-      const {rows}=await query(LIST_SQL,[userId]);
-      const general=rows?.find(row=>row.kind==='general');
-      if(!general) return response({error:'Workspace unavailable'},503,headers);
-      return path==='/v1/me'
-        ? response({user:{id:userId},generalWorkspace:general},200,headers)
-        : response({workspaces:rows},200,headers);
-    }catch(error){
-      console.error('Workspace request failed',error instanceof Error?error.name:'UnknownError');
-      return response({error:'Workspace service unavailable'},503,headers);
+    const wm=/^\/v1\/workspaces\/([a-f0-9-]{36})$/i.exec(path);
+    if(wm&&req.method==='PATCH'){
+      const id=uuid(wm[1],'workspace'),body=await readBody(req);
+      const [name,subtitle,color,cover]=workspaceBody(body),rev=revision(body);
+      const {rows}=await query("UPDATE dayframe.workspaces SET name=$3,subtitle=$4,color=$5,cover=$6,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND revision=$7 RETURNING "+WORKSPACE_FIELDS,[uid,id,name,subtitle,color,cover,rev]);
+      if(!rows.length)throw fail(409,'Workspace changed or unavailable');
+      return json({workspace:rows[0]},200,hdr);
     }
-  }};
+    if(path==='/v1/tasks'&&req.method==='GET'){
+      const params=new URL(req.url).searchParams;
+      const offset=Number(params.get('offset')??0),limit=Number(params.get('limit')??100);
+      if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||!Number.isSafeInteger(limit)||limit<1||limit>200)throw fail(400,'Invalid pagination');
+      const {rows}=await query(TASK_LIST,[uid,limit+1,offset]);
+      return json({tasks:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
+    if(path==='/v1/tasks/trash'&&req.method==='GET'){
+      const {rows}=await query(TASK_TRASH,[uid]);
+      return json({tasks:rows},200,hdr);
+    }
+    if(path==='/v1/tasks'&&req.method==='POST'){
+      const body=await readBody(req);
+      const id=uuid(body.id,'task id'),args=taskBody(body);
+      const {rows}=await query(TASK_INSERT,[uid,id,...args]);
+      if(rows.length)return json({task:rows[0]},201,hdr);
+      const existing=await query(TASK_BY_ID,[uid,id]);
+      if(existing.rows.length&&existing.rows[0].title===args[1]&&existing.rows[0].workspace===args[0])return json({task:existing.rows[0]},200,hdr);
+      throw fail(409,'Task id already exists or workspace unavailable');
+    }
+    const tm=/^\/v1\/tasks\/([a-f0-9-]{36})$/i.exec(path);
+    if(tm&&req.method==='PATCH'){
+      const id=uuid(tm[1],'task id'),body=await readBody(req),args=taskBody(body),rev=revision(body);
+      const {rows}=await query(TASK_UPDATE,[uid,id,...args,rev]);
+      if(!rows.length)throw fail(409,'Task changed or workspace unavailable');
+      return json({task:rows[0]},200,hdr);
+    }
+    if(tm&&req.method==='DELETE'){
+      const id=uuid(tm[1],'task id');
+      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NULL RETURNING id",[uid,id]);
+      if(!rows.length)throw fail(404,'Task not found');
+      return json({deleted:true},200,hdr);
+    }
+    const restore=/^\/v1\/tasks\/([a-f0-9-]{36})\/restore$/i.exec(path);
+    if(restore&&req.method==='POST'){
+      const id=uuid(restore[1],'task id');
+      const {rows}=await query("UPDATE dayframe.tasks SET deleted_at=NULL,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND deleted_at IS NOT NULL RETURNING "+TASK_FIELDS,[uid,id]);
+      if(!rows.length)throw fail(404,'Task not found');
+      return json({task:rows[0]},200,hdr);
+    }
+    if(['GET','POST','PATCH','DELETE'].includes(req.method))return json({error:'Not found'},404,hdr);
+    return json({error:'Method not allowed'},405,hdr);
+  }catch(error){
+    if(error?.status)return json({error:error.message},error.status,hdr);
+    // Never leak SQL, credentials, user identity or data through errors/logs.
+    console.error('Dayframe data request failed',error instanceof Error?error.name:'UnknownError');
+    return json({error:'Data service unavailable'},503,hdr);
+  }
+}};
 }
 export default createHandler();
