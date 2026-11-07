@@ -11,7 +11,11 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const json=(body,status,headers)=>Response.json(body,{status,headers:{...headers,'content-type':'application/json; charset=utf-8'}});
 const fail=(code,msg)=>Object.assign(new Error(msg),{status:code});
 export const BOOTSTRAP_SQL="INSERT INTO dayframe.workspaces(owner_user_id,name,kind) VALUES($1,'General','general') ON CONFLICT (owner_user_id) WHERE kind = 'general' DO NOTHING";
-const WORKSPACE_FIELDS='id::text AS id,name,kind,subtitle,color,cover,revision,created_at AS "createdAt",archived_at AS "archivedAt"';
+const WORKSPACE_FIELDS='id::text AS id,name,kind,subtitle,color,cover,pinned,revision,created_at AS "createdAt",archived_at AS "archivedAt"';
+export const WORKSPACE_PIN_SQL=
+ "UPDATE dayframe.workspaces SET pinned=$4,revision=revision+1,updated_at=now() "+
+ "WHERE owner_user_id=$1 AND id=$2 AND revision=$3 AND deleted_at IS NULL "+
+ "AND archived_at IS NULL RETURNING "+WORKSPACE_FIELDS;
 export const LIST_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL AND archived_at IS NULL ORDER BY CASE WHEN kind='general' THEN 0 ELSE 1 END,created_at,id";
 export const ARCHIVED_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces WHERE owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC,id DESC";
 
@@ -619,6 +623,16 @@ return {async fetch(req){
       const [name,subtitle,color,cover]=workspaceBody(await readBody(req));
       const {rows}=await query("INSERT INTO dayframe.workspaces(owner_user_id,kind,name,subtitle,color,cover) VALUES($1,'custom',$2,$3,$4,$5) RETURNING "+WORKSPACE_FIELDS,[uid,name,subtitle,color,cover]);
       return json({workspace:rows[0]},201,hdr);
+    }
+    const workspacePin=/^\/v1\/workspaces\/([a-f0-9-]{36})\/pin$/i.exec(path);
+    if(workspacePin){
+      if(req.method!=='PUT')return json({error:'Method not allowed'},405,{...hdr,allow:'PUT,OPTIONS'});
+      const body=await readBody(req,1500);
+      const id=uuid(workspacePin[1],'workspace ID'),rev=revision(body);
+      if(typeof body.pinned!=='boolean')throw fail(400,'Invalid workspace pin');
+      const {rows}=await query(WORKSPACE_PIN_SQL,[uid,id,rev,body.pinned]);
+      if(!rows.length)throw fail(409,'Workspace changed, archived or unavailable');
+      return json({workspace:rows[0]},200,hdr);
     }
     const wa=/^\/v1\/workspaces\/([a-f0-9-]{36})\/(archive|restore)$/i.exec(path);
     if(wa&&req.method==='POST'){
