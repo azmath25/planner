@@ -1410,7 +1410,103 @@ if(form.id==='workspace-form'){
  finally{state.cloudBusy=false;if(button)button.disabled=false;}
  state.modal=null;state.modalTask=null;persist();render();
 }
-if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
+if(form.id==='note-form'){
+ if(state.noteBusy)return;
+ const title=String(data.get('title')||'').trim();
+ const reminder=String(data.get('reminder')||'')||null;
+ const reminderTime=String(data.get('reminderTime')||'')||null;
+ const entry={
+  workspace:String(data.get('workspace')||'general'),title,
+  content:String(data.get('content')||''),
+  color:String(data.get('color')||'cream'),pinned:data.has('pinned'),
+  reminder,reminderTime
+ };
+ const showNoteError=message=>{
+  state.noteError=message;
+  let element=form.querySelector('[role="alert"]');
+  if(!element){
+   element=document.createElement('p');element.className='tiny';
+   element.setAttribute('role','alert');
+   form.insertBefore(element,form.querySelector('.modal-footer'));
+  }
+  element.textContent=message;
+ };
+ if(!title||title.length>120||entry.content.length>8000||
+  reminderTime&&!reminder){
+  showNoteError('Provide a title and, if using a reminder time, select its date.');
+  return;
+ }
+ const existing=state.modal==='note-edit'?state.notes.find(x=>x.id===state.modalTask):null;
+ if(isCloud){
+  state.noteBusy=true;state.noteError='';
+  const submit=form.querySelector('button[type="submit"]');
+  if(submit)submit.disabled=true;
+  try{
+   const remote={...entry,workspace:serverWorkspaceId(entry.workspace)};
+   const result=existing
+    ?await cloudApi.updateQuickNote(existing.id,{...remote,revision:existing.revision})
+    :await cloudApi.createQuickNote({...remote,id:crypto.randomUUID()});
+   if(disposed)return;
+   upsertQuickNote(result);state.modal=null;state.modalTask=null;
+   render();
+  }catch(err){
+   if(!disposed)showNoteError(err instanceof Error?err.message:'Could not save note');
+  }finally{
+   state.noteBusy=false;if(submit)submit.disabled=false;
+  }
+ }else{
+  if(existing)Object.assign(existing,entry);
+  else state.notes.unshift({id:newId(),...entry,
+   color:entry.color,pinned:entry.pinned});
+  state.modal=null;state.modalTask=null;persist();render();
+ }
+ return;
+}
+if(form.id==='note-convert-form'){
+ if(state.noteBusy)return;
+ const n=state.notes.find(x=>x.id===state.modalTask);
+ if(!n||n.convertedAt)return;
+ const estimate=Number(data.get('estimate'));
+ if(!Number.isSafeInteger(estimate)||estimate<1||estimate>100000)return;
+ state.noteBusy=true;state.noteError='';
+ const submit=form.querySelector('button[type="submit"]');
+ if(submit)submit.disabled=true;
+ const onFail=message=>{
+  state.noteError=message;
+  let node=form.querySelector('[role="alert"]');
+  if(!node){node=document.createElement('p');node.className='tiny';
+   node.setAttribute('role','alert');form.insertBefore(node,form.querySelector('.modal-footer'));}
+  node.textContent=message;
+ };
+ try{
+  if(isCloud){
+   const pending=state.notePendingConversion;
+   const taskId=pending?.noteId===n.id?pending.taskId:crypto.randomUUID();
+   state.notePendingConversion={noteId:n.id,taskId};
+   const result=await cloudApi.convertQuickNote(n.id,n.revision,taskId,estimate);
+   if(disposed)return;
+   upsertQuickNote(result.note);
+   const task=localTask(result.task);
+   const pos=state.tasks.findIndex(x=>x.id===task.id);
+   if(pos<0)state.tasks.unshift(task);else state.tasks[pos]=task;
+   state.notePendingConversion=null;
+  }else{
+   const taskId=newId();
+   state.tasks.unshift({id:taskId,title:n.title,notes:n.content,
+    workspace:n.workspace,estimate,spent:0,status:'open',priority:'medium',
+    long:false,parent:null,deadline:null,reminder:null,pinned:false,tags:[]});
+   n.convertedTaskId=taskId;n.convertedAt=new Date().toISOString();
+   persist();
+  }
+  state.modal=null;state.modalTask=null;render();
+ }catch(err){
+  if(!disposed)onFail(err instanceof Error?err.message:'Could not convert note');
+ }finally{
+  state.noteBusy=false;if(submit)submit.disabled=false;
+ }
+ return;
+}
+
 if(form.id==='schedule-form'){
  const start=String(data.get('start')||''),end=String(data.get('end')||'');
  const day=String(data.get('day')||''),taskId=String(data.get('task')||'');
@@ -1444,7 +1540,12 @@ if(form.id==='schedule-form'){
  render();
 }
 });
-trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos)}});
+trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos);return;}
+if(e.target.id==='note-search'){
+ state.noteSearch=e.target.value;const pos=e.target.selectionStart;
+ render();const input=$('#note-search');input?.focus();input?.setSelectionRange(pos,pos);
+}
+});
 trackListener('change',async e=>{if(e.target.id==='media-file'){
  const file=e.target.files?.[0],m=state.mediaTarget;
  if(!m||!file)return;
@@ -1495,7 +1596,8 @@ trackListener('change',async e=>{if(e.target.id==='media-file'){
   state.tasks.filter(t=>t.workspace===dest&&t.status==='open'&&!ids.has(t.id))
    .map(t=>'<option value="'+escapeHTML(t.id)+'">'+escapeHTML(t.title)+'</option>').join('');
  return;
-}if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){
+}if(e.target.id==='note-filter'){state.noteFilter=e.target.value;render();return;}
+if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){
  state.planDay=e.target.value;render();
  if(isCloud){void loadCloudPool(state.planDay);void loadCloudSchedule(state.planDay,state.planDay);}
 }
