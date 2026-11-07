@@ -67,11 +67,8 @@ export const TIMED_RANGE_SQL =
  "lpad((s.start_minute/60)::text,2,'0')||':'||lpad((s.start_minute%60)::text,2,'0') AS start,"+
  "lpad((s.end_minute/60)::text,2,'0')||':'||lpad((s.end_minute%60)::text,2,'0') AS \"end\","+
  "s.time_zone AS \"timeZone\",s.revision FROM dayframe.scheduled_intervals s "+
- "JOIN dayframe.tasks t ON t.id=s.task_id AND t.owner_user_id=$1 "+
- "JOIN dayframe.workspaces w ON w.id=t.workspace_id AND w.owner_user_id=$1 "+
  "WHERE s.owner_user_id=$1 AND s.plan_day BETWEEN $2::date AND $3::date "+
- "AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
- "AND w.deleted_at IS NULL AND w.archived_at IS NULL ORDER BY s.plan_day,s.start_minute,s.id LIMIT 2500";
+ "ORDER BY s.plan_day,s.start_minute,s.id LIMIT 2500";
 export const TIMED_SAVE_SQL="SELECT dayframe.save_scheduled_interval($1,$2,$3,$4::date,$5,$6,$7,$8) AS revision";
 export const TIMED_DELETE_SQL="DELETE FROM dayframe.scheduled_intervals WHERE owner_user_id=$1 AND id=$2 AND revision=$3 RETURNING id::text AS id";
 function clockMinutes(value,label,{end=false}={}){
