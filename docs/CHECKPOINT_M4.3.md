@@ -26,7 +26,7 @@
 - Backend unit and ownership CI: https://github.com/azmath25/planner/actions/runs/42370782465 — passed. Covers alert route authorization, date/time/revision validation, VAPID ES256 signature construction, push destination restrictions, and dispatcher eligibility.
 - Live deployed M4.3 API security smoke: https://github.com/azmath25/planner/actions/runs/42370801019 — passed for health, anonymous/forged JWT denial, browser CORS restrictions and worker denial without a trigger header.
 - The live SQL rehearsal was run inside a savepoint: due reminder enqueued once, immediate repeat enqueued **zero**, acknowledgment saved with revision 1. Rolled back the savepoint and then verified **zero** synthetic tasks, workspaces, subscriptions and deliveries remained.
-- Frontend typecheck/build and branch-Pages CI passed for M4.3 source. Mobile Chromium reminder-inbox regression workflow: `m43-reminders-browser.yml` (record its final result before closing acceptance).
+- Frontend typecheck/build and branch-Pages CI passed for M4.3 source. [Mobile Chromium reminder-inbox regression](https://github.com/azmath25/planner/actions/runs/42371007278) passed at 320, 390, 768 and 1440px, covering snooze and acknowledgment; an additional re-run followed a signed-in Home duplicate-alert fix.
 
 ## Limits and remaining acceptance
 1. **Actual Web Push arrival to a real subscribed device is not yet verified.** This requires a real authenticated account and browser permission. Browser/OS suppression, Safari's first-party auth restrictions, and unsupported iOS non-installed websites are not solved by a passing API test.
