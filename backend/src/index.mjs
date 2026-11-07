@@ -79,6 +79,125 @@ export const DAY_POOL_PUT_SQL="SELECT dayframe.replace_daily_pool($1,$2::date,$3
 export const TIME_ACTIVE_SQL="SELECT dayframe.time_session_snapshot(s) AS session "+
  "FROM dayframe.time_sessions s WHERE s.owner_user_id=$1 AND s.state IN ('running','paused') LIMIT 1";
 export const TIME_TRANSITION_SQL="SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,$6) AS session";
+
+/**
+ * M5.3 current ISO week (Monday -> Monday) in the account's saved IANA zone.
+ * New active spans are sliced by real local week boundaries; DST gaps/folds
+ * are handled by timestamptz conversion. Historical accumulated time that
+ * predates segment capture cannot be reconstructed, so the residual is
+ * explicitly returned as legacyEstimatedMs, assigned to session-start week.
+ * Current fixed plans are schedules, not immutable past commitments.
+ */
+export const TIME_WEEK_SQL=\`
+WITH
+clock AS (
+ SELECT COALESCE(
+  (SELECT time_zone FROM dayframe.notification_preferences WHERE owner_user_id=$1),'UTC'
+ ) AS zone,clock_timestamp() AS instant
+),
+bounds AS (
+ SELECT c.zone,c.instant,
+  date_trunc('week',c.instant AT TIME ZONE c.zone)::date AS week_day,
+  (date_trunc('week',c.instant AT TIME ZONE c.zone) AT TIME ZONE c.zone) AS starts_at,
+  ((date_trunc('week',c.instant AT TIME ZONE c.zone)+interval '7 days') AT TIME ZONE c.zone) AS ends_at
+ FROM clock c
+),
+finished_segments AS (
+ SELECT s.workspace_id_snapshot AS workspace_id,g.started_at,g.ended_at
+ FROM dayframe.time_session_segments g
+ JOIN dayframe.time_sessions s ON s.id=g.session_id AND s.owner_user_id=$1
+),
+running_segment AS (
+ SELECT s.workspace_id_snapshot AS workspace_id,s.segment_started_at AS started_at,
+  b.instant AS ended_at
+ FROM dayframe.time_sessions s CROSS JOIN bounds b
+ WHERE s.owner_user_id=$1 AND s.state='running' AND s.segment_started_at IS NOT NULL
+),
+spans AS (
+ SELECT * FROM finished_segments UNION ALL SELECT * FROM running_segment
+),
+actual_spans AS (
+ SELECT p.workspace_id,
+  GREATEST(0,
+   FLOOR(EXTRACT(EPOCH FROM (LEAST(p.ended_at,b.ends_at)-p.started_at))*1000)::bigint
+   - FLOOR(EXTRACT(EPOCH FROM (GREATEST(p.started_at,b.starts_at)-p.started_at))*1000)::bigint
+  ) AS ms
+ FROM spans p CROSS JOIN bounds b
+ WHERE p.started_at<b.ends_at AND p.ended_at>b.starts_at
+),
+historical_residual AS (
+ SELECT s.workspace_id_snapshot AS workspace_id,
+  GREATEST(0,s.accumulated_ms-COALESCE(g.total_ms,0)) AS ms
+ FROM dayframe.time_sessions s
+ LEFT JOIN (SELECT session_id,SUM(duration_ms)::bigint AS total_ms
+  FROM dayframe.time_session_segments GROUP BY session_id) g ON g.session_id=s.id
+ CROSS JOIN bounds b
+ WHERE s.owner_user_id=$1 AND s.started_at>=b.starts_at AND s.started_at<b.ends_at
+),
+weekly_actual AS (
+ SELECT workspace_id,SUM(ms)::bigint AS ms FROM (
+  SELECT workspace_id,ms FROM actual_spans
+  UNION ALL SELECT workspace_id,ms FROM historical_residual
+ ) each GROUP BY workspace_id
+),
+legacy AS (
+ SELECT workspace_id,SUM(ms)::bigint AS ms FROM historical_residual GROUP BY workspace_id
+),
+fixed_plan AS (
+ SELECT t.workspace_id,SUM(i.end_minute-i.start_minute)::bigint AS minutes
+ FROM dayframe.scheduled_intervals i
+ JOIN dayframe.tasks t ON t.id=i.task_id AND t.owner_user_id=$1
+ CROSS JOIN bounds b
+ WHERE i.owner_user_id=$1 AND i.plan_day>=b.week_day AND i.plan_day<b.week_day+7
+ GROUP BY t.workspace_id
+),
+workspace_keys AS (
+ SELECT id FROM dayframe.workspaces WHERE owner_user_id=$1 AND deleted_at IS NULL
+ UNION SELECT workspace_id FROM weekly_actual
+ UNION SELECT workspace_id FROM fixed_plan
+),
+workspace_rows AS (
+ SELECT k.id AS workspace_id,w.name,w.archived_at IS NOT NULL AS archived,
+  COALESCE(x.target_minutes,0) AS target_minutes,
+  COALESCE(x.revision,0) AS target_revision,
+  COALESCE(a.ms,0)::bigint AS actual_ms,
+  COALESCE(l.ms,0)::bigint AS legacy_ms,
+  COALESCE(p.minutes,0)::bigint AS planned_minutes
+ FROM workspace_keys k
+ LEFT JOIN dayframe.workspaces w ON w.id=k.id AND w.owner_user_id=$1
+ LEFT JOIN dayframe.weekly_workspace_targets x
+  ON x.workspace_id=k.id AND x.owner_user_id=$1
+ LEFT JOIN weekly_actual a ON a.workspace_id=k.id
+ LEFT JOIN legacy l ON l.workspace_id=k.id
+ LEFT JOIN fixed_plan p ON p.workspace_id=k.id
+)
+SELECT b.zone AS "timeZone",to_char(b.week_day,'YYYY-MM-DD') AS "weekStart",
+ to_char(b.week_day+7,'YYYY-MM-DD') AS "weekEnd",
+ COALESCE((SELECT jsonb_agg(jsonb_build_object(
+  'workspaceId',r.workspace_id::text,'name',r.name,'archived',r.archived,
+  'targetMinutes',r.target_minutes,'revision',r.target_revision,
+  'actualMs',r.actual_ms::text,'legacyEstimatedMs',r.legacy_ms::text,
+  'plannedMinutes',r.planned_minutes::text) ORDER BY r.name NULLS LAST,r.workspace_id::text)
+  FROM workspace_rows r),'[]'::jsonb) AS workspaces,
+ COALESCE((SELECT SUM(actual_ms)::bigint FROM workspace_rows),0)::text AS "accountActualMs",
+ COALESCE((SELECT SUM(legacy_ms)::bigint FROM workspace_rows),0)::text AS "accountLegacyEstimatedMs",
+ COALESCE((SELECT SUM(planned_minutes)::bigint FROM workspace_rows),0)::text AS "accountPlannedMinutes"
+FROM bounds b
+\`;
+
+export const TIME_WEEK_TARGET_SQL=
+ "INSERT INTO dayframe.weekly_workspace_targets AS current "+
+ "(owner_user_id,workspace_id,target_minutes) "+
+ "SELECT w.owner_user_id,w.id,$3::integer FROM dayframe.workspaces w "+
+ "WHERE w.owner_user_id=$1 AND w.id=$2 AND w.deleted_at IS NULL "+
+ "AND w.archived_at IS NULL AND "+
+ "($4::integer=0 OR EXISTS(SELECT 1 FROM dayframe.weekly_workspace_targets x "+
+ "WHERE x.owner_user_id=$1 AND x.workspace_id=$2 AND x.revision=$4)) "+
+ "ON CONFLICT(owner_user_id,workspace_id) DO UPDATE SET "+
+ "target_minutes=EXCLUDED.target_minutes,revision=current.revision+1,updated_at=now() "+
+ "WHERE current.revision=$4 "+
+ "RETURNING workspace_id::text AS \"workspaceId\",target_minutes AS \"targetMinutes\",revision";
+
 export const TIME_DIRECT_TOTALS_SQL="SELECT task_id::text AS \"taskId\", "+
  "SUM(accumulated_ms)::text AS \"totalMs\" FROM dayframe.time_sessions "+
  "WHERE owner_user_id=$1 AND task_id IS NOT NULL GROUP BY task_id";
@@ -404,6 +523,23 @@ return {async fetch(req){
         return json({removed:true},200,hdr);
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'PUT,DELETE,OPTIONS'});
+    }
+    if(path==='/v1/time-week'&&req.method==='GET'){
+      const {rows}=await query(TIME_WEEK_SQL,[uid]);
+      if(!rows[0])throw fail(503,'Weekly time unavailable');
+      return json({week:rows[0]},200,hdr);
+    }
+    const goalRoute=/^\/v1\/time-week\/targets\/([a-f0-9-]{36})$/i.exec(path);
+    if(goalRoute&&req.method==='PUT'){
+      const id=uuid(goalRoute[1],'workspace');
+      const body=await readBody(req,1500);
+      const target=body.targetMinutes,rev=body.revision;
+      if(!Number.isInteger(target)||target<0||target>10080||
+        !Number.isInteger(rev)||rev<0||rev>2147483647)
+        throw fail(400,'Invalid weekly target or revision');
+      const {rows}=await query(TIME_WEEK_TARGET_SQL,[uid,id,target,rev]);
+      if(!rows.length)throw fail(409,'Workspace or target changed. Refresh weekly goals.');
+      return json({target:rows[0]},200,hdr);
     }
     if(path==='/v1/time-session'){
       if(req.method==='GET'){
