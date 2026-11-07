@@ -45,7 +45,7 @@ test('M7.3 deadline and estimate SQL derives completion snapshots from the owner
  assert.match(TIME_INSIGHTS_SQL,/e.event_type='completed'/);
  assert.match(TIME_INSIGHTS_SQL,/after_state->>'deadline'/);
  assert.match(TIME_INSIGHTS_SQL,/after_state->>'estimate'/);
- assert.match(TIME_INSIGHTS_SQL,/g.session_id AND s.owner_user_id=\$1/);
+ assert.match(TIME_INSIGHTS_SQL,/s.id=g.session_id AND s.owner_user_id=\$1/);
  assert.match(TIME_INSIGHTS_SQL,/time_session_segments/);
  assert.match(TIME_INSIGHTS_SQL,/excludedLegacyTasks|excluded_legacy_tasks/);
  assert.match(TIME_INSIGHTS_SQL,/AT TIME ZONE b.zone/);
