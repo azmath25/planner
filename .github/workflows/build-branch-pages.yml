@@ -41,6 +41,7 @@ jobs:
           # it causes content conflicts and leaves the live site outdated.
           test -s dist/index.html
           test -d dist/assets
+          test -s dist/sw.js
           for attempt in 1 2 3; do
             git fetch origin main
             # If newer frontend source exists, its own run must publish it.
@@ -50,11 +51,12 @@ jobs:
             fi
             git reset --hard origin/main
             cp dist/index.html index.html
+            cp dist/sw.js sw.js
             rm -rf assets
             cp -R dist/assets assets
             touch .nojekyll
             git rm -f --ignore-unmatch app.js styles.css || true
-            git add -A -- index.html assets .nojekyll
+            git add -A -- index.html assets sw.js .nojekyll
             if git diff --cached --quiet; then
               echo 'No generated-site changes.'
               exit 0
