@@ -19,14 +19,48 @@ const mockDb={
   status:'open',priority:'medium',estimate:30,long:false,parent:null,
   deadline:null,deadlineTime:null,reminder:null,reminderTime:null,revision:1}],
 };
+mockDb.timeSession=null;
+mockDb.sessions=[];
 window.__mockDb=mockDb;
 window.__refreshCount=0;
 const cloudApi={
+ async getTimeState(){
+  return {session:mockDb.timeSession,taskTotals:{},rollups:null};
+ },
+ async changeTimeSession(action,sessionId,revision,taskId,previousId){
+  const now=new Date().toISOString();
+  if(action==='start'&&!mockDb.timeSession){
+   const task=mockDb.tasks.find(t=>t.id===taskId);
+   if(!task)throw Error('Unknown task');
+   const active={id:sessionId,taskId,taskTitle:task.title,workspaceIdAtStart:task.workspace,
+    state:'running',revision:1,startedAt:now,segmentStartedAt:now,accumulatedMs:0,
+    endedAt:null,endReason:null,serverNow:now};
+   mockDb.timeSession=active;return {...active};
+  }
+  const active=mockDb.timeSession;
+  if(!active||active.id!==sessionId||active.revision!==revision)throw Error('Stale time session');
+  if(action==='stop'){
+   Object.assign(active,{state:'stopped',segmentStartedAt:null,endedAt:now,
+    endReason:'stopped',revision:active.revision+1,serverNow:now});
+   mockDb.sessions.push({...active});mockDb.timeSession=null;
+   return {...active};
+  }
+  throw Error('Unexpected time action '+action);
+ },
+
  async listArchivedWorkspaces(){return mockDb.workspaces.filter(w=>w.archivedAt);},
  async archiveWorkspace(id,revision){
   const w=mockDb.workspaces.find(w=>w.id===id&&w.revision===revision&&w.kind==='custom'&&!w.archivedAt);
   if(!w)throw Error('Workspace protected or changed');
-  w.archivedAt='2026-11-07T12:00:00Z';w.revision++;return {...w};
+  w.archivedAt='2026-11-07T12:00:00Z';w.revision++;
+  const active=mockDb.timeSession;
+  if(active&&active.workspaceIdAtStart===id){
+   const now=new Date().toISOString();
+   Object.assign(active,{state:'stopped',segmentStartedAt:null,
+    endedAt:now,endReason:'workspace_archived',revision:active.revision+1,serverNow:now});
+   mockDb.sessions.push({...active});mockDb.timeSession=null;
+  }
+  return {...w};
  },
  async restoreWorkspace(id,revision){
   const w=mockDb.workspaces.find(w=>w.id===id&&w.revision===revision&&w.kind==='custom'&&w.archivedAt);
