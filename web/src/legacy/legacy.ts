@@ -518,7 +518,9 @@ function notesPage(){
  const query=state.noteSearch.trim().toLocaleLowerCase();
  const notes=workspaceNotes.filter(n=>(state.noteFilter==='all'||state.noteFilter==='pinned'&&n.pinned||
   state.noteFilter===n.workspace)&&(!query||[n.title,n.content,workspace(n.workspace).name]
-  .some(value=>String(value||'').toLocaleLowerCase().includes(query))));
+  .some(value=>String(value||'').toLocaleLowerCase().includes(query))))
+  .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||
+   String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
  const header=titleHead('Capture thoughts','Notes & documents',
   isCloud?'Quick notes saved to your Dayframe account.':'Quick notes in your local preview.',
   `<button class="btn" data-action="modal-note" ${state.noteBusy?'disabled':''}>${icon('plus')} Quick note</button>`);
