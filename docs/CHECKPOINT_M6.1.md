@@ -47,7 +47,7 @@ This slice is **committed only on the feature branch**. No production database m
 
 **Important release requirements and unfinished items:**
 
-1. **NOT TESTED:** JavaScript syntax, TypeScript compilation, actual PostgreSQL migration execution, API unit suite, concurrent worker checks, browser UI, and real push delivery. The code has only been reviewed by reading repository source. Do not describe M6.1a as working in production.
+1. **NOT TESTED:** real Node module execution, TypeScript compilation, actual PostgreSQL migration execution, API unit suite, concurrent worker checks, browser UI, and real push delivery. A minimal V8 parse of the edited backend JS and new unit-test source with ESM imports/exports stripped succeeded; that is only a source syntax sanity check, **not** a Node test or build. Do not describe M6.1a as working in production.
 2. **Quiet hours are still missing.** Do not introduce a silent default or imply that a quiet-hour policy is enforced. Design and test user-configurable quiet hours consistently for both existing task and new note reminders before declaring M6.1 complete.
 3. Confirm the scheduler's deployment bundling includes the modified worker, and migrate 0013 then 0014 before deploying the combined API/dispatcher. Recheck deployed notification subscription behavior and account-switch safety.
 4. Acknowledgement, changed reminders, deleted/archive workspaces, DST gaps/folds, timezone edits, duplicate delivery after uncertain push outcome, HTTP retry exhaustions and notification opt-out require integrated testing. Generic Web Push is at-least-once best effort, not a guaranteed exactly-once notification.
