@@ -407,7 +407,33 @@ else if(state.modal==='workspace-create'||state.modal==='workspace-edit'){
 else if(state.modal==='note'){title='Capture a quick note';body=`<form id="note-form"><div class="field-wrap"><label class="form-label" for="ntitle">Title *</label><input class="field" name="title" id="ntitle" required maxlength="120" placeholder="Something worth remembering" autofocus/></div><div class="field-wrap"><label class="form-label" for="ncontent">Your note</label><textarea class="field" id="ncontent" name="content" rows="5" placeholder="A quick thought, idea, or reminder..."></textarea></div><div class="field-wrap"><label class="form-label" for="nworkspace">Workspace</label><select class="field" name="workspace" id="nworkspace">${workspaces.map(w=>`<option value="${w.id}" ${state.modalTask===w.id?'selected':''}>${escapeHTML(w.name)}</option>`).join('')}</select></div><div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button><button type="submit" class="btn">Save note</button></div></form>`}
 else if(state.modal==='create'){title='What would you like to add?';body=`<div style="display:grid;gap:10px"><button class="btn secondary" style="justify-content:flex-start" data-action="modal-task">${icon('list')} Task or long-term task</button><button class="btn secondary" style="justify-content:flex-start" data-action="modal-note">${icon('note')} Quick note</button><button class="btn secondary" style="justify-content:flex-start" data-action="nav" data-page="plan">${icon('calendar')} Plan the day</button></div>`}
 else if(state.modal==='plan-add'){title='Choose a task for your day';const ids=new Set([...poolForDay(state.planDay),...(isCloud?[]:state.scheduled.filter(x=>x.day===state.planDay).map(x=>x.taskId))]);body=`<div style="display:grid;gap:9px;max-height:50vh;overflow:auto">${openTasks().filter(t=>!ids.has(t.id)).map(t=>`<button class="btn secondary" style="justify-content:space-between;text-align:left;white-space:normal" data-action="pool-add" data-id="${t.id}"><span>${escapeHTML(t.title)}<br><small style="opacity:.6">${escapeHTML(workspace(t.workspace).name)} · ${minsText(t.estimate)}</small></span>${icon('plus')}</button>`).join('')||'<p class="tiny">Every open task is already selected. Create a new task to add more.</p>'}</div>`}
-else if(state.modal==='schedule'){title='Schedule a time interval';const eligible=openTasks();body=`<form id="schedule-form"><div class="field-wrap"><label class="form-label" for="schedule-task">Task</label><select class="field" name="task" id="schedule-task" required>${eligible.map(x=>`<option value="${x.id}" ${x.id===state.modalTask?'selected':''}>${escapeHTML(x.title)}</option>`).join('')}</select></div><div class="form-grid"><div class="field-wrap"><label class="form-label" for="start">Start</label><input class="field" name="start" id="start" type="time" value="09:00" required/></div><div class="field-wrap"><label class="form-label" for="end">End</label><input class="field" name="end" id="end" type="time" value="10:00" required/></div></div><p class="form-hint">For ${niceDate(state.planDay,{weekday:'long',month:'short',day:'numeric'})}. Scheduling does not change a hard deadline.</p><div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button><button class="btn" type="submit">Schedule interval</button></div></form>`}
+else if(state.modal==='schedule'){
+ const current=state.scheduleEditId?state.scheduled.find(slot=>slot.id===state.scheduleEditId):null;
+ const eligible=openTasks().filter(task=>!current||task.id===current.taskId||task.status==='open');
+ const localZone=Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
+ const zone=current?.timeZone||localZone;
+ const day=current?.day||state.planDay;
+ title=current?'Edit timed interval':'Schedule a time interval';
+ body=`<form id="schedule-form">
+ <div class="field-wrap"><label class="form-label" for="schedule-task">Task</label>
+ <select class="field" name="task" id="schedule-task" required>
+ ${eligible.map(task=>`<option value="${escapeHTML(task.id)}" ${(current?.taskId||state.modalTask)===task.id?'selected':''}>${escapeHTML(task.title)} · ${escapeHTML(workspace(task.workspace).name)}</option>`).join('')}
+ </select></div>
+ <div class="field-wrap"><label class="form-label" for="schedule-day">Planning date</label>
+ <input class="field" name="day" id="schedule-day" type="date" min="2000-01-01" max="2100-12-31" value="${day}" required/></div>
+ <div class="form-grid">
+ <div class="field-wrap"><label class="form-label" for="start">Start</label>
+ <input class="field" name="start" id="start" type="time" value="${current?.start||'09:00'}" required/></div>
+ <div class="field-wrap"><label class="form-label" for="end">End</label>
+ <input class="field" name="end" id="end" type="time" value="${current?.end||'10:00'}" required/></div>
+ </div>
+ <input type="hidden" name="timeZone" value="${escapeHTML(zone)}"/>
+ <p class="form-hint">Time zone: ${escapeHTML(zone)}. A task may have multiple intervals on different dates. Intervals cannot overlap or cross midnight; split overnight work into two days. Scheduling never changes task deadlines or reminders.</p>
+ <div class="schedule-form-error" role="alert" aria-live="polite">${state.scheduleError?escapeHTML(state.scheduleError):''}</div>
+ <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button>
+ <button class="btn" type="submit" ${state.scheduleBusy?'disabled':''}>${current?'Save interval':'Schedule interval'}</button></div>
+ </form>`;
+}
 else if(state.modal==='media'){
  const m=state.mediaTarget||{kind:'task',id:'',slot:'cover'};
  const label=m.kind==='workspace'?workspace(m.id).name:findTask(m.id)?.title||'Task';
