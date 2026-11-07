@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHandler,TIME_ACTIVE_SQL,TIME_TRANSITION_SQL,TIME_DIRECT_TOTALS_SQL} from '../src/index.mjs';
+import {createHandler,TIME_ACTIVE_SQL,TIME_TRANSITION_SQL,TIME_ROLLUPS_SQL} from '../src/index.mjs';
 const ID='77777777-7777-4777-8777-777777777777';
 const OTHER='88888888-8888-4888-8888-888888888888';
 const TASK='99999999-9999-4999-8999-999999999999';
@@ -13,8 +13,13 @@ function make({rejectConflict=false}={}){
   verifyToken:async token=>{if(!['alice','bob'].includes(token))throw Error('Invalid JWT');return token;},
   query:async(sql,args)=>{
    calls.push({sql,args});
-   if(sql===TIME_ACTIVE_SQL)return {rows:args[0]==='alice'?[{session:snapshot}]:[]};
-   if(sql===TIME_DIRECT_TOTALS_SQL)return {rows:args[0]==='alice'?[{taskId:TASK,totalMs:'0'}]:[]};
+   if(sql===TIME_ROLLUPS_SQL)return {rows:[{
+    session:args[0]==='alice'?snapshot:null,
+    tasks:args[0]==='alice'?[{taskId:TASK,directMs:'2000',totalMs:'5000'}]:[],
+    workspaces:args[0]==='alice'?[{workspaceId:OTHER,totalMs:'2000'}]:[],
+    accountTotalMs:args[0]==='alice'?'2000':'0',deletedTaskMs:'0',
+    activeAncestorIds:args[0]==='alice'?[TASK,OTHER]:[]
+   }]};
    if(sql===TIME_TRANSITION_SQL){
     if(rejectConflict)throw Object.assign(Error('Time session changed'),{code:'40001'});
     return {rows:[{session:{...snapshot,id:args[2],taskId:args[3]??TASK,state:args[1]==='stop'?'stopped':'running'}}]};
@@ -31,12 +36,16 @@ function make({rejectConflict=false}={}){
 test('M5.1 reads only authenticated active timer belonging to current JWT',async()=>{
  const {req,calls}=make();
  const a=await req('/v1/time-session');assert.equal(a.status,200);
- assert.deepEqual((await a.json()).session,snapshot);
+ const response=await a.json();
+ assert.deepEqual(response.session,snapshot);
+ assert.deepEqual(response.taskTotals,[{taskId:TASK,totalMs:'2000'}]);
+ assert.equal(response.rollups.tasks[0].totalMs,'5000');
+ assert.equal(response.rollups.accountTotalMs,'2000');
  const b=await req('/v1/time-session','GET','bob');
  assert.equal(b.status,200);assert.equal((await b.json()).session,null);
  assert.equal((await req('/v1/time-session','GET',null)).status,401);
  assert.equal((await req('/v1/time-session','GET','forged')).status,401);
- assert.deepEqual(calls.map(x=>x.args),[['alice'],['alice'],['bob'],['bob']]);
+ assert.deepEqual(calls.map(x=>x.args),[['alice'],['bob']]);
  assert.match(TIME_ACTIVE_SQL,/owner_user_id=\$1/);
 });
 test('M5.1 validates action, UUID and revision before database access',async()=>{
@@ -72,4 +81,18 @@ test('M5.1 simultaneous competing device transitions become explicit conflicts',
  const err=(await response.json()).error;
  assert.match(err,/Timer changed on another device/);
  assert.doesNotMatch(err,/SELECT|postgres|password/i);
+});
+
+test('M5.2 rollup snapshot preserves direct versus descendants, owner scope, and one query',async()=>{
+ const {req,calls}=make();
+ const own=await (await req('/v1/time-session')).json();
+ assert.equal(own.rollups.tasks[0].directMs,'2000');
+ assert.equal(own.rollups.tasks[0].totalMs,'5000');
+ assert.deepEqual(own.rollups.activeAncestorIds,[TASK,OTHER]);
+ assert.equal(own.rollups.workspaces[0].totalMs,'2000');
+ assert.deepEqual(calls,[{sql:TIME_ROLLUPS_SQL,args:['alice']}]);
+ const other=await (await req('/v1/time-session','GET','bob')).json();
+ assert.deepEqual(other.rollups.tasks,[]);
+ assert.equal(other.rollups.accountTotalMs,'0');
+ assert.equal(calls.length,2);
 });
