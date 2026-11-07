@@ -156,7 +156,7 @@ ${o?`<div class="schedule-status" role="${E.scheduleError?`alert`:`status`}" ari
   <div class="profile-identity"><div class="profile-avatar profile-avatar-large" aria-hidden="true">${x(a)}</div>
   <div><div class="eyebrow">${o?`Signed in`:`Local preview`}</div><h2>${x(r)}</h2>
   ${i?`<p class="profile-email">${x(i)}</p>`:``}</div></div>
-  <div class="profile-data-note"><strong>${e}</strong><p>${o?`Workspaces, tasks, untimed daily pools and scheduled time blocks are saved in Neon. Capacity, quick notes, workspace photos and timer sessions remain on this device. Reminders are not delivered yet.`:`Changes in this preview stay in this browser and are not attached to an account.`}</p></div>
+  <div class="profile-data-note"><strong>${e}</strong><p>${o?`Workspaces, tasks, untimed daily pools and scheduled time blocks are saved in Neon. Capacity, quick notes, workspace photos and timer sessions remain on this device. In-app reminders are enabled. Optional browser push can be switched on from Home; physical-device delivery still needs testing.`:`Changes in this preview stay in this browser and are not attached to an account.`}</p></div>
   <div class="profile-actions">
   ${o&&typeof n.onRefresh==`function`?`<button type="button" class="btn secondary" data-action="account-refresh">${C(`refresh`)} Refresh saved data</button>`:``}
   <button type="button" class="btn secondary" data-action="account-sign-out">${C(`back`)} ${o?`Sign out`:`Return to sign in`}</button>
