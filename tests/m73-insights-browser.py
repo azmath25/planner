@@ -27,10 +27,15 @@ def run(browser,width):
  p.get_by_text('Completion insights').wait_for()
  assert p.evaluate('window.__mockDb.insightsCalls.length')==1
  report=p.locator('.page-reports').inner_text()
- assert 'On-time completion events' in report
+ assert 'On-time deadline events' in report
  assert '50%' in report
  assert 'Write chapter' in report
- assert 'incomplete historical segments' in report
+ assert 'Six-week progress trend' in report
+ assert 'Absolute estimate difference' in report
+ with p.expect_download() as export:
+  p.locator('[data-action="export-insights-csv"]').click()
+ assert export.value.suggested_filename.startswith('dayframe-insights-')
+ assert 'unsegmented history' in report
  p.locator('[data-action="report-period"][data-value="month"]').click()
  p.wait_for_function("() => window.__mockDb.periodCalls.some(x=>x.period==='month')")
  assert p.locator('section[aria-label="Account completion insights"]').count()==0
