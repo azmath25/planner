@@ -18,6 +18,18 @@ export type TaskEvent={id:string;type:string;before:Record<string,unknown>|null;
 export type TaskMedia={slot:'cover'|'avatar';data:string;focalY:number};
 export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
 export type DailyPool={day:string;revision:number;taskIds:string[]};
+export type TimedInterval={
+ id:string;taskId:string;day:string;start:string;end:string;timeZone:string;revision:number
+};
+function verifyTimedInterval(value:unknown):value is TimedInterval{
+ if(!value||typeof value!=='object')return false;
+ const row=value as Partial<TimedInterval>;
+ return typeof row.id==='string'&&typeof row.taskId==='string'&&
+  typeof row.day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.day)&&
+  typeof row.start==='string'&&/^\d\d:\d\d$/.test(row.start)&&
+  typeof row.end==='string'&&/^\d\d:\d\d$/.test(row.end)&&
+  typeof row.timeZone==='string'&&Number.isSafeInteger(row.revision)&&row.revision!>=1;
+}
 function assertDailyPool(value:unknown,day:string):DailyPool{
  if(!value||typeof value!=='object')throw new Error('Invalid day pool response');
  const item=value as Partial<DailyPool>;
@@ -96,6 +108,25 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async listTimedIntervals(from:string,to:string):Promise<TimedInterval[]>{
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))
+   throw new Error('Invalid calendar dates');
+  const data=await call<{intervals:unknown[]}>('/v1/timed-intervals?from='+from+'&to='+to);
+  if(!Array.isArray(data.intervals)||!data.intervals.every(verifyTimedInterval))throw new Error('Invalid schedule data');
+  return data.intervals;
+ },
+ async saveTimedInterval(block:TimedInterval):Promise<TimedInterval>{
+  const {id,...body}=block;
+  const data=await call<{interval:unknown}>('/v1/timed-intervals/'+encodeURIComponent(id),{
+   method:'PUT',body
+  });
+  if(!verifyTimedInterval(data.interval))throw new Error('Invalid saved interval');
+  return data.interval;
+ },
+ async deleteTimedInterval(id:string,revision:number):Promise<void>{
+  await call('/v1/timed-intervals/'+encodeURIComponent(id),{method:'DELETE',body:{revision}});
+ },
+
  async loadDailyPool(day:string,signal?:AbortSignal):Promise<DailyPool>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw new Error('Invalid planning date');
   return assertDailyPool(await call('/v1/daily-pool/'+day,{signal}),day);
