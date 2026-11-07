@@ -154,6 +154,7 @@ BEGIN
  SET CONSTRAINTS tasks_parent_same_owner_workspace IMMEDIATE;
 END $move_task$;
 
+CREATE UNIQUE INDEX IF NOT EXISTS tasks_id_owner_unique ON dayframe.tasks(id,owner_user_id);
 CREATE TABLE IF NOT EXISTS dayframe.task_media (
  task_id uuid NOT NULL,
  owner_user_id text NOT NULL,
