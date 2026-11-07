@@ -20,7 +20,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=16;i++){
+ for(let i=1;i<=17;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -34,14 +34,15 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all sixteen staged migrations execute without dependency errors',async()=>{
+test('all seventeen staged migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,16);
+ assert.equal(rows.length,17);
  assert.equal(rows[11].version,'0012_weekly_targets');
  assert.equal(rows[12].version,'0013_quick_notes');
  assert.equal(rows[13].version,'0014_quick_note_reminders');
  assert.equal(rows[14].version,'0015_notification_quiet_hours');
  assert.equal(rows[15].version,'0016_private_documents');
+ assert.equal(rows[16].version,'0017_workspace_pins');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
@@ -604,4 +605,21 @@ test('M6.2a attached documents reject cross-owner and wrong-workspace tasks',asy
  assert.equal((await pool.query(DOCUMENT_INSERT_SQL,[owner,doc,wa,null,null,'Safe doc',blocks])).rows.length,1);
  await assert.rejects(pool.query(DOCUMENT_UPDATE_SQL,[owner,doc,wa,tb,null,'Unsafe',blocks,1]),err=>err.code==='23514');
  assert.equal((await pool.query(DOCUMENT_DETAIL_SQL,[other,doc])).rows.length,0);
+});
+
+test('M7.1 workspace pins are owner-isolated, default off, and revision-fenced',async()=>{
+ const a='m71-pin-owner-a',b='m71-pin-owner-b';
+ const w='d9111111-1111-4111-8111-111111111111';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Pinned workspace','custom')",[w,a]);
+ const initial=(await pool.query('SELECT pinned,revision FROM dayframe.workspaces WHERE id=$1',[w])).rows[0];
+ assert.equal(initial.pinned,false);assert.equal(initial.revision,1);
+ const sql="UPDATE dayframe.workspaces SET pinned=$4,revision=revision+1,updated_at=now() "+
+  "WHERE owner_user_id=$1 AND id=$2 AND revision=$3 AND deleted_at IS NULL AND archived_at IS NULL RETURNING pinned,revision";
+ assert.equal((await pool.query(sql,[b,w,1,true])).rows.length,0);
+ assert.equal((await pool.query(sql,[a,w,1,true])).rows[0].revision,2);
+ assert.equal((await pool.query(sql,[a,w,1,false])).rows.length,0);
+ const done=(await pool.query('SELECT pinned,revision FROM dayframe.workspaces WHERE id=$1',[w])).rows[0];
+ assert.equal(done.pinned,true);assert.equal(done.revision,2);
+ await pool.query('UPDATE dayframe.workspaces SET archived_at=now() WHERE id=$1',[w]);
+ assert.equal((await pool.query(sql,[a,w,2,false])).rows.length,0);
 });
