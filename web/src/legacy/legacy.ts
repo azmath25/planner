@@ -71,10 +71,24 @@ state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='d
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
 const remainingUnscheduled=(task,day)=>Math.max(0,task.estimate-task.spent-state.scheduled.filter(s=>s.taskId===task.id&&s.day===day).reduce((sum,s)=>sum+parseClock(s.end)-parseClock(s.start),0));
-const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:state.media,mediaPos:state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:state.notes,pools:state.pools,scheduled:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:state.timer,sessions:state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
+const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:state.notes,pools:state.pools,scheduled:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:state.timer,sessions:state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
 const workspace=id=>workspaces.find(w=>w.id===id)||workspaces[0];
-// M1.2 media belongs only to this disposable browser preview. No server upload occurs.
+// M3 private task media is fetched only after opening a task; workspace images remain local.
 const mediaKey=(kind,id,slot)=>`${kind}:${id}:${slot}`;
+const loadTaskMedia=async id=>{
+ if(!isCloud)return;
+ try{
+  const images=await cloudApi.getTaskMedia(id);
+  for(const slot of ['cover','avatar']){
+   delete state.media[mediaKey('task',id,slot)];delete state.mediaPos[mediaKey('task',id,slot)];
+  }
+  for(const image of images){
+   state.media[mediaKey('task',id,image.slot)]=image.data;
+   state.mediaPos[mediaKey('task',id,image.slot)]=image.focalY;
+  }
+  if(state.page==='detail'&&state.taskId===id)render();
+ }catch(err){saveError(err);}
+};
 const photoFor=(kind,id,slot)=>{const data=state.media[mediaKey(kind,id,slot)];return typeof data==='string'&&/^data:image\/(webp|jpeg|png);base64,[a-zA-Z0-9+/=]+$/.test(data)&&data.length<1000000?data:null};
 const photoStyle=(kind,id,slot)=>{const data=photoFor(kind,id,slot);const p=Number(state.mediaPos[mediaKey(kind,id,slot)]??50);return data?` style="background-image:url('${data}');background-position:center ${Math.max(0,Math.min(100,p))}%;"`:''};
 const photoClass=(kind,id,slot)=>photoFor(kind,id,slot)?'has-photo':'';
@@ -259,7 +273,7 @@ else if(state.modal==='media'){
  const label=m.kind==='workspace'?workspace(m.id).name:findTask(m.id)?.title||'Task';
  const current=photoFor(m.kind,m.id,m.slot);
  title=`${m.slot==='cover'?'Cover':'Profile'} image · ${label}`;
- body=`<div class="media-modal"><div class="media-preview ${m.slot==='avatar'?'avatar-preview':''} ${current?'has-photo':''}"${photoStyle(m.kind,m.id,m.slot)}>${current?'':icon('image')}</div><p class="form-hint">JPEG, PNG or WebP · up to 5 MB. Images are resized and kept only in this browser for the design preview.</p><label class="btn media-file-label" for="media-file">${icon('upload')} Choose an image</label><input id="media-file" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden" aria-label="Upload ${m.slot} image" />${m.slot==='cover'?`<div class="field-wrap"><label class="form-label" for="media-position">Vertical photo position</label><input class="media-position" type="range" id="media-position" min="0" max="100" value="${Number(state.mediaPos[mediaKey(m.kind,m.id,m.slot)]??50)}" /></div>`:''}<div class="modal-footer">${current?`<button class="btn danger" data-action="remove-image">Remove image</button>`:''}<button class="btn secondary" data-action="close">Close</button></div></div>`;
+ body=`<div class="media-modal"><div class="media-preview ${m.slot==='avatar'?'avatar-preview':''} ${current?'has-photo':''}"${photoStyle(m.kind,m.id,m.slot)}>${current?'':icon('image')}</div><p class="form-hint">JPEG, PNG or WebP · up to 5 MB. ${isCloud&&m.kind==='task'?'Task images are resized and saved privately in Neon (180 KB limit).':'Images are resized and saved on this device only.'}</p><label class="btn media-file-label" for="media-file">${icon('upload')} Choose an image</label><input id="media-file" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden" aria-label="Upload ${m.slot} image" />${m.slot==='cover'?`<div class="field-wrap"><label class="form-label" for="media-position">Vertical photo position</label><input class="media-position" type="range" id="media-position" min="0" max="100" value="${Number(state.mediaPos[mediaKey(m.kind,m.id,m.slot)]??50)}" /></div>`:''}<div class="modal-footer">${current?`<button class="btn danger" data-action="remove-image">Remove image</button>`:''}<button class="btn secondary" data-action="close">Close</button></div></div>`;
 }
 else if(state.modal==='delete-task'){title='Move task to Trash?';body=`<p class="subtitle">Move <strong>${escapeHTML(t?.title||'the task')}</strong> to recoverable Trash? This removes it from your active task lists and local day plan, not permanently from your account.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Keep task</button><button class="btn danger" data-action="confirm-delete-task">Confirm removal</button></div>`}
 else if(state.modal==='archive-task-confirm'){
@@ -414,7 +428,7 @@ case'archive-workspace':{
  if(!isCloud||!workspaces.some(w=>w.id===id&&w.kind==='custom'))break;
  state.modal='archive-workspace';state.modalTask=id;render();break;
 }case'modal-task':state.modal='task';state.modalTask=id||null;state.subtaskParent=null;render();break;
-case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;render();break;case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();break;case'task-tab':{
+case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;render();break;case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();if(isCloud)void loadTaskMedia(id);break;case'task-tab':{
  state.taskTab=b.dataset.value;render();
  if(state.taskTab==='history'&&isCloud){
   state.taskEventsBusy=true;state.taskEvents=[];render();
@@ -422,7 +436,16 @@ case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')
    .catch(saveError).finally(()=>{state.taskEventsBusy=false;if(state.taskTab==='history')render();});
  }
  break;
-}case'toggle-task':await toggleTask(id);break;case'reopen-task':{const task=findTask(id);if(task&&task.status!=='open')await toggleTask(id);break;}case'cancel-task':await cancelTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{const m=state.mediaTarget;if(m){delete state.media[mediaKey(m.kind,m.id,m.slot)];delete state.mediaPos[mediaKey(m.kind,m.id,m.slot)];}state.modal=null;persist();render();break;}case'modal-delete-task':state.modal='delete-task';state.modalTask=id;render();break;
+}case'toggle-task':await toggleTask(id);break;case'reopen-task':{const task=findTask(id);if(task&&task.status!=='open')await toggleTask(id);break;}case'cancel-task':await cancelTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
+ const m=state.mediaTarget;if(!m)break;
+ if(isCloud&&m.kind==='task'){
+  try{await cloudApi.deleteTaskMedia(m.id,m.slot);}
+  catch(err){saveError(err);break;}
+ }
+ delete state.media[mediaKey(m.kind,m.id,m.slot)];
+ delete state.mediaPos[mediaKey(m.kind,m.id,m.slot)];
+ state.modal=null;persist();render();break;
+}case'modal-delete-task':state.modal='delete-task';state.modalTask=id;render();break;
 case'modal-archive-task':if(isCloud&&findTask(id)){state.modal='archive-task-confirm';state.modalTask=id;render();}break;
 case'modal-move-task':if(isCloud&&findTask(id)){state.modal='move-task';state.modalTask=id;render();setTimeout(()=>{const select=document.querySelector('#move-workspace');if(select)select.dispatchEvent(new Event('change',{bubbles:true}));},0);}break;
 case'modal-permanent-task':if(isCloud&&state.trashed.some(t=>t.id===id)){state.modal='permanent-task';state.modalTask=id;render();}break;case'confirm-archive-workspace':{
@@ -593,7 +616,48 @@ if(form.id==='workspace-form'){
 if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
 if(form.id==='schedule-form'){const start=String(data.get('start')),end=String(data.get('end'));if(parseClock(end)<=parseClock(start)){alert('End time must be later than start time.');return}const taskId=String(data.get('task'));if(!findTask(taskId))return;state.scheduled.push({id:newId(),taskId,day:state.planDay,start,end});if(remainingUnscheduled(findTask(taskId),state.planDay)>0){if(!state.pool.includes(taskId))state.pool.push(taskId)}else state.pool=state.pool.filter(x=>x!==taskId);state.modal=null;state.modalTask=null;persist();render()}});
 trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos)}});
-trackListener('change',async e=>{if(e.target.id==='media-file'){const file=e.target.files?.[0];const m=state.mediaTarget;if(!m||!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){alert('Choose a JPEG, PNG or WebP image under 5 MB.');return;}try{const image=await createImageBitmap(file);const maxW=m.slot==='avatar'?400:1400,maxH=m.slot==='avatar'?400:900;const scale=Math.min(1,maxW/image.width,maxH/image.height);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const encoded=canvas.toDataURL('image/webp',.72);image.close?.();if(encoded.length>950000){alert('Image is too large after compression. Try a smaller picture.');return;}const key=mediaKey(m.kind,m.id,m.slot);const previous=state.media[key];state.media[key]=encoded;if(!persist()){if(previous)state.media[key]=previous;else delete state.media[key];alert('Local preview storage is full. Please use a smaller picture or remove another photo.');return;}state.modal=null;render();}catch(err){console.error('Image preview failed',err);alert('Could not read that picture. Try another image.')}return;}if(e.target.id==='density-select'){state.density=e.target.value;persist();render();return;}if(e.target.id==='cover-style-select'){state.coverStyle=e.target.value;persist();render();return;}if(e.target.id==='media-position'){const m=state.mediaTarget;if(m){state.mediaPos[mediaKey(m.kind,m.id,m.slot)]=Number(e.target.value);persist();render();}return;}if(e.target.id==='task-sort'){state.taskSort=e.target.value;persist();render();return;}if(e.target.id==='move-workspace'){
+trackListener('change',async e=>{if(e.target.id==='media-file'){
+ const file=e.target.files?.[0],m=state.mediaTarget;
+ if(!m||!file)return;
+ if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){alert('Choose a JPEG, PNG or WebP image under 5 MB.');return;}
+ try{
+  const image=await createImageBitmap(file);
+  const maxW=m.slot==='avatar'?400:(isCloud&&m.kind==='task'?1100:1400);
+  const maxH=m.slot==='avatar'?400:(isCloud&&m.kind==='task'?720:900);
+  let scale=Math.min(1,maxW/image.width,maxH/image.height);
+  const canvas=document.createElement('canvas');
+  const remote=isCloud&&m.kind==='task';
+  let encoded='';
+  for(let attempt=0;attempt<(remote?9:1);attempt++){
+   canvas.width=Math.max(1,Math.round(image.width*scale));
+   canvas.height=Math.max(1,Math.round(image.height*scale));
+   canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+   encoded=canvas.toDataURL('image/webp',Math.max(.35,.74-attempt*.05));
+   if(!remote||encoded.split(',')[1].length*.75<=175000)break;
+   scale*=.79;
+  }
+  image.close?.();
+  if(remote){
+   if(encoded.split(',')[1].length*.75>180000){alert('Image remains too large after compression. Choose a smaller picture.');return;}
+   await cloudApi.saveTaskMedia(m.id,m.slot,encoded,Number(state.mediaPos[mediaKey(m.kind,m.id,m.slot)]??50));
+  }else if(encoded.length>950000){alert('Image is too large after compression. Try a smaller picture.');return;}
+  const key=mediaKey(m.kind,m.id,m.slot),previous=state.media[key];
+  state.media[key]=encoded;
+  if(!persist()){
+   if(previous)state.media[key]=previous;else delete state.media[key];
+   if(!remote){alert('Local preview storage is full. Try a smaller picture.');return;}
+  }
+  state.modal=null;render();
+ }catch(err){saveError(err);}
+ return;
+}if(e.target.id==='density-select'){state.density=e.target.value;persist();render();return;}if(e.target.id==='cover-style-select'){state.coverStyle=e.target.value;persist();render();return;}if(e.target.id==='media-position'){
+ const m=state.mediaTarget;if(m){
+  const position=Number(e.target.value);
+  if(isCloud&&m.kind==='task'){
+   try{await cloudApi.setTaskMediaFocal(m.id,m.slot,position);}catch(err){saveError(err);return;}
+  }
+  state.mediaPos[mediaKey(m.kind,m.id,m.slot)]=position;persist();render();
+ }return;}if(e.target.id==='task-sort'){state.taskSort=e.target.value;persist();render();return;}if(e.target.id==='move-workspace'){
  const select=document.querySelector('#move-parent');
  const task=findTask(state.modalTask);if(!select||!task)return;
  const dest=e.target.value;
