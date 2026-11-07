@@ -3,7 +3,7 @@ import { authClient } from '../auth/client';
 
 type Mode = 'sign-in' | 'sign-up';
 
-export function AuthScreen() {
+export function AuthScreen({onPreview}:{onPreview:()=>void}) {
   const [mode, setMode] = useState<Mode>('sign-in');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -63,7 +63,10 @@ export function AuthScreen() {
       <button className="auth-switch" type="button" disabled={busy} onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>
         {mode === 'sign-in' ? 'New here? Create an account' : 'Already registered? Sign in'}
       </button>
-      <p className="auth-note">Your workspace is secured by Neon Auth. Your tasks and workspaces are saved in Neon. Day plans, notes, images and timer sessions remain on this device until later milestones.</p>
+      <button className="auth-switch" type="button" onClick={onPreview}>
+        Open local demo without signing in
+      </button>
+      <p className="auth-note">The local demo is stored on this device and never accesses another account. To sync workspaces and tasks, a working Neon Auth session is required. Safari may block its cross-site cookie.</p>
     </section>
   </main>;
 }
