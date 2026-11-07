@@ -22,12 +22,12 @@ CREATE TRIGGER task_document_workspace_guard
  BEFORE UPDATE OF workspace_id ON dayframe.tasks
  FOR EACH ROW EXECUTE FUNCTION dayframe.guard_task_document_workspace();
 
--- Restoring a soft-deleted document must revalidate its task/workspace and
--- parent relationship, rather than only checking owner and active workspace.
-DROP TRIGGER IF EXISTS documents_structure_guard ON dayframe.documents;
-CREATE TRIGGER documents_structure_guard
- BEFORE INSERT OR UPDATE OF workspace_id,task_id,parent_id,deleted_at
- ON dayframe.documents FOR EACH ROW
+-- Revalidate only on RESTORE, not on delete. Deleted documents can be
+-- removed from inactive workspaces without triggering a structural check.
+DROP TRIGGER IF EXISTS documents_restore_guard ON dayframe.documents;
+CREATE TRIGGER documents_restore_guard
+ BEFORE UPDATE OF deleted_at ON dayframe.documents
+ FOR EACH ROW WHEN (OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL)
  EXECUTE FUNCTION dayframe.guard_document_structure();
 
 INSERT INTO dayframe.schema_migrations(version)
