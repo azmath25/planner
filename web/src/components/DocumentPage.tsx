@@ -72,6 +72,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const details=await cloudApi.getDocument(doc.id);
+   assertDocumentBlocks(details.blocks);
    if(alive.current)resetDraft(details);
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot open this document');}
   finally{if(alive.current)setBusy(false);}
@@ -112,6 +113,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const created=await cloudApi.createDocument(id,body);
+   assertDocumentBlocks(created.blocks);
    if(!alive.current)return;
    setDocuments(list=>[created,...list.filter(d=>d.id!==id)]);
    setPendingCreate(null);
@@ -150,6 +152,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const restored=await cloudApi.restoreDocument(doc.id,doc.revision);
+   assertDocumentBlocks(restored.blocks);
    if(!alive.current)return;
    setDeleted(list=>list.filter(d=>d.id!==restored.id));
    setDocuments(list=>[restored,...list]);
@@ -261,7 +264,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       {active.parentId&&<p className="tiny">Nested below another document. Delete children first.</p>}
      </div>
      <div className="df-document-editor" aria-label="Rich text editor">
-      <BlockDocumentEditor key={active.id+'-'+active.revision} blocks={blocks}
+      <BlockDocumentEditor key={active.id+'-'+active.revision} blocks={blocks} readOnly={busy}
        onEdit={(changed,message)=>{
         setBlocks(changed);setValidation(message||'');setDirty(true);
        }}/>
