@@ -6,6 +6,30 @@ export type CloudWorkspace={
   id:string;kind:'general'|'custom';name:string;subtitle:string;color:string;cover:string;
   revision:number;createdAt:string;archivedAt:string|null;
 };
+// M6.2a: private document DTO. The editor consumes only the reviewed
+// server-side text block subset; uploaded HTML or media must never be rendered.
+export type CloudDocumentMeta={
+ id:string;workspace:string;taskId:string|null;parentId:string|null;title:string;
+ revision:number;deletedAt:string|null;createdAt:string;updatedAt:string;
+};
+export type CloudDocument=CloudDocumentMeta&{blocks:unknown[]};
+export type CloudDocumentInput=Pick<CloudDocument,'workspace'|'taskId'|'parentId'|'title'|'blocks'>;
+function verifyDocumentMeta(value:unknown):value is CloudDocumentMeta{
+ if(!value||typeof value!=='object')return false;
+ const d=value as Record<string,unknown>;
+ return isUuid(d.id)&&isUuid(d.workspace)&&
+  (d.taskId===null||isUuid(d.taskId))&&
+  (d.parentId===null||isUuid(d.parentId))&&
+  typeof d.title==='string'&&d.title.length>0&&d.title.length<=160&&
+  Number.isSafeInteger(d.revision)&&Number(d.revision)>=1&&
+  (d.deletedAt===null||typeof d.deletedAt==='string')&&
+  typeof d.createdAt==='string'&&typeof d.updatedAt==='string';
+}
+function verifyFullDocument(value:unknown):value is CloudDocument{
+ return verifyDocumentMeta(value)&&
+  Array.isArray((value as CloudDocument).blocks);
+}
+
 export type CloudQuickNote={
  id:string;workspace:string;title:string;content:string;
  color:'cream'|'lilac'|'green'|'blue';pinned:boolean;
@@ -273,6 +297,84 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async listDocuments(filters:{workspace?:string;taskId?:string}={}):Promise<CloudDocumentMeta[]>{
+  const query=new URLSearchParams();
+  if(filters.workspace){
+   if(!isUuid(filters.workspace))throw new Error('Invalid document workspace');
+   query.set('workspace',filters.workspace);
+  }
+  if(filters.taskId){
+   if(!isUuid(filters.taskId))throw new Error('Invalid document task');
+   query.set('taskId',filters.taskId);
+  }
+  const documents:CloudDocumentMeta[]=[];
+  let offset:number|null=0;
+  for(let page=0;offset!==null;page++){
+   if(page>1000)throw new Error('Too many document pages');
+   query.set('limit','50');query.set('offset',String(offset));
+   const data=await call<{documents:unknown[];nextOffset:number|null}>(
+    '/v1/documents?'+query.toString());
+   if(!Array.isArray(data.documents)||!data.documents.every(verifyDocumentMeta))
+    throw new Error('Invalid document list');
+   documents.push(...data.documents);
+   if(data.nextOffset!==null&&(!Number.isSafeInteger(data.nextOffset)||data.nextOffset<=offset))
+    throw new Error('Invalid document pagination');
+   offset=data.nextOffset;
+  }
+  return documents;
+ },
+ async getDocument(id:string):Promise<CloudDocument>{
+  if(!isUuid(id))throw new Error('Invalid document ID');
+  const data=await call<{document:unknown}>('/v1/documents/'+id);
+  if(!verifyFullDocument(data.document))throw new Error('Invalid document response');
+  return data.document;
+ },
+ async createDocument(id:string,body:CloudDocumentInput):Promise<CloudDocument>{
+  if(!isUuid(id))throw new Error('Invalid document ID');
+  const data=await call<{document:unknown}>('/v1/documents',{
+   method:'POST',body:{id,...body}
+  });
+  if(!verifyFullDocument(data.document))throw new Error('Invalid created document');
+  return data.document;
+ },
+ async updateDocument(id:string,revision:number,body:CloudDocumentInput):Promise<CloudDocument>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid document revision');
+  const data=await call<{document:unknown}>('/v1/documents/'+id,{
+   method:'PATCH',body:{...body,revision}
+  });
+  if(!verifyFullDocument(data.document))throw new Error('Invalid updated document');
+  return data.document;
+ },
+ async deleteDocument(id:string,revision:number):Promise<void>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid document revision');
+  await call('/v1/documents/'+id,{method:'DELETE',body:{revision}});
+ },
+ async listDeletedDocuments():Promise<CloudDocumentMeta[]>{
+  const documents:CloudDocumentMeta[]=[];let offset:number|null=0;
+  for(let page=0;offset!==null;page++){
+   if(page>1000)throw new Error('Too many deleted document pages');
+   const data=await call<{documents:unknown[];nextOffset:number|null}>(
+    '/v1/documents/trash?limit=50&offset='+offset);
+   if(!Array.isArray(data.documents)||!data.documents.every(verifyDocumentMeta)||
+    data.documents.some(d=>!d.deletedAt))throw new Error('Invalid deleted document list');
+   documents.push(...data.documents);
+   if(data.nextOffset!==null&&(!Number.isSafeInteger(data.nextOffset)||data.nextOffset<=offset))
+    throw new Error('Invalid document pagination');
+   offset=data.nextOffset;
+  }
+  return documents;
+ },
+ async restoreDocument(id:string,revision:number):Promise<CloudDocument>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid deleted document revision');
+  const data=await call<{document:unknown}>('/v1/documents/'+id+'/restore',{
+   method:'POST',body:{revision}
+  });
+  if(!verifyFullDocument(data.document))throw new Error('Invalid restored document');
+  return data.document;
+ },
  async listQuickNotes():Promise<CloudQuickNote[]>{
   const notes:CloudQuickNote[]=[];let offset:number|null=0;
   for(let page=0;offset!==null;page++){
