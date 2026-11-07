@@ -206,3 +206,29 @@ test('M5.1 concurrent pause/stop cannot double-count the active segment',async()
  assert.equal(current.revision,2);assert.ok(Number(current.accumulated_ms)>=0);
  if(current.state==='paused')await changeTime(OWNER_D,'stop',id,null,2);
 });
+
+test('M5.1 concurrent task completion/start cannot leave a running timer on closed task',async()=>{
+ const task='daabbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ const session='daaccccc-cccc-4ccc-8ccc-cccccccccccc';
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Race task')",[task,OWNER_D,WSD]);
+ const attempts=await Promise.allSettled([
+  changeTime(OWNER_D,'start',session,task,0),
+  pool.query("UPDATE dayframe.tasks SET status='done' WHERE id=$1",[task])
+ ]);
+ assert.equal(attempts[1].status,'fulfilled');
+ if(attempts[0].status==='rejected')assert.equal(attempts[0].reason.code,'40001');
+ const {rows}=await pool.query("SELECT count(*)::int AS n FROM dayframe.time_sessions WHERE owner_user_id=$1 AND task_id=$2 AND state IN ('running','paused')",[OWNER_D,task]);
+ assert.equal(rows[0].n,0,'Completed task must not have an open time session');
+});
+test('M5.1 workspace archive closes running sessions and retains their historical record',async()=>{
+ const workspace='daad1111-1111-4111-8111-111111111111',task='daad2222-2222-4222-8222-222222222222',
+  session='daad3333-3333-4333-8333-333333333333';
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Archived test','custom')",[workspace,OWNER_D]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,'Archive time test')",[task,OWNER_D,workspace]);
+ assert.equal((await changeTime(OWNER_D,'start',session,task,0)).state,'running');
+ await pool.query('UPDATE dayframe.workspaces SET archived_at=now() WHERE id=$1',[workspace]);
+ const {rows}=await pool.query('SELECT state,end_reason,task_id FROM dayframe.time_sessions WHERE id=$1',[session]);
+ assert.equal(rows[0].state,'stopped');
+ assert.equal(rows[0].end_reason,'workspace_archived');
+ assert.equal(rows[0].task_id,task);
+});
