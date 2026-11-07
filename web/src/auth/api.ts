@@ -4,7 +4,7 @@ export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-
 
 export type CloudWorkspace={
   id:string;kind:'general'|'custom';name:string;subtitle:string;color:string;cover:string;
-  revision:number;createdAt:string;archivedAt:string|null;
+  pinned:boolean;revision:number;createdAt:string;archivedAt:string|null;
 };
 // M6.2a: private document DTO. The editor consumes only the reviewed
 // server-side text block subset; uploaded HTML or media must never be rendered.
@@ -269,7 +269,8 @@ async function call<T>(path:string,opts:{method?:string;body?:object;signal?:Abo
 function verifyWorkspace(item:unknown):item is CloudWorkspace{
  return !!item&&typeof item==='object'&&'id' in item&&typeof item.id==='string'&&
   'kind' in item&&(item.kind==='general'||item.kind==='custom')&&
-  'name' in item&&typeof item.name==='string';
+  'name' in item&&typeof item.name==='string'&&
+  'pinned' in item&&typeof item.pinned==='boolean';
 }
 function verifyTask(item:unknown):item is CloudTask {
  return !!item&&typeof item==='object'&&'id' in item&&typeof item.id==='string'&&
@@ -641,6 +642,16 @@ export const cloudApi={
  },
  async updateWorkspace(id:string,body:{name:string;subtitle?:string;color?:string;cover?:string;revision:number}):Promise<CloudWorkspace>{
   return (await call<{workspace:CloudWorkspace}>('/v1/workspaces/'+encodeURIComponent(id),{method:'PATCH',body})).workspace;
+ },
+ async setWorkspacePinned(id:string,revision:number,pinned:boolean):Promise<CloudWorkspace>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1||typeof pinned!=='boolean')
+   throw new Error('Invalid workspace pin request');
+  const data=await call<{workspace:unknown}>('/v1/workspaces/'+id+'/pin',{
+   method:'PUT',body:{revision,pinned}
+  });
+  if(!verifyWorkspace(data.workspace)||data.workspace.pinned!==pinned)
+   throw new Error('Invalid pinned workspace response');
+  return data.workspace;
  },
  async createTask(body:TaskInput&{id:string}):Promise<CloudTask>{
   return (await call<{task:CloudTask}>('/v1/tasks',{method:'POST',body})).task;
