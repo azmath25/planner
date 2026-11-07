@@ -3,7 +3,7 @@
 **Status:** v1.1 specification, 2026-11-06  
 **Project:** Standalone personal time, task and knowledge management platform  
 **Delivery sequence:** Mobile-first website on GitHub Pages + Neon first; Android/Google Play second.  
-**Implementation status:** M1.2 mobile design prototype; no backend is connected.
+**Implementation status (2026-11-07):** M4.1 daily pool persistence implemented on the isolated Neon backend. Fixed-time intervals, reminders and timer sessions remain device-local or deferred.
 
 ## 1. Product vision
 
@@ -118,5 +118,7 @@ Recurring habits and routines; deterministic rescheduling assistance; calendar i
 A user can create a reminder-only task without deadline; create a hard-deadline task without reminder; create a long-term task with nested children and documents; assign it to General or a custom workspace; add it to a day pool without time; schedule only some of its effort in fixed intervals over multiple days; start and pause time tracking; view accurate global and scoped reports without double counting; see robust reminder/overdue handling; customize workspace/task cover images and theme while retaining readable mobile layouts; export data and recover accidentally deleted tasks. Critical actions are authorized server-side, audited and tested. All of this must work on the mobile website **before Android work**.
 
 ## 12. Current checkpoint
+
+**Current release checkpoint:** M4.1 — signed-in, per-date, manually ordered untimed daily pools are persisted to Neon with optimistic revisions. See `docs/CHECKPOINT_M4.1.md`. Future M4.2 timed scheduling and M4.3 reminders are not included. Historical M1.2 checkpoint details remain below.
 
 M1.2 visual design milestone: six coherent themes, six optional accent colors, comfortable/compact layout, three cover styles, avatar and cover photo preview for tasks and workspaces with client-side image size/type checks, compression and focal-position adjustment. These appearance controls are deliberately confined to Settings or entity detail views to keep the mobile daily interface clean. Uploaded images are disposable browser-local preview data only (no remote uploads). Use GitHub Pages **branch deployment from `main` / `(root)`**, not a `gh-pages` branch or an Actions deployment workflow. The user explicitly requested GitHub to retain only one branch (`main`); all obsolete branches were deleted. No Neon mutations, real notifications or production uploads. The static demo is not a production application.
