@@ -1427,9 +1427,12 @@ case'use-device-zone':void setCurrentNotificationZone();break;
 case'quiet-hours':void openQuietHours();break;
 case'alert-ack':void changeCloudAlert(Number(b.dataset.index),'acknowledge');break;
 case'alert-snooze':void changeCloudAlert(Number(b.dataset.index),'snooze');break;
-case'account-refresh':if(typeof account.onRefresh==='function')account.onRefresh();break;
+case'account-refresh':if(typeof account.onRefresh==='function'&&
+  (!documentPageDirty||window.confirm('Discard unsaved document changes and refresh your account?')))
+  account.onRefresh();break;
 case'account-sign-out':{
  if(state.accountBusy||typeof account.onSignOut!=='function')break;
+ if(documentPageDirty&&!window.confirm('Discard unsaved document changes and sign out?'))break;
  state.accountBusy=true;b.disabled=true;const original=b.innerHTML;b.textContent='Signing out…';
  try{await account.onSignOut();}
  catch(err){saveError(err);state.accountBusy=false;b.disabled=false;b.innerHTML=original;}
