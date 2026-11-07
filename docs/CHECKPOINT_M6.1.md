@@ -3,7 +3,7 @@
 **Scope:** M6.1 initial slice, staged 2026-11-07.  
 **Branch:** `feature/dayframe-m53-release-20261107` (no merge).  
 **Production:** original `main` site and Neon function **not changed** by this milestone.  
-**Release status:** **NOT READY** — staged implementation, authored but unexecuted verification, reminders delivery pending.
+**Release status:** **NOT READY** — staged implementation, authored but unexecuted verification. M6.1a reminder delivery is now staged in source, but quiet hours and release testing remain pending.
 
 ## Implemented in branch source
 
@@ -25,11 +25,11 @@ This slice is **committed only on the feature branch**. No production database m
 - Expanded staged API, disposable PostgreSQL and responsive browser test coverage for restore, account isolation and deterministic conversion.
 - Sanity-only: checked JavaScript parsing of the modified legacy frontend, backend entry point and browser harness. **TypeScript compilation, database migration tests, Playwright and live authentication were not executed; all remain in the final integrated verification gate.**
 
-**Remaining M6.1 work:** note notification delivery/quiet-hour behavior and tests, account-switch handling, secure reminder inbox experience, creation retry after uncertain POST, and integration sign-off. Notes with archived workspaces are hidden from active/deleted lists until the workspace is restored. No live notification behavior is claimed.
+**Remaining M6.1 work:** verify the staged note delivery and inbox, implement and test quiet-hour behavior, account-switch handling, creation retry after uncertain POST, and integration sign-off. Notes with archived workspaces are hidden from active/deleted lists until the workspace is restored. No live notification behavior is claimed.
 
 ## Remaining M6.1 before completion
 
-- Implement note reminder delivery in the existing server-owned notification pipeline, including timezone/quiet-hour semantics, acknowledgements/snoozes or a clearly separate UX, idempotency and retry rules; then remove the 'not yet active' label.
+- **M6.1a staged:** note reminder delivery, timezone semantics, acknowledgement/snooze actions and durable retries are authored in source, and the old 'not yet active' label has been replaced. Quiet-hour behavior, integrated validation, and actual deployment are still required before completion.
 - **Staged:** deleted-note restore/Trash UI and owner-scoped endpoints are implemented; still require integrated browser and PostgreSQL verification.
 - **Partially addressed:** conversion retry uses a deterministic task UUID after reload; still test uncertain responses, account switching and deleted/archive workspaces.
 - Add browser regression checks for stale revision, account switching and unexpected offline/network failures.
