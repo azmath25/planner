@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'tests/deep-postgres-regression.mjs'
+      - 'tests/build-demo-harness.mjs'
+      - 'tests/appearance.py'
+      - 'tests/timer-browser.py'
       - '.github/workflows/m1-m4-deep-audit.yml'
 permissions:
   contents: read
