@@ -50,7 +50,7 @@ export function AuthScreen() {
       <button className="auth-switch" type="button" disabled={busy} onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(''); }}>
         {mode === 'sign-in' ? 'New here? Create an account' : 'Already registered? Sign in'}
       </button>
-      <p className="auth-note">Your workspace is secured by Neon Auth. Task and timer screens are still local previews until synchronization is implemented.</p>
+      <p className="auth-note">Your workspace is secured by Neon Auth. Your tasks and workspaces are saved in Neon. Day plans, notes, images and timer sessions remain on this device until later milestones.</p>
     </section>
   </main>;
 }
