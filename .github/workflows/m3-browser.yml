@@ -1,0 +1,34 @@
+name: Dayframe M3 browser smoke
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/build-m3-harness.mjs'
+      - 'tests/m3-browser.py'
+      - '.github/workflows/m3-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate browser bundle syntax
+        run: |
+          node tests/build-m3-harness.mjs
+          node --check tests/.harness/m3-app.js
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install chromium --with-deps
+      - name: Run browser regression
+        run: python tests/m3-browser.py
