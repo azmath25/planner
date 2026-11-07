@@ -13,8 +13,8 @@ export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cl
  const isCloud=Boolean(cloud);
  // Enable only after SQL 0009 and the authenticated alert routes are deployed and verified.
  const alertsBackendEnabled=true;
- // Keep existing signed-in local timer usable until the Neon M5.1 API and SQL are deployed.
- const timeBackendEnabled=false;
+ // Neon M5.1 migration and authenticated Function are deployed and verified.
+ const timeBackendEnabled=true;
  const isCloudTime=isCloud&&timeBackendEnabled;
  const localWorkspace=w=>({
   id:w.kind==='general'?'general':w.id,serverId:w.id,kind:w.kind,name:w.name,
@@ -75,7 +75,7 @@ scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
-const remainingUnscheduled=(task,day)=>Math.max(0,task.estimate-task.spent-state.scheduled.filter(s=>s.taskId===task.id&&s.day===day).reduce((sum,s)=>sum+parseClock(s.end)-parseClock(s.start),0));
+const remainingUnscheduled=(task,day)=>Math.max(0,task.estimate-(isCloudTime?taskTimeMs(task)/60000:task.spent)-state.scheduled.filter(s=>s.taskId===task.id&&s.day===day).reduce((sum,s)=>sum+parseClock(s.end)-parseClock(s.start),0));
 const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:state.notes,pools:isCloud?undefined:state.pools,scheduled:isCloud?undefined:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:isCloudTime?undefined:state.timer,sessions:isCloudTime?undefined:state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
 const poolLoaded=new Set(),poolPending=new Set();let disposed=false;
 async function loadCloudPool(day){
@@ -444,7 +444,7 @@ function settingsPage(){
  <div class="theme-grid">${choices.map(([name,label,bg])=>`<button class="theme-choice ${state.theme===name?'selected':''}" data-action="theme" data-id="${name}" aria-pressed="${state.theme===name}"><div class="theme-swatches" style="background:${bg}"><b></b><b style="height:37px"></b><b style="height:19px"></b></div><strong>${label}</strong></button>`).join('')}</div></div>
  <div class="card section"><div class="card-title"><h2>Accent colors</h2><span class="tiny">Optional · independent of theme</span></div><div class="accent-palette">${accentChoices.map(([id,label,color])=>`<button class="accent-option ${state.accent===id?'selected':''}" data-action="accent" data-id="${id}" aria-label="Accent ${label}" aria-pressed="${state.accent===id}" title="${label}"><span style="background:${color}">${state.accent===id?icon('check'):''}</span><small>${label}</small></button>`).join('')}</div></div>
  <div class="card section"><div class="card-title"><h2>Display preferences</h2></div><div class="field-wrap"><label class="form-label" for="density-select">Information density</label><select class="field" id="density-select"><option value="comfortable" ${state.density==='comfortable'?'selected':''}>Comfortable · more breathing room</option><option value="compact" ${state.density==='compact'?'selected':''}>Compact · more information</option></select></div><div class="field-wrap"><label class="form-label" for="cover-style-select">Cover presentation</label><select class="field" id="cover-style-select"><option value="standard" ${state.coverStyle==='standard'?'selected':''}>Standard · balanced</option><option value="immersive" ${state.coverStyle==='immersive'?'selected':''}>Immersive · larger imagery</option><option value="minimal" ${state.coverStyle==='minimal'?'selected':''}>Minimal · subtle header</option></select></div><p class="banner-note">Cover and avatar controls are available inside each task or workspace. Images stay on this device in the prototype; Neon uploads are a later milestone.</p></div>
- <div class="section card"><div class="card-title"><h2>Design demo</h2></div><p class="subtitle" style="margin:0 0 14px">${isCloud?'Workspaces and tasks are saved in your Neon account. Daily plans, quick notes, photos and timer sessions remain on this device; notifications are not yet enabled.':'This preview uses local sample data and has no account sync.'}</p><button class="btn secondary" data-action="reset">${icon('refresh')} Reset local previews</button></div>`
+ <div class="section card"><div class="card-title"><h2>Design demo</h2></div><p class="subtitle" style="margin:0 0 14px">${isCloud?'Workspaces, tasks, daily plans, reminders and new time sessions are saved in Neon. Older device-only timer records, quick notes, capacity and workspace photos remain local and are not imported automatically.':'This preview uses local sample data and has no account sync.'}</p><button class="btn secondary" data-action="reset">${icon('refresh')} Reset local previews</button></div>`
 }
 function taskDetail(){
  const t=findTask(state.taskId);if(!t){state.page='tasks';return tasksPage()}
@@ -565,7 +565,7 @@ else if(state.modal==='permanent-task'){
  <button type="submit" class="btn danger">Permanently delete</button></div></form>`;
 }
 else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">The selected quick note will be removed from this browser's demo data. This action requires confirmation.</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
-else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">${isCloud?'This clears browser-local preferences, day plans, quick notes, photos and timer sessions. It does NOT delete your saved Neon tasks or workspaces.':'This clears local demo changes and restores sample data. No online data is involved.'}</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
+else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">${isCloud?'This clears browser-local preferences, quick notes, workspace photos and older device-only timer history. It does NOT delete your saved Neon tasks, schedules, reminders or time sessions.':'This clears local demo changes and restores sample data. No online data is involved.'}</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
 return `<div class="modal-backdrop" data-backdrop="true"><section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
 function parseClock(s){const [h,m]=s.split(':').map(Number);return h*60+m}
 function profilePage(){
@@ -575,7 +575,7 @@ function profilePage(){
   <div class="profile-identity"><div class="profile-avatar profile-avatar-large" aria-hidden="true">${escapeHTML(accountInitials)}</div>
   <div><div class="eyebrow">${isCloud?'Signed in':'Local preview'}</div><h2>${escapeHTML(accountName)}</h2>
   ${accountEmail?`<p class="profile-email">${escapeHTML(accountEmail)}</p>`:''}</div></div>
-  <div class="profile-data-note"><strong>${subtitle}</strong><p>${isCloud?'Workspaces, tasks, untimed daily pools and scheduled time blocks are saved in Neon. Capacity, quick notes, workspace photos and timer sessions remain on this device. In-app reminders are enabled. Optional browser push can be switched on from Home; physical-device delivery still needs testing.':'Changes in this preview stay in this browser and are not attached to an account.'}</p></div>
+  <div class="profile-data-note"><strong>${subtitle}</strong><p>${isCloud?'Workspaces, tasks, daily plans, timed blocks, reminders and new time sessions are saved in Neon across signed-in devices. Capacity, quick notes, workspace photos and older device-only timer history remain local. Optional browser push has been tested in one browser; other devices still need verification.':'Changes in this preview stay in this browser and are not attached to an account.'}</p></div>
   <div class="profile-actions">
   ${isCloud&&typeof account.onRefresh==='function'?`<button type="button" class="btn secondary" data-action="account-refresh">${icon('refresh')} Refresh saved data</button>`:''}
   <button type="button" class="btn secondary" data-action="account-sign-out">${icon('back')} ${isCloud?'Sign out':'Return to sign in'}</button>
