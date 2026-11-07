@@ -62,6 +62,41 @@ export const DAY_POOL_GET_SQL =
 "FROM (SELECT 1) seed LEFT JOIN dayframe.daily_pools p ON p.owner_user_id=$1 AND p.plan_day=$2::date";
 export const DAY_POOL_PUT_SQL="SELECT dayframe.replace_daily_pool($1,$2::date,$3,$4::uuid[]) AS revision";
 
+export const TIMED_RANGE_SQL =
+ "SELECT s.id::text AS id,s.task_id::text AS \"taskId\",s.plan_day::text AS day,"+
+ "lpad((s.start_minute/60)::text,2,'0')||':'||lpad((s.start_minute%60)::text,2,'0') AS start,"+
+ "lpad((s.end_minute/60)::text,2,'0')||':'||lpad((s.end_minute%60)::text,2,'0') AS \"end\","+
+ "s.time_zone AS \"timeZone\",s.revision FROM dayframe.scheduled_intervals s "+
+ "JOIN dayframe.tasks t ON t.id=s.task_id AND t.owner_user_id=$1 "+
+ "JOIN dayframe.workspaces w ON w.id=t.workspace_id AND w.owner_user_id=$1 "+
+ "WHERE s.owner_user_id=$1 AND s.plan_day BETWEEN $2::date AND $3::date "+
+ "AND t.deleted_at IS NULL AND t.archived_at IS NULL "+
+ "AND w.deleted_at IS NULL AND w.archived_at IS NULL ORDER BY s.plan_day,s.start_minute,s.id LIMIT 2500";
+export const TIMED_SAVE_SQL="SELECT dayframe.save_scheduled_interval($1,$2,$3,$4::date,$5,$6,$7,$8) AS revision";
+export const TIMED_DELETE_SQL="DELETE FROM dayframe.scheduled_intervals WHERE owner_user_id=$1 AND id=$2 AND revision=$3 RETURNING id::text AS id";
+function clockMinutes(value,label,{end=false}={}){
+ if(typeof value!=='string'||!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value)){
+  if(end&&value==='24:00')return 1440;
+  throw fail(400,'Invalid '+label);
+ }
+ const minute=Number(value.slice(0,2))*60+Number(value.slice(3));
+ if(!end&&minute>=1440)throw fail(400,'Invalid '+label);
+ return minute;
+}
+function scheduleBody(body){
+ const task=uuid(body.taskId,'task');
+ const day=date(body.day,'schedule date');
+ if(!day||day<'2000-01-01'||day>'2100-12-31')throw fail(400,'Invalid schedule date');
+ const start=clockMinutes(body.start,'start time'),end=clockMinutes(body.end,'end time',{end:true});
+ if(end<=start)throw fail(400,'End time must be after start time');
+ const zone=str(body.timeZone,64,'time zone',{required:true});
+ if(zone.length<2)throw fail(400,'Invalid time zone');
+ try{new Intl.DateTimeFormat('en-US',{timeZone:zone});}
+ catch{throw fail(400,'Invalid time zone');}
+ if(!Number.isSafeInteger(body.revision)||body.revision<0)throw fail(400,'Invalid schedule revision');
+ return [task,day,start,end,zone,body.revision];
+}
+
 let jwks,pool;
 async function verifyNeonToken(token) {
   if(!process.env.NEON_AUTH_BASE_URL||!process.env.NEON_AUTH_JWKS_URL) throw Error('Missing auth configuration');
@@ -194,6 +229,36 @@ return {async fetch(req){
       const {rows}=await query("UPDATE dayframe.workspaces SET name=$3,subtitle=$4,color=$5,cover=$6,revision=revision+1,updated_at=now() WHERE id=$2 AND owner_user_id=$1 AND kind='custom' AND deleted_at IS NULL AND archived_at IS NULL AND revision=$7 RETURNING "+WORKSPACE_FIELDS,[uid,id,name,subtitle,color,cover,rev]);
       if(!rows.length)throw fail(409,'Workspace changed or unavailable');
       return json({workspace:rows[0]},200,hdr);
+    }
+    if(path==='/v1/timed-intervals'){
+      if(req.method==='GET'){
+        const url=new URL(req.url),from=date(url.searchParams.get('from'),'range start'),
+         to=date(url.searchParams.get('to'),'range end');
+        if(!from||!to||from<'2000-01-01'||to>'2100-12-31'||from>to||
+         (Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000>44)
+          throw fail(400,'Select a range of at most 45 days');
+        const {rows}=await query(TIMED_RANGE_SQL,[uid,from,to]);
+        return json({from,to,intervals:rows},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+    }
+    const timedId=/^\/v1\/timed-intervals\/([a-f0-9-]{36})$/i.exec(path);
+    if(timedId){
+      const id=uuid(timedId[1],'interval ID');
+      if(req.method==='PUT'){
+        const [task,day,start,end,zone,rev]=scheduleBody(await readBody(req));
+        const {rows}=await query(TIMED_SAVE_SQL,[uid,id,task,day,start,end,zone,rev]);
+        const pad=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+        return json({interval:{id,taskId:task,day,start:pad(start),end:pad(end),timeZone:zone,revision:Number(rows[0].revision)}},rev===0?201:200,hdr);
+      }
+      if(req.method==='DELETE'){
+        const body=await readBody(req);
+        if(!Number.isSafeInteger(body.revision)||body.revision<1)throw fail(400,'Invalid interval revision');
+        const {rows}=await query(TIMED_DELETE_SQL,[uid,id,body.revision]);
+        if(!rows.length)throw fail(409,'Timed block changed or no longer exists');
+        return json({removed:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'PUT,DELETE,OPTIONS'});
     }
     const poolMatch=/^\/v1\/daily-pool\/([0-9]{4}-[0-9]{2}-[0-9]{2})$/.exec(path);
     if(poolMatch){
@@ -364,7 +429,7 @@ return {async fetch(req){
     return json({error:'Method not allowed'},405,hdr);
   }catch(error){
     if(error?.status)return json({error:error.message},error.status,hdr);
-    if(['40001','23503','23505'].includes(error?.code))return json({error:'Workspace, parent task, or revision conflict'},409,hdr);
+    if(['40001','23503','23505','23P01'].includes(error?.code))return json({error:'Workspace, parent task, or revision conflict'},409,hdr);
     if(['23514','22001','22007','22008'].includes(error?.code))return json({error:'Invalid task or workspace fields'},400,hdr);
     // Never leak SQL, credentials, user identity or data through errors/logs.
     console.error('Dayframe data request failed',error instanceof Error?error.name:'UnknownError');
