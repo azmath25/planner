@@ -37,7 +37,7 @@ export const DOCUMENT_DETAIL_SQL="SELECT "+DOCUMENT_FULL_FIELDS+
  " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.id=$2 "+
  "AND d.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w "+
  "WHERE w.id=d.workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL)";
-export const DOCUMENT_INSERT_SQL="INSERT INTO dayframe.documents "+
+export const DOCUMENT_INSERT_SQL="INSERT INTO dayframe.documents d "+
  "(id,owner_user_id,workspace_id,task_id,parent_id,title,blocks) "+
  "SELECT $2,$1,w.id,$4::uuid,$5::uuid,$6,$7::jsonb FROM dayframe.workspaces w "+
  "WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL "+
