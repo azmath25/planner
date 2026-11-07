@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
  cloudApi,type CloudDocument,type CloudDocumentInput,type CloudDocumentMeta
 } from '../auth/api';
-import { assertDocumentBlocks,emptyDocumentBlocks } from '../domain/documentBlocks';
+import { assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON } from '../domain/documentBlocks';
 import { BlockDocumentEditor } from './BlockDocumentEditor';
 
 type Workspace={id:string;name:string};
@@ -128,7 +128,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     setError('A newer version exists on the server. Your local draft is untouched. Download it or reload the latest version before continuing.');
    }else{
     setAutoSavePaused(true);
-    setError('Save outcome uncertain. Your local changes are preserved here. Retry manually after checking your connection.');
+    setError('Save outcome uncertain. Your local changes are preserved here. Check the server before retrying.');
    }
   }finally{
    savingRef.current=false;
@@ -143,6 +143,33 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  // save() intentionally uses the latest render's captured title and blocks.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[active?.id,active?.revision,title,blocks,dirty,busy,validation,conflict,autoSavePaused,pendingCreate]);
+ const reconcileUncertainSave=async()=>{
+  if(!active||busy||savingRef.current||!autoSavePaused)return;
+  setBusy(true);setError('');
+  try{
+   const remote=await cloudApi.getDocument(active.id);
+   assertDocumentBlocks(remote.blocks);
+   if(!alive.current)return;
+   const identical=remote.title===title.trim()&&
+    remote.workspace===active.workspace&&remote.taskId===active.taskId&&
+    remote.parentId===active.parentId&&
+    canonicalDocumentJSON(remote.blocks)===canonicalDocumentJSON(blocks);
+   if(identical){
+    resetDraft(remote);setError('');
+   }else if(remote.revision!==active.revision){
+    setConflict(true);
+    setError('The server has a newer, different version. Your draft is preserved. Download it or reload the server version.');
+   }else{
+    setAutoSavePaused(false);
+    setError('The server still has the previous version; autosave is enabled again after your explicit check.');
+   }
+  }catch(e){
+   if(alive.current){
+    setAutoSavePaused(true);
+    setError(e instanceof Error?e.message:'Could not verify server version; local draft remains unsaved');
+   }
+  }finally{if(alive.current)setBusy(false);}
+ };
  const reloadLatest=async()=>{
   if(!active||busy||savingRef.current)return;
   if(!window.confirm('Discard the local document draft and load the newest saved version?'))return;
@@ -320,7 +347,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   {error&&<p role="alert" className="info-banner">{error}</p>}
   {active&&(conflict||autoSavePaused)&&<div className="actions" role="group" aria-label="Document recovery actions">
     <button className="btn small secondary" disabled={busy||conflict||!!validation}
-      type="button" onClick={()=>{setAutoSavePaused(false);void save();}}>Retry save</button>
+      type="button" onClick={()=>void reconcileUncertainSave()}>Check server and retry</button>
     <button className="btn small secondary" disabled={busy}
       type="button" onClick={exportDraft}>Download local draft</button>
     <button className="btn small secondary" disabled={busy}
