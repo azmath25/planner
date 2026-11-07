@@ -35,6 +35,26 @@ This slice is **committed only on the feature branch**. No production database m
 - Add browser regression checks for stale revision, account switching and unexpected offline/network failures.
 - **Only during final integrated release gate:** production TypeScript/Vite build, API unit tests, all 13 migrations on disposable Postgres, browser matrix and authenticated integration. Tests in this checkpoint are **written, not claimed passed**. GitHub Actions budget issue is deferred until then; local syntax sanity reviews do not replace the full suite.
 
+## M6.1a — Quick Note reminder delivery (staged, unverified)
+
+**Source committed on feature branch only. No Cloud Shell, GitHub Actions, live Neon migrations, scheduler invocations, merges or deployments.**
+
+- Additive SQL migration `0014_quick_note_reminders.sql` introduces account-owned note alert occurrence actions (acknowledge/snooze/reset), a separate durable push outbox, and `enqueue_due_note_push` keyed by note, date/time, effective delivery instant, and authorized subscription. Date/time uses the account's stored notification timezone. Existing task delivery tables remain unchanged.
+- The existing `dayframe-reminder-dispatch` schedule now invokes a second, separately claimed note-delivery pass. Outbound Web Push remains generic and **does not transmit note titles or content**. Endpoint validation, limited retries, exponential backoff and immediate eligibility rechecking follow the task dispatcher pattern. Deleted notes, archived/deleted workspaces, invalid subscriptions, superseded reminder dates and acknowledged occurrences cannot pass the eligibility query.
+- `GET /v1/alerts/combined` returns task alerts plus note alerts in one authenticated browser request. Existing `GET /v1/alerts` remains unchanged for older clients. `POST /v1/note-alerts/:id` enforces JWT-owner scope and revision-fenced occurrence actions.
+- Typed browser client and Home inbox distinguish note reminders and route acknowledge/snooze to the appropriate endpoint. Quick Notes guidance differentiates account notification functionality from anonymous local-demo notes.
+- Authored (not run) `backend/tests/note-reminders.test.mjs`, plus disposable-Postgres tests in `tests/deep-postgres-regression.mjs` covering migration 0014, account isolation, action revision checks, outbox idempotency, claims and deleted-note protection.
+
+**Important release requirements and unfinished items:**
+
+1. **NOT TESTED:** JavaScript syntax, TypeScript compilation, actual PostgreSQL migration execution, API unit suite, concurrent worker checks, browser UI, and real push delivery. The code has only been reviewed by reading repository source. Do not describe M6.1a as working in production.
+2. **Quiet hours are still missing.** Do not introduce a silent default or imply that a quiet-hour policy is enforced. Design and test user-configurable quiet hours consistently for both existing task and new note reminders before declaring M6.1 complete.
+3. Confirm the scheduler's deployment bundling includes the modified worker, and migrate 0013 then 0014 before deploying the combined API/dispatcher. Recheck deployed notification subscription behavior and account-switch safety.
+4. Acknowledgement, changed reminders, deleted/archive workspaces, DST gaps/folds, timezone edits, duplicate delivery after uncertain push outcome, HTTP retry exhaustions and notification opt-out require integrated testing. Generic Web Push is at-least-once best effort, not a guaranteed exactly-once notification.
+5. M6.1b must still address uncertain note creation, account-switch handling, error/conflict UX and related browser regressions.
+
+**Testing budget:** Keep GitHub Actions at zero during M6–M8 feature development. Cloud Shell is currently unavailable/unreliable. All verification remains deferred, not waived; identify an accessible local or disposable audit environment at the final release gate. No production changes are authorized.
+
 ## Next roadmap
 
 Finish the remaining M6.1 work, then M6.2 BlockNote documents, M6.3 persistence/media/export, M7 Reports/Insights/Home, M8 quality/PWA/release. M9 Android only after website acceptance, with its own signing and store approval.
