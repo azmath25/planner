@@ -1048,7 +1048,16 @@ if(isCloud)void loadCloudAlerts();
 if(isCloud&&alertsBackendEnabled&&'serviceWorker' in navigator&&'Notification' in window&&Notification.permission==='granted'){
  navigator.serviceWorker.getRegistration(new URL('./',document.baseURI).pathname)
   .then(reg=>reg?.pushManager.getSubscription())
-  .then(sub=>sub?cloudApi.isPushRegistered(sub.endpoint):false)
+  .then(async sub=>{
+   if(!sub)return false;
+   const registered=await cloudApi.isPushRegistered(sub.endpoint);
+   if(!registered){
+    // This browser may now belong to another Dayframe account. Disconnect
+    // the old device subscription rather than receiving its generic alerts.
+    await sub.unsubscribe();
+   }
+   return registered;
+  })
   .then(registered=>{if(!disposed&&registered){state.pushEnabled=true;if(state.page==='home')render();}})
   .catch(()=>{});
 }
