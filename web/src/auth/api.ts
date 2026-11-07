@@ -1,4 +1,4 @@
-import { authClient } from './client';
+import { AUTH_URL, authClient } from './client';
 
 export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
 
@@ -17,11 +17,30 @@ export class ApiFailure extends Error {
   constructor(message:string,readonly status:number) {super(message);}
 }
 async function call<T>(path:string,opts:{method?:string;body?:object;signal?:AbortSignal}={}):Promise<T>{
-  const {data,error}=await authClient.token();
-  if(error||!data?.token)throw new ApiFailure('Your session has expired. Sign in again.',401);
+  // A stale in-memory SDK cache must not make a valid browser session unusable.
+  // Retry through Neon's official cookie-backed token route, never accept a
+  // user ID from the browser or persist tokens in localStorage/sessionStorage.
+  let token:string|undefined;
+  try {
+    const result=await authClient.token();
+    if(!result.error && typeof result.data?.token==='string')token=result.data.token;
+  } catch { /* fallback to a fresh cookie-backed request below */ }
+  if(!token){
+    try {
+      const response=await fetch(AUTH_URL.replace(/\\/$/,'')+'/token',{
+        method:'GET',credentials:'include',cache:'no-store',signal:opts.signal
+      });
+      if(response.ok){
+        const body:unknown=await response.json();
+        if(body&&typeof body==='object'&&'token' in body&&typeof body.token==='string')token=body.token;
+      }
+    } catch { /* report a safe, actionable error without logging credentials */ }
+  }
+  if(!token)throw new ApiFailure(
+    'Sign-in reached Neon, but this browser did not provide a usable session token. Safari may be blocking the cross-site auth cookie. Try another browser until first-party authentication is available.',401);
   const resp=await fetch(API_URL+path,{
     method:opts.method||'GET',
-    headers:{Authorization:'Bearer '+data.token,...(opts.body?{'Content-Type':'application/json'}:{})},
+    headers:{Authorization:'Bearer '+token,...(opts.body?{'Content-Type':'application/json'}:{})},
     body:opts.body?JSON.stringify(opts.body):undefined,cache:'no-store',signal:opts.signal
   });
   if(!resp.ok) {
