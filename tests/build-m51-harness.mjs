@@ -9,6 +9,7 @@ source=source.replace(old,'const timeBackendEnabled = true;');
 const index=source.lastIndexOf('mountApp();');
 if(index<0)throw Error('Cloud test mount missing');
 const adapter=`
+mockDb.tasks.push({...mockDb.tasks[0],id:'55555555-5555-4555-8555-555555555555',title:'Second task for switching',parent:null});
 mockDb.sessionRecords=new Map();
 mockDb.activeTimeId=null;
 function sessionState(row){
