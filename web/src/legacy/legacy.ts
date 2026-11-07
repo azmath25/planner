@@ -69,7 +69,7 @@ const initialTasks=()=>[
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
-const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
+const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',insights:null,insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
@@ -677,6 +677,46 @@ function weeklyReportsPanel(){
   ${state.weekError?`<p class="tiny" role="alert">${escapeHTML(state.weekError)}</p>`:''}
  </section>`;
 }
+function insightsPanel(){
+ const data=state.insights;
+ if(!data)return state.insightsLoading?
+  '<section class="section card" role="status">Loading completion insights…</section>':
+  state.insightsError?`<section class="section card"><p role="alert">${escapeHTML(state.insightsError)}</p></section>`:'';
+ const completed=data.deadline.completedEvents,known=data.deadline.withDeadline;
+ const measured=data.estimate.measuredTasks;
+ const estimateMs=data.estimate.estimatedMinutes*60000;
+ const ratio=measured&&estimateMs>0?
+  (100*data.estimate.recordedMs/estimateMs).toFixed(1)+'%':'—';
+ const itemRows=data.history.length?data.history.map(h=>
+  `<tr><td>${escapeHTML(h.title)}</td><td>${escapeHTML(h.completedAt)}</td>
+    <td>${h.deadline?escapeHTML(h.deadline+' '+(h.deadlineTime||'end of day')):'No deadline'}</td>
+    <td>${h.onTime===null?'Not rated':h.onTime?'On time':'Late'}</td></tr>`).join(''):
+  '<tr><td colspan="4">No completion events in this period</td></tr>';
+ return `<section class="section card" aria-label="Account completion insights">
+  <div class="card-title"><h2>Completion insights</h2>
+    <span class="tiny">Account audit events · ${escapeHTML(data.timeZone)}</span></div>
+  <div class="report-cards">
+    <div class="metric"><div class="metric-label">Completion events</div>
+      <div class="metric-value">${completed}</div></div>
+    <div class="metric"><div class="metric-label">On-time completion events</div>
+      <div class="metric-value">${known?Math.round(100*data.deadline.onTime/known)+'%':'—'}</div>
+      <p class="tiny">${data.deadline.onTime} on time, ${data.deadline.late} late,
+       ${data.deadline.withoutDeadline} without deadline</p></div>
+    <div class="metric"><div class="metric-label">Recorded / estimate</div>
+      <div class="metric-value">${ratio}</div>
+      <p class="tiny">${measured} task comparisons; ${data.estimate.excludedLegacyTasks}
+      excluded for incomplete historical segments</p></div>
+  </div>
+  <p class="tiny">Completion-event rate counts events, not unique tasks. Deadlines and estimates are snapshots at completion.
+   A date-only deadline ends at midnight after the stated day, using the account time zone.
+   Recorded/estimate ratio uses exact recorded segments and excludes known legacy gaps; it is not a prediction.
+   Historical account time zones are not snapshotted.</p>
+  <div class="report-table-scroll"><table class="report-table">
+   <thead><tr><th>Task</th><th>Completed (UTC timestamp)</th><th>Deadline</th><th>Result</th></tr></thead>
+   <tbody>${itemRows}</tbody>
+  </table></div>
+ </section>`;
+}
 function signedInReportsPage(){
  const period=state.reportPeriod,report=state.periodReport;
  const controls=`<div class="filters" style="display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:17px">
@@ -691,6 +731,8 @@ function signedInReportsPage(){
     ${state.periodLoading?'disabled':''}>Refresh report</button>
   <button type="button" class="btn secondary small" data-action="export-period-csv"
     ${!report||state.periodLoading?'disabled':''}>Download CSV</button>
+  <button type="button" class="btn secondary small" data-action="load-insights"
+    ${state.insightsLoading||state.periodLoading?'disabled':''}>Load insights</button>
  </div>`;
  const header=titleHead('Account activity','Reports',
   'Saved focus sessions and fixed planned intervals; historical gaps are identified explicitly.');
@@ -731,6 +773,7 @@ function signedInReportsPage(){
     <td>${formatElapsed(report.accountRecordedMs)}</td><td>${minsText(report.accountPlannedMinutes)}</td>
     <td>${formatElapsed(report.accountLegacyEstimatedMs)}</td></tr></tbody></table></div>
   </div>
+  ${insightsPanel()}
   <div class="section card"><div class="card-title"><h2>Long-term task progress</h2></div>
    <p class="tiny">Includes current descendants once per long-term task. Nested long-term totals may overlap; never add them together as account totals. Deleted-task time remains in workspace/account history.</p>
    <div class="report-table-scroll"><table class="report-table"><thead><tr>
@@ -1110,10 +1153,30 @@ async function loadCloudWeek(preserveError=false){
   if(!disposed&&(state.page==='workspace'||state.page==='reports'))render();
  }
 }
+let insightsRequest=0;
+async function loadCloudInsights(){
+ if(!isCloudTime||disposed||state.insightsLoading)return;
+ const request=++insightsRequest;
+ state.insights=null;state.insightsError='';state.insightsLoading=true;
+ if(state.page==='reports')render();
+ try{
+  const results=await cloudApi.getTimeInsights(state.reportPeriod,state.reportAnchor);
+  if(!disposed&&request===insightsRequest)state.insights=results;
+ }catch(error){
+  if(!disposed&&request===insightsRequest)
+   state.insightsError=error instanceof Error?error.message:'Could not load completion insights';
+ }finally{
+  if(!disposed&&request===insightsRequest){
+   state.insightsLoading=false;if(state.page==='reports')render();
+  }
+ }
+}
 let periodReportRequest=0;
 async function loadCloudPeriod(){
  if(!isCloudTime||disposed)return;
  const request=++periodReportRequest;
+ ++insightsRequest;
+ state.insights=null;state.insightsError='';state.insightsLoading=false;
  state.periodLoading=true;state.periodError='';state.periodReport=null;
  if(state.page==='reports')render();
  try{
@@ -1294,6 +1357,7 @@ case'refresh-alerts':void loadCloudAlerts();break;
 case'time-retry':void loadCloudTime();break;
 case'refresh-week':void loadCloudWeek();break;
  case'refresh-period':if(isCloudTime)void loadCloudPeriod();break;
+ case'load-insights':if(isCloudTime)void loadCloudInsights();break;
  case'export-period-csv':{
   if(!isCloudTime||!state.periodReport||state.periodLoading)break;
   const report=state.periodReport;
