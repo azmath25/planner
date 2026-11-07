@@ -701,7 +701,7 @@ return {async fetch(req){
       const {rows}=await query(ALERT_ACTION_SQL,[uid,id,kind,day,time,body.revision,body.action,until]);
       return json({revision:Number(rows[0].revision)},200,hdr);
     }
-    const noteAlertId=/^\\/v1\\/note-alerts\\/([a-f0-9-]{36})$/i.exec(path);
+    const noteAlertId=/^\/v1\/note-alerts\/([a-f0-9-]{36})$/i.exec(path);
     if(noteAlertId){
       if(req.method!=='POST')return json({error:'Method not allowed'},405,{...hdr,allow:'POST,OPTIONS'});
       const body=await readBody(req);
@@ -712,7 +712,7 @@ return {async fetch(req){
       if(!['acknowledge','snooze','reset'].includes(body.action))throw fail(400,'Invalid alert action');
       let until=null;
       if(body.action==='snooze'){
-        if(typeof body.until!=='string'||!/^\\d{4}-\\d\\d-\\d\\dT/.test(body.until)||!/[Zz]|[+-]\\d\\d:\\d\\d$/.test(body.until))throw fail(400,'Invalid snooze time');
+        if(typeof body.until!=='string'||!/^\d{4}-\d\d-\d\dT/.test(body.until)||!/[Zz]|[+-]\d\d:\d\d$/.test(body.until))throw fail(400,'Invalid snooze time');
         until=new Date(body.until);
         if(!Number.isFinite(until.valueOf())||until.valueOf()<=Date.now()||until.valueOf()>Date.now()+30*86400000)throw fail(400,'Snooze must be within 30 days');
         until=until.toISOString();
