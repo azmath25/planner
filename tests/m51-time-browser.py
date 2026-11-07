@@ -8,6 +8,9 @@ HTML='<!doctype html><html><head><meta name="viewport" content="width=device-wid
 ROOT_TASK='44444444-4444-4444-8444-444444444444'
 SECOND='55555555-5555-4555-8555-555555555555'
 def nav(p,page,width):
+ if page=='settings' and width<760:
+  p.locator('.mobile-top [data-page="settings"]').click()
+  return
  selector='.mobile-nav' if width<760 else '.sidebar'
  p.locator(f'{selector} [data-page="{page}"]').click()
 def run(browser,width):
@@ -19,6 +22,11 @@ def run(browser,width):
  p.set_content(HTML)
  p.evaluate("""() => {
   const d={};
+  d['dayframe.m3.mock']=JSON.stringify({
+   timer:{taskId:'44444444-4444-4444-8444-444444444444',sessionStartedAt:1000,startedAt:1000,elapsed:3500,running:false},
+   sessions:[{id:'older-browser-session',taskId:'44444444-4444-4444-8444-444444444444',
+    startedAt:1000,endedAt:4500,durationMs:3500,reason:'stopped'}]
+  });
   Object.defineProperty(window,'localStorage',{configurable:true,value:{
    getItem:k=>d[k]||null,setItem:(k,v)=>{d[k]=String(v)},removeItem:k=>{delete d[k]}
   }});
@@ -60,6 +68,13 @@ def run(browser,width):
  p.wait_for_function("() => document.querySelector('.global-timer')===null")
  assert p.evaluate("() => [...window.__mockDb.sessionRecords.values()].some(s=>s.state==='stopped'&&s.accumulatedMs>0)")
  assert p.evaluate("() => window.__mockDb.tasks.find(t=>t.id==='"+SECOND+"').status==='open'")
+ # Updating a local appearance preference must preserve older local session data,
+ # never silently delete it during the server-timer rollout.
+ nav(p,'settings',width)
+ p.locator('[data-action="theme"][data-id="midnight"]').first.click()
+ older=p.evaluate("() => JSON.parse(localStorage.getItem('dayframe.m3.mock'))")
+ assert older['sessions'][0]['id']=='older-browser-session',older
+ assert older['timer']['taskId']==ROOT_TASK,older
  assert not errors,errors
  assert p.evaluate('() => document.documentElement.scrollWidth <= window.innerWidth+2'),f'Overflow at {width}'
  p.close()
