@@ -21,7 +21,7 @@ const TASK_FIELDS=[
   'revision','created_at AS "createdAt"','updated_at AS "updatedAt"'
 ].join(',');
 const TASK_LIST="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3";
-const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC LIMIT 100";
+const TASK_TRASH="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC LIMIT $2 OFFSET $3";
 const TASK_BY_ID="SELECT "+TASK_FIELDS+" FROM dayframe.tasks WHERE owner_user_id=$1 AND id=$2";
 const TASK_INSERT="INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,notes,status,priority,estimate_minutes,long_term,deadline,deadline_time,reminder,reminder_time,parent_id) "+
 "SELECT $2,$1,w.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 AND w.deleted_at IS NULL ON CONFLICT(id) DO NOTHING RETURNING "+TASK_FIELDS;
@@ -137,8 +137,11 @@ return {async fetch(req){
       return json({tasks:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
     }
     if(path==='/v1/tasks/trash'&&req.method==='GET'){
-      const {rows}=await query(TASK_TRASH,[uid]);
-      return json({tasks:rows},200,hdr);
+      const params=new URL(req.url).searchParams;
+      const offset=Number(params.get('offset')??0),limit=Number(params.get('limit')??100);
+      if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||!Number.isSafeInteger(limit)||limit<1||limit>200)throw fail(400,'Invalid pagination');
+      const {rows}=await query(TASK_TRASH,[uid,limit+1,offset]);
+      return json({tasks:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
     }
     if(path==='/v1/tasks'&&req.method==='POST'){
       const body=await readBody(req);
