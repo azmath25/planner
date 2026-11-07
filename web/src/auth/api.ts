@@ -1,33 +1,89 @@
 import { authClient } from './client';
 
-export const API_URL = 'https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
+export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
 
-export interface GeneralWorkspace {
-  id: string;
-  name: string;
-  kind: 'general';
-  createdAt: string;
+export type CloudWorkspace={
+  id:string;kind:'general'|'custom';name:string;subtitle:string;color:string;cover:string;
+  revision:number;createdAt:string;
+};
+export type CloudTask={
+  id:string;workspace:string;parent:string|null;title:string;notes:string;
+  status:'open'|'done'|'cancelled';priority:'low'|'medium'|'high';estimate:number;long:boolean;
+  deadline:string|null;deadlineTime:string|null;reminder:string|null;reminderTime:string|null;
+  revision:number;createdAt:string;updatedAt:string;
+};
+export type CloudSnapshot={workspaces:CloudWorkspace[];tasks:CloudTask[]};
+export class ApiFailure extends Error {
+  constructor(message:string,readonly status:number) {super(message);}
 }
-
-export async function loadGeneralWorkspace(signal?: AbortSignal): Promise<GeneralWorkspace> {
-  const { data, error } = await authClient.token();
-  if (error || !data?.token) throw new Error('Your session expired. Please sign in again.');
-  const response = await fetch(`${API_URL}/v1/me`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${data.token}` },
-    cache: 'no-store',
-    signal,
+async function call<T>(path:string,opts:{method?:string;body?:object;signal?:AbortSignal}={}):Promise<T>{
+  const {data,error}=await authClient.token();
+  if(error||!data?.token)throw new ApiFailure('Your session has expired. Sign in again.',401);
+  const resp=await fetch(API_URL+path,{
+    method:opts.method||'GET',
+    headers:{Authorization:'Bearer '+data.token,...(opts.body?{'Content-Type':'application/json'}:{})},
+    body:opts.body?JSON.stringify(opts.body):undefined,cache:'no-store',signal:opts.signal
   });
-  if (response.status === 401) throw new Error('Your session expired. Please sign in again.');
-  if (!response.ok) throw new Error('Your workspace is temporarily unavailable. Please retry.');
-  const payload: unknown = await response.json();
-  if (!payload || typeof payload !== 'object' || !('generalWorkspace' in payload)) {
-    throw new Error('Unexpected workspace response.');
+  if(!resp.ok) {
+    const safe=await resp.json().catch(()=>({})) as {error?:unknown};
+    const message=resp.status===401?'Your session has expired. Sign in again.':
+      (typeof safe.error==='string'?safe.error:'Dayframe could not save your change. Please retry.');
+    throw new ApiFailure(message,resp.status);
   }
-  const row = payload.generalWorkspace;
-  if (!row || typeof row !== 'object' || !('kind' in row) || row.kind !== 'general' ||
-      !('name' in row) || row.name !== 'General' || !('id' in row) || typeof row.id !== 'string') {
-    throw new Error('General workspace could not be verified.');
-  }
-  return row as GeneralWorkspace;
+  return await resp.json() as T;
 }
+function verifyWorkspace(item:unknown):item is CloudWorkspace{
+ return !!item&&typeof item==='object'&&'id' in item&&typeof item.id==='string'&&
+  'kind' in item&&(item.kind==='general'||item.kind==='custom')&&
+  'name' in item&&typeof item.name==='string';
+}
+function verifyTask(item:unknown):item is CloudTask {
+ return !!item&&typeof item==='object'&&'id' in item&&typeof item.id==='string'&&
+  'workspace' in item&&typeof item.workspace==='string'&&
+  'title' in item&&typeof item.title==='string'&&
+  'revision' in item&&typeof item.revision==='number';
+}
+export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapshot>{
+ const ws=await call<{workspaces:unknown[]}>('/v1/workspaces',{signal});
+ if(!Array.isArray(ws.workspaces)||!ws.workspaces.every(verifyWorkspace)||
+    ws.workspaces.filter(w=>w.kind==='general').length!==1) {
+  throw new Error('The permanent General workspace could not be verified.');
+ }
+ const tasks:CloudTask[]=[];
+ let offset:number|null=0;
+ let page=0;
+ while(offset!==null){
+  if(++page>1000)throw new Error('Too many task pages. Please contact support.');
+  const response=await call<{tasks:unknown[];nextOffset:number|null}>('/v1/tasks?limit=100&offset='+offset,{signal});
+  if(!Array.isArray(response.tasks)||!response.tasks.every(verifyTask))throw new Error('Invalid task list response.');
+  tasks.push(...response.tasks);
+  if(response.nextOffset!==null && (!Number.isSafeInteger(response.nextOffset)||response.nextOffset<=offset))throw new Error('Invalid task pagination.');
+  offset=response.nextOffset;
+ }
+ return {workspaces:ws.workspaces,tasks};
+}
+export const cloudApi={
+ async createWorkspace(body:{name:string;subtitle?:string;color?:string;cover?:string}):Promise<CloudWorkspace>{
+  return (await call<{workspace:CloudWorkspace}>('/v1/workspaces',{method:'POST',body})).workspace;
+ },
+ async updateWorkspace(id:string,body:{name:string;subtitle?:string;color?:string;cover?:string;revision:number}):Promise<CloudWorkspace>{
+  return (await call<{workspace:CloudWorkspace}>('/v1/workspaces/'+encodeURIComponent(id),{method:'PATCH',body})).workspace;
+ },
+ async createTask(body:Omit<CloudTask,'createdAt'|'updatedAt'|'revision'>):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks',{method:'POST',body})).task;
+ },
+ async updateTask(id:string,body:Omit<CloudTask,'id'|'createdAt'|'updatedAt'>):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id),{method:'PATCH',body})).task;
+ },
+ async trashTask(id:string):Promise<void>{
+  await call('/v1/tasks/'+encodeURIComponent(id),{method:'DELETE'});
+ },
+ async listTrash():Promise<CloudTask[]>{
+  const data=await call<{tasks:CloudTask[]}>('/v1/tasks/trash');
+  if(!Array.isArray(data.tasks)||!data.tasks.every(verifyTask))throw new Error('Invalid Trash response.');
+  return data.tasks;
+ },
+ async restoreTask(id:string):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/restore',{method:'POST'})).task;
+ }
+};
