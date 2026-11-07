@@ -6,6 +6,29 @@ export type CloudWorkspace={
   id:string;kind:'general'|'custom';name:string;subtitle:string;color:string;cover:string;
   revision:number;createdAt:string;archivedAt:string|null;
 };
+export type CloudQuickNote={
+ id:string;workspace:string;title:string;content:string;
+ color:'cream'|'lilac'|'green'|'blue';pinned:boolean;
+ reminder:string|null;reminderTime:string|null;
+ convertedTaskId:string|null;convertedAt:string|null;
+ revision:number;createdAt:string;updatedAt:string;
+};
+export type QuickNoteInput=Pick<CloudQuickNote,
+ 'workspace'|'title'|'content'|'color'|'pinned'|'reminder'|'reminderTime'>;
+function verifyQuickNote(input:unknown):input is CloudQuickNote{
+ if(!input||typeof input!=='object')return false;
+ const x=input as Record<string,unknown>;
+ return isUuid(x.id)&&isUuid(x.workspace)&&typeof x.title==='string'&&
+  x.title.length>0&&x.title.length<=120&&typeof x.content==='string'&&x.content.length<=8000&&
+  ['cream','lilac','green','blue'].includes(String(x.color))&&typeof x.pinned==='boolean'&&
+  (x.reminder===null||typeof x.reminder==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x.reminder))&&
+  (x.reminderTime===null||typeof x.reminderTime==='string'&&/^\d{2}:\d{2}$/.test(x.reminderTime))&&
+  (x.convertedTaskId===null||isUuid(x.convertedTaskId))&&
+  (x.convertedAt===null||typeof x.convertedAt==='string')&&
+  typeof x.revision==='number'&&Number.isSafeInteger(x.revision)&&x.revision>=1&&
+  typeof x.createdAt==='string'&&typeof x.updatedAt==='string';
+}
+
 export type CloudTask={
   id:string;workspace:string;parent:string|null;title:string;notes:string;
   status:'open'|'done'|'cancelled';priority:'low'|'medium'|'high';estimate:number;long:boolean;
@@ -247,6 +270,51 @@ export async function loadCloudSnapshot(signal?:AbortSignal):Promise<CloudSnapsh
  return {workspaces:ws.workspaces,tasks};
 }
 export const cloudApi={
+ async listQuickNotes():Promise<CloudQuickNote[]>{
+  const notes:CloudQuickNote[]=[];let offset:number|null=0;
+  for(let page=0;offset!==null;page++){
+   if(page>1000)throw new Error('Too many note pages');
+   const result=await call<{notes:unknown[];nextOffset:number|null}>(
+    '/v1/notes?limit=100&offset='+offset);
+   if(!Array.isArray(result.notes)||!result.notes.every(verifyQuickNote))
+    throw new Error('Invalid note list response');
+   notes.push(...result.notes);
+   if(result.nextOffset!==null&&(!Number.isSafeInteger(result.nextOffset)||
+    result.nextOffset<=offset))
+    throw new Error('Invalid notes pagination');
+   offset=result.nextOffset;
+  }
+  return notes;
+ },
+ async createQuickNote(body:QuickNoteInput&{id:string}):Promise<CloudQuickNote>{
+  const data=await call<{note:unknown}>('/v1/notes',{method:'POST',body});
+  if(!verifyQuickNote(data.note))throw new Error('Invalid created note response');
+  return data.note;
+ },
+ async updateQuickNote(id:string,body:QuickNoteInput&{revision:number}):Promise<CloudQuickNote>{
+  if(!isUuid(id))throw new Error('Invalid note identifier');
+  const data=await call<{note:unknown}>('/v1/notes/'+id,{method:'PATCH',body});
+  if(!verifyQuickNote(data.note))throw new Error('Invalid updated note response');
+  return data.note;
+ },
+ async deleteQuickNote(id:string,revision:number):Promise<void>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid note revision');
+  await call('/v1/notes/'+id,{method:'DELETE',body:{revision}});
+ },
+ async convertQuickNote(id:string,revision:number,taskId:string,estimate=30):Promise<{
+  task:CloudTask;note:CloudQuickNote
+ }>{
+  if(!isUuid(id)||!isUuid(taskId)||!Number.isSafeInteger(revision)||revision<1||
+   !Number.isSafeInteger(estimate)||estimate<1||estimate>100000)
+   throw new Error('Invalid note conversion');
+  const result=await call<{note:unknown;task:unknown}>(
+   '/v1/notes/'+id+'/convert',{method:'POST',body:{revision,taskId,estimate}});
+  if(!verifyQuickNote(result.note)||!verifyTask(result.task))
+   throw new Error('Invalid note conversion response');
+  return {note:result.note,task:result.task};
+ },
+
  async getWeeklyTime():Promise<CloudTimeWeek>{
   const result=await call<{week:unknown}>('/v1/time-week');
   return parseCloudTimeWeek(result.week);
