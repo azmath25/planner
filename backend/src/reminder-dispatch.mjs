@@ -129,7 +129,11 @@ export default {async fetch(request){
   if(raw.length>4096)throw Error('Size');
   data=JSON.parse(raw);
  }catch{return Response.json({error:'Invalid request'},{status:400});}
- if(data?.version!==1||data?.trigger?.type!=='schedule'||data?.trigger?.name!=='dayframe-reminder-dispatch'||
+ // Neon requires the authenticated proxy header to match the event's
+ // invocation_id. Check both, not merely the presence of a trigger header.
+ if(data?.version!==1||typeof data?.invocation_id!=='string'||
+   data.invocation_id!==header||
+   data?.trigger?.type!=='schedule'||data?.trigger?.name!=='dayframe-reminder-dispatch'||
    typeof data?.data?.scheduled_at!=='string')
   return Response.json({error:'Invalid schedule event'},{status:403});
  try{
