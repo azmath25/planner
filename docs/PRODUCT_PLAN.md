@@ -3,7 +3,7 @@
 **Status:** v1.1 specification, 2026-11-06  
 **Project:** Standalone personal time, task and knowledge management platform  
 **Delivery sequence:** Mobile-first website on GitHub Pages + Neon first; Android/Google Play second.  
-**Implementation status (2026-11-07):** M4.2 is deployed. Both untimed daily pools and fixed-time scheduled intervals are persisted in Neon; available-hours preference is local, and reminders and timer sessions remain deferred.
+**Implementation status (2026-11-07):** M4.3 reminder core is deployed: Neon-backed alert actions, in-app alerts, opt-in web push and five-minute scheduled delivery; real-device push acceptance remains open. M4.1 daily pools and M4.2 timed intervals are stored in Neon. Available-hours preference and timer sessions remain local.
 
 ## 1. Product vision
 
@@ -119,6 +119,6 @@ A user can create a reminder-only task without deadline; create a hard-deadline 
 
 ## 12. Current checkpoint
 
-**Current release checkpoint:** M4.2 — signed-in, versioned timed blocks, overlap-safe scheduling and day/week/month Calendar are deployed on Neon. See `docs/CHECKPOINT_M4.2.md`. M4.3 reminders and M5 time sessions are not included. Historical M1.2 checkpoint details remain below.
+**Current release checkpoint:** M4.3 — owner-scoped reminder inbox, persistent acknowledge/snooze, user-opted-in browser push and scheduled delivery are deployed. See `docs/CHECKPOINT_M4.3.md`; actual device notifications and cross-account/browser acceptance remain unverified. M4.1/M4.2 day planning and timed scheduling remain deployed; M5 sessions are not included. See `docs/AUDIT_M1_M4_2026-11-07.md` for the source-based audit. Historical M1.2 checkpoint details remain below.
 
 M1.2 visual design milestone: six coherent themes, six optional accent colors, comfortable/compact layout, three cover styles, avatar and cover photo preview for tasks and workspaces with client-side image size/type checks, compression and focal-position adjustment. These appearance controls are deliberately confined to Settings or entity detail views to keep the mobile daily interface clean. Uploaded images are disposable browser-local preview data only (no remote uploads). Use GitHub Pages **branch deployment from `main` / `(root)`**, not a `gh-pages` branch or an Actions deployment workflow. The user explicitly requested GitHub to retain only one branch (`main`); all obsolete branches were deleted. No Neon mutations, real notifications or production uploads. The static demo is not a production application.
