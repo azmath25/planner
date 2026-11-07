@@ -323,6 +323,43 @@ export const cloudApi={
   }
   return documents;
  },
+ async searchDocuments(
+  q:string,filters:{workspace?:string;taskId?:string}={},signal?:AbortSignal
+ ):Promise<CloudDocumentMeta[]>{
+  const value=q.trim();
+  if(value.length<2||value.length>120)throw new Error('Search requires 2–120 characters');
+  const query=new URLSearchParams({q:value});
+  if(filters.workspace){
+   if(!isUuid(filters.workspace))throw new Error('Invalid document workspace');
+   query.set('workspace',filters.workspace);
+  }
+  if(filters.taskId){
+   if(!isUuid(filters.taskId))throw new Error('Invalid document task');
+   query.set('taskId',filters.taskId);
+  }
+  const documents:CloudDocumentMeta[]=[];let offset:number|null=0;
+  for(let page=0;offset!==null;page++){
+   if(page>=1000)throw new Error('Too many search result pages');
+   query.set('limit','50');query.set('offset',String(offset));
+   const data=await call<{documents:unknown[];nextOffset:number|null}>(
+    '/v1/documents/search?'+query.toString(),{signal});
+   if(!Array.isArray(data.documents)||!data.documents.every(verifyDocumentMeta))
+    throw new Error('Invalid document search response');
+   documents.push(...data.documents);
+   if(data.nextOffset!==null&&(!Number.isSafeInteger(data.nextOffset)||
+     data.nextOffset<=offset))throw new Error('Invalid document search pagination');
+   offset=data.nextOffset;
+  }
+  return documents;
+ },
+ async exportDocument(id:string):Promise<{schema:'dayframe.document.export.v1';exportedAt:string;document:CloudDocument}>{
+  if(!isUuid(id))throw new Error('Invalid document identifier');
+  const data=await call<{schema:unknown;exportedAt:unknown;document:unknown}>('/v1/documents/'+id+'/export');
+  if(data.schema!=='dayframe.document.export.v1'||typeof data.exportedAt!=='string'||
+    !verifyFullDocument(data.document))
+   throw new Error('Invalid private document export');
+  return data as {schema:'dayframe.document.export.v1';exportedAt:string;document:CloudDocument};
+ },
  async getDocument(id:string):Promise<CloudDocument>{
   if(!isUuid(id))throw new Error('Invalid document ID');
   const data=await call<{document:unknown}>('/v1/documents/'+id);
