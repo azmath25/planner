@@ -69,7 +69,7 @@ const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask abou
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
 const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
-notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',notePendingConversion:null,
+notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
 state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='done').map(t=>t.id)));
@@ -97,6 +97,22 @@ async function loadCloudNotes(preserveError=false){
  }finally{
   state.noteLoading=false;
   if(!disposed&&['notes','workspace','home'].includes(state.page))render();
+ }
+}
+async function loadCloudTrashedNotes(preserveError=false){
+ if(!isCloud||disposed||state.noteTrashLoading||state.noteBusy)return;
+ state.noteTrashLoading=true;
+ if(!preserveError)state.noteTrashError='';
+ try{
+  const rows=await cloudApi.listTrashedQuickNotes();
+  if(disposed)return;
+  state.noteTrash=rows.map(localQuickNote);
+  state.noteTrashLoaded=true;
+ }catch(err){
+  if(!disposed)state.noteTrashError=err instanceof Error?err.message:'Deleted notes unavailable';
+ }finally{
+  state.noteTrashLoading=false;
+  if(!disposed&&state.page==='notes'&&state.noteMode==='trash')render();
  }
 }
 const upsertQuickNote=note=>{
@@ -1483,7 +1499,9 @@ if(form.id==='note-convert-form'){
  try{
   if(isCloud){
    const pending=state.notePendingConversion;
-   const taskId=pending?.noteId===n.id?pending.taskId:crypto.randomUUID();
+   // The note UUID is also the deterministic converted-task UUID, so an uncertain
+   // response remains retryable after a page reload without storing identifiers.
+   const taskId=pending?.noteId===n.id?pending.taskId:n.id;
    state.notePendingConversion={noteId:n.id,taskId};
    const result=await cloudApi.convertQuickNote(n.id,n.revision,taskId,estimate);
    if(disposed)return;
