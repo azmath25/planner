@@ -3,7 +3,7 @@
 // The M6.2 editor must use this subset until a reviewed media schema is added.
 const BLOCK_TYPES=new Set(['paragraph','heading','bulletListItem','numberedListItem',
  'checkListItem','quote','codeBlock']);
-const PROP_KEYS=new Set(['backgroundColor','textColor','textAlignment','level','checked','language']);
+const PROP_KEYS=new Set(['backgroundColor','textColor','textAlignment','level','checked','isToggleable','language']);
 const STYLE_KEYS=new Set(['bold','italic','underline','strike','code',
  'textColor','backgroundColor']);
 const fault=()=>Object.assign(new Error('Unsupported document blocks'),{status:400});
@@ -38,7 +38,7 @@ export function validateDocumentBlocks(blocks){
     if(!PROP_KEYS.has(key))throw fault();
     if(key==='level'){
      if(![1,2,3].includes(value))throw fault();
-    }else if(key==='checked'){
+    }else if(key==='checked'||key==='isToggleable'){
      if(typeof value!=='boolean')throw fault();
     }else if(key==='textAlignment'){
      if(!['left','right','center','justify'].includes(value))throw fault();
