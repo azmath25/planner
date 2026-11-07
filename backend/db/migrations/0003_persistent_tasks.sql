@@ -51,10 +51,15 @@ CREATE TABLE IF NOT EXISTS dayframe.tasks (
     REFERENCES dayframe.workspaces(id,owner_user_id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS tasks_id_owner_workspace ON dayframe.tasks(id,owner_user_id,workspace_id);
-ALTER TABLE dayframe.tasks DROP CONSTRAINT IF EXISTS tasks_parent_same_owner_workspace;
-ALTER TABLE dayframe.tasks ADD CONSTRAINT tasks_parent_same_owner_workspace
-FOREIGN KEY(parent_id,owner_user_id,workspace_id)
-REFERENCES dayframe.tasks(id,owner_user_id,workspace_id);
+DO $
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='tasks_parent_same_owner_workspace'
+                AND conrelid='dayframe.tasks'::regclass) THEN
+  ALTER TABLE dayframe.tasks ADD CONSTRAINT tasks_parent_same_owner_workspace
+  FOREIGN KEY(parent_id,owner_user_id,workspace_id)
+  REFERENCES dayframe.tasks(id,owner_user_id,workspace_id);
+ END IF;
+END $;
 CREATE INDEX IF NOT EXISTS tasks_by_owner ON dayframe.tasks(owner_user_id,created_at DESC,id);
 CREATE INDEX IF NOT EXISTS tasks_live_workspace ON dayframe.tasks(owner_user_id,workspace_id,created_at DESC) WHERE deleted_at IS NULL;
 INSERT INTO dayframe.schema_migrations(version) VALUES('0003_persistent_tasks')
