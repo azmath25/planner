@@ -76,6 +76,9 @@ const ELIGIBLE_SQL=`
   AND a.acknowledged_at IS NULL
   AND dayframe.defer_push_quiet_hours(COALESCE(a.snoozed_until,((d.source_day+d.source_time) AT TIME ZONE p.time_zone)),p.time_zone,p.quiet_start,p.quiet_end)=d.send_after
   AND d.send_after<=now()`;
+export const PUSH_QUIET_SQL=
+ "SELECT dayframe.defer_push_quiet_hours(now(),p.time_zone,p.quiet_start,p.quiet_end) AS not_before "+
+ "FROM dayframe.notification_preferences p WHERE p.owner_user_id=$1";
 async function claim(limit=BATCH){
  const client=await db().connect();
  try{
@@ -101,6 +104,13 @@ export async function dispatchDue({sql,send,privateKey,vapid=makeVapidAuthorizat
    const valid=await query(ELIGIBLE_SQL,[id]);
    if(!valid.rows.length||!isApprovedPushEndpoint(endpoint)){
     await query("UPDATE dayframe.notification_deliveries SET status='expired' WHERE id=$1 AND status='sending'",[id]);expired++;continue;
+   }
+   // A retry that was originally due before quiet hours must also be held.
+   // The preference is rechecked just before the outbound request.
+   const quiet=(await query(PUSH_QUIET_SQL,[row.owner_user_id])).rows[0]?.not_before;
+   if(quiet&&new Date(quiet).getTime()>Date.now()+1000){
+    await query("UPDATE dayframe.notification_deliveries SET status='retry',next_attempt_at=$2::timestamptz WHERE id=$1 AND status='sending'",[id,quiet]);
+    retrying++;continue;
    }
    const response=await push(endpoint,vapid(endpoint,privateKey??process.env.VAPID_PRIVATE_KEY));
    if(response.ok){
@@ -176,6 +186,13 @@ export async function dispatchDueNotes({sql,send,privateKey,vapid=makeVapidAutho
    if(!valid.rows.length||!isApprovedPushEndpoint(endpoint)){
     await query("UPDATE dayframe.note_notification_deliveries SET status='expired' WHERE id=$1 AND status='sending'",[id]);
     expired++;continue;
+   }
+   // Check quiet hours again before sending (also covers retries originally
+   // due before the quiet window opened).
+   const quiet=(await query(PUSH_QUIET_SQL,[row.owner_user_id])).rows[0]?.not_before;
+   if(quiet&&new Date(quiet).getTime()>Date.now()+1000){
+    await query("UPDATE dayframe.note_notification_deliveries SET status='retry',next_attempt_at=$2::timestamptz WHERE id=$1 AND status='sending'",[id,quiet]);
+    retrying++;continue;
    }
    // Generic empty push: NEVER include note title, content, account or task data.
    const response=await push(endpoint,vapid(endpoint,privateKey??process.env.VAPID_PRIVATE_KEY));
