@@ -10,7 +10,7 @@ export type CloudQuickNote={
  id:string;workspace:string;title:string;content:string;
  color:'cream'|'lilac'|'green'|'blue';pinned:boolean;
  reminder:string|null;reminderTime:string|null;
- convertedTaskId:string|null;convertedAt:string|null;
+ convertedTaskId:string|null;convertedAt:string|null;deletedAt:string|null;
  revision:number;createdAt:string;updatedAt:string;
 };
 export type QuickNoteInput=Pick<CloudQuickNote,
@@ -25,6 +25,7 @@ function verifyQuickNote(input:unknown):input is CloudQuickNote{
   (x.reminderTime===null||typeof x.reminderTime==='string'&&/^\d{2}:\d{2}$/.test(x.reminderTime))&&
   (x.convertedTaskId===null||isUuid(x.convertedTaskId))&&
   (x.convertedAt===null||typeof x.convertedAt==='string')&&
+  (x.deletedAt===null||typeof x.deletedAt==='string')&&
   typeof x.revision==='number'&&Number.isSafeInteger(x.revision)&&x.revision>=1&&
   typeof x.createdAt==='string'&&typeof x.updatedAt==='string';
 }
@@ -285,6 +286,32 @@ export const cloudApi={
    offset=result.nextOffset;
   }
   return notes;
+ },
+ async listTrashedQuickNotes():Promise<CloudQuickNote[]>{
+  const notes:CloudQuickNote[]=[];let offset:number|null=0;
+  for(let page=0;offset!==null;page++){
+   if(page>1000)throw new Error('Too many deleted note pages');
+   const result=await call<{notes:unknown[];nextOffset:number|null}>(
+    '/v1/notes/trash?limit=100&offset='+offset);
+   if(!Array.isArray(result.notes)||!result.notes.every(verifyQuickNote)||
+    result.notes.some(note=>!note.deletedAt))
+    throw new Error('Invalid deleted note response');
+   notes.push(...result.notes);
+   if(result.nextOffset!==null&&(!Number.isSafeInteger(result.nextOffset)||
+    result.nextOffset<=offset))
+    throw new Error('Invalid deleted note pagination');
+   offset=result.nextOffset;
+  }
+  return notes;
+ },
+ async restoreQuickNote(id:string,revision:number):Promise<CloudQuickNote>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid deleted note revision');
+  const result=await call<{note:unknown}>(
+   '/v1/notes/'+id+'/restore',{method:'POST',body:{revision}});
+  if(!verifyQuickNote(result.note)||result.note.deletedAt!==null)
+   throw new Error('Invalid restored note response');
+  return result.note;
  },
  async createQuickNote(body:QuickNoteInput&{id:string}):Promise<CloudQuickNote>{
   const data=await call<{note:unknown}>('/v1/notes',{method:'POST',body});
