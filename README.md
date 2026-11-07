@@ -1,6 +1,6 @@
 # Dayframe — mobile-first personal planner
 
-**M5.2: nested task and workspace time totals implemented and deployed.** A parent now includes its recorded subtasks at every depth, showing own and descendant time separately. Each historical session counts once toward account/workspace totals; a prominent Add task button in each workspace preselects that workspace. Neon also owns the running/paused timer, tasks, planning and opt-in reminders. M4.3 browser push was confirmed on one real browser; device-by-device acceptance remains open. M5.3 targets are a future milestone. The mobile website is the first product; Android is deliberately later.
+**M5.3 backend deployed; website release pending GitHub Actions.** The weekly API, recurring workspace targets, and time-segment capture are deployed in Neon. The M5.3 frontend source now includes remaining estimates and planned-vs-recorded weekly views, but custom GitHub Actions jobs failed before starting, so new website assets are not verified published. The earlier **M5.2 nested task and workspace time totals are deployed.** A parent now includes its recorded subtasks at every depth, showing own and descendant time separately. Each historical session counts once toward account/workspace totals; a prominent Add task button in each workspace preselects that workspace. Neon also owns the running/paused timer, tasks, planning and opt-in reminders. M4.3 browser push was confirmed on one real browser; device-by-device acceptance remains open. M5.3 targets are a future milestone. The mobile website is the first product; Android is deliberately later.
 
 ## Run locally
 
@@ -24,6 +24,14 @@ The existing M1.2 interactive UI is mounted by a **temporary compatibility adapt
 After sign-in, the permanent General workspace and any custom workspaces are loaded from Neon. **Tasks are saved to Neon** and are visible after reload or on another device signed in to the same account. Create/edit/complete/reopen tasks, preserve independent deadlines and reminders, and use recoverable Task Trash. Browser-local sample tasks are **not imported automatically**.
 
 **Saved in Neon:** workspaces, tasks and private task images, untimed daily pools, scheduled blocks, reminder actions/push registrations, and M5.1/M5.2 server-clock sessions with direct, nested, workspace and account all-time totals. **Still device-local:** daily capacity, quick notes, workspace photos and *older* browser-only timer history. No automatic import of previous local sessions or already-running local timers was performed, to avoid duplicate time. The user confirmed receiving a browser reminder; additional devices and Safari still need testing. Use **Profile → Refresh saved data** to reload account data.
+
+## M5.3 — Estimates and weekly workspace targets (frontend publication pending)
+
+The new source code shows **Own remaining** and **Remaining including subtasks**, without counting a descendant twice. Completed/cancelled tasks have no remaining estimated work. Each workspace has an editable **weekly target** (0 disables it; up to 168 hours), saved by Neon with revision-conflict checks. The Reports page compares this week's **currently scheduled fixed blocks** with recorded time; these are separate measures, not an efficiency rating.
+
+Week boundaries follow the account's configured time zone (Home → Use device time zone; otherwise UTC). Newly captured active segments are split at true local week boundaries. Older sessions without historical segment data are explicitly marked as estimated week attribution instead of silently fabricated. These are **all-time/this-week aggregates**, not future M7 time-series reports.
+
+**Release caveat:** Neon migration 0012 and API function revision 15 are active, but the custom GitHub Actions runners failed before executing frontend builds and Playwright tests. Built-in Pages publication of existing assets does not prove the new UI is live. See [M5.3 checkpoint](docs/CHECKPOINT_M5.3.md) for detailed evidence and the remaining release gate. No M6 milestone has started.
 
 ## M5.2 — Task, workspace and account time rollups
 
