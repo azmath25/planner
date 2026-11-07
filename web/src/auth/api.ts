@@ -27,7 +27,7 @@ async function call<T>(path:string,opts:{method?:string;body?:object;signal?:Abo
   } catch { /* fallback to a fresh cookie-backed request below */ }
   if(!token){
     try {
-      const response=await fetch(AUTH_URL.replace(/\\/$/,'')+'/token',{
+      const response=await fetch((AUTH_URL.endsWith('/')?AUTH_URL.slice(0,-1):AUTH_URL)+'/token',{
         method:'GET',credentials:'include',cache:'no-store',signal:opts.signal
       });
       if(response.ok){
