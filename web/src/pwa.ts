@@ -4,6 +4,14 @@
 let draftPending=false;
 let prompt:HTMLElement|null=null;
 let reloadAfterUpdate=false;
+let updateButton:HTMLButtonElement|null=null;
+let updateAdvice:HTMLElement|null=null;
+window.addEventListener('dayframe:draft-state',(event:Event)=>{
+ draftPending=Boolean((event as CustomEvent<{dirty:boolean}>).detail?.dirty);
+ if(updateButton)updateButton.disabled=draftPending;
+ if(updateAdvice)updateAdvice.textContent=draftPending?
+  'Save or export your unsaved document draft first.':'The app will reload when updated.';
+});
 function showUpdate(worker:ServiceWorker){
  if(prompt){prompt.remove();prompt=null;}
  const panel=document.createElement('aside');
@@ -33,16 +41,8 @@ function showUpdate(worker:ServiceWorker){
  };
  panel.append(label,button,advice);
  document.body.appendChild(panel);prompt=panel;
- const update=()=>{
-  button.disabled=draftPending;
-  advice.textContent=draftPending?'Save or export your unsaved document draft first.':'The app will reload when updated.';
- };
- window.addEventListener('dayframe:draft-state',(event:Event)=>{
-  draftPending=Boolean((event as CustomEvent<{dirty:boolean}>).detail?.dirty);
-  update();
- },{signal:listenerSignal.signal});
+ updateButton=button;updateAdvice=advice;
 }
-const listenerSignal=new AbortController();
 export async function registerDayframePwa():Promise<void>{
  if(!('serviceWorker' in navigator)||!window.isSecureContext)return;
  try{
