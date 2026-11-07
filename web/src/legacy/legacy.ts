@@ -84,9 +84,9 @@ const remoteQuickNote=note=>({
  pinned:Boolean(note.pinned),reminder:note.reminder||null,
  reminderTime:note.reminderTime||null
 });
-async function loadCloudNotes(){
+async function loadCloudNotes(preserveError=false){
  if(!isCloud||disposed||state.noteLoading||state.noteBusy)return;
- state.noteLoading=true;state.noteError='';
+ state.noteLoading=true;if(!preserveError)state.noteError='';
  try{
   const notes=await cloudApi.listQuickNotes();
   if(disposed)return;
@@ -1105,16 +1105,17 @@ case'toggle-note-pin':{
   n.pinned=!n.pinned;persist();render();break;
  }
  state.noteBusy=true;state.noteError='';render();
+ let conflict=false;
  try{
   const result=await cloudApi.updateQuickNote(n.id,{
    ...remoteQuickNote(n),pinned:!n.pinned,revision:n.revision
   });
   if(!disposed)upsertQuickNote(result);
  }catch(err){
-  if(!disposed){state.noteError=err instanceof Error?err.message:'Could not update note';
-   void loadCloudNotes();}
+  conflict=true;
+  if(!disposed)state.noteError=err instanceof Error?err.message:'Could not update note';
  }finally{
-  state.noteBusy=false;if(!disposed)render();
+  state.noteBusy=false;if(!disposed){render();if(conflict)void loadCloudNotes(true);}
  }
  break;
 }case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;state.scheduleEditId=null;state.scheduleError='';render();break;
@@ -1290,8 +1291,7 @@ case'confirm-delete-note':{
    await cloudApi.deleteQuickNote(n.id,n.revision);
    if(!disposed){state.notes=state.notes.filter(x=>x.id!==n.id);state.modal=null;}
   }catch(err){
-   if(!disposed){state.noteError=err instanceof Error?err.message:'Note could not be deleted';
-    void loadCloudNotes();}
+   if(!disposed)state.noteError=err instanceof Error?err.message:'Note could not be deleted';
   }finally{state.noteBusy=false;if(!disposed)render();}
  }else{
   state.notes=state.notes.filter(x=>x.id!==n.id);state.modal=null;persist();render();
