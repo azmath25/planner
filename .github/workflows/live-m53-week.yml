@@ -1,0 +1,19 @@
+name: Dayframe Live M5.3 Weekly API Security
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/live-m53-week.mjs'
+      - '.github/workflows/live-m53-week.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/live-m53-week.mjs
