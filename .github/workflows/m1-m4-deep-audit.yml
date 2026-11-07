@@ -58,7 +58,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm install --no-audit --no-fund
-      - run: pip install playwright
+      - run: pip install playwright pillow
       - run: python -m playwright install chromium --with-deps
       - name: M3 task lifecycle and workspace archive
         run: |
