@@ -5,6 +5,8 @@ import pg from 'pg';
 import { secureDatabaseConnectionUrl } from './db-url.mjs';
 import { validateDocumentBlocks, canonicalDocumentJSON } from './document-blocks.mjs';
 import { TIME_PERIOD_REPORT_SQL } from './time-period-report.mjs';
+import { TIME_INSIGHTS_SQL } from './time-insights.mjs';
+export { TIME_INSIGHTS_SQL } from './time-insights.mjs';
 import { INSIGHTS_REPORT_SQL } from './insights-report.mjs';
 export { INSIGHTS_REPORT_SQL } from './insights-report.mjs';
 export { TIME_PERIOD_REPORT_SQL } from './time-period-report.mjs';
@@ -728,6 +730,18 @@ return {async fetch(req){
         throw fail(400,'Invalid insights period or date');
       const {rows}=await query(INSIGHTS_REPORT_SQL,[uid,period,day]);
       if(!rows[0])throw fail(503,'Insights unavailable');
+      return json({insights:rows[0]},200,hdr);
+    }
+    if(path==='/v1/time-insights'){
+      if(req.method!=='GET')return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+      const params=new URL(req.url).searchParams;
+      const period=params.get('period')??'week';
+      const day=date(params.get('day'),'insights day');
+      if(!['day','week','month'].includes(period)||!day||
+         day<'2000-01-01'||day>'2100-12-31')
+        throw fail(400,'Invalid time insights period or date');
+      const {rows}=await query(TIME_INSIGHTS_SQL,[uid,period,day]);
+      if(!rows[0])throw fail(503,'Time insights unavailable');
       return json({insights:rows[0]},200,hdr);
     }
     if(path==='/v1/time-report'){
