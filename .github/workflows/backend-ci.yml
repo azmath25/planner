@@ -38,10 +38,24 @@ jobs:
       - name: Publish reproducible deploy bundle to same branch
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f backend/packaged/dayframeapi.b64
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'build: package M2.2 Neon Function [skip ci]'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          cp backend/packaged/dayframeapi.b64 /tmp/dayframeapi.b64
+          for attempt in 1 2 3; do
+            git fetch origin main
+            # A later API edit needs its own build. Never publish a stale bundle.
+            if ! git diff --quiet "$GITHUB_SHA" origin/main -- backend/src backend/db package.json; then
+              echo 'Newer backend source detected; skipping stale function bundle.'
+              exit 0
+            fi
+            git reset --hard origin/main
+            mkdir -p backend/packaged
+            cp /tmp/dayframeapi.b64 backend/packaged/dayframeapi.b64
+            git add -f backend/packaged/dayframeapi.b64
+            if git diff --cached --quiet; then exit 0; fi
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'build: package current Neon Function [skip ci]'
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Concurrent update on attempt $attempt; retrying."
+          done
+          echo 'Could not publish function bundle.' >&2
+          exit 1
