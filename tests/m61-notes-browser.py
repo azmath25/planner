@@ -65,6 +65,7 @@ def run(browser,width):
  p.locator('#note-convert-form button[type="submit"]').click()
  p.wait_for_function("() => window.__mockDb.notes.find(n=>n.id==='"+note_id+"')?.convertedTaskId")
  assert p.evaluate("() => window.__mockDb.tasks.filter(t=>t.title==='Saved to my account').length")==1
+ assert p.evaluate("() => window.__mockDb.notes.find(n=>n.id==='"+note_id+"').convertedTaskId")==note_id
  assert p.evaluate("() => window.__mockDb.noteConvertCalls.length")==1
  assert 'Converted to task' in p.locator('.content').inner_text()
 
@@ -72,6 +73,13 @@ def run(browser,width):
  p.locator('[data-action="confirm-delete-note"]').click()
  p.wait_for_function("() => !!window.__mockDb.notes.find(n=>n.id==='"+note_id+"')?.deletedAt")
  assert not p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').count()
+ p.locator('[data-action="show-note-trash"]').click()
+ p.locator(f'[data-action="restore-note"][data-id="{note_id}"]').wait_for()
+ p.locator(f'[data-action="restore-note"][data-id="{note_id}"]').click()
+ p.wait_for_function("() => window.__mockDb.notes.find(n=>n.id==='"+note_id+"')?.deletedAt===null")
+ p.locator('[data-action="show-active-notes"]').click()
+ p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').wait_for()
+ assert p.locator(f'[data-action="edit-note"][data-id="{note_id}"]').count()==1
  assert not errors,errors
  assert p.evaluate('() => document.documentElement.scrollWidth<=window.innerWidth+3'), f'overflow at {width}'
  p.close()
