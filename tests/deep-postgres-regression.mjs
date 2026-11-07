@@ -19,7 +19,7 @@ const T_B='b2222222-2222-4222-8222-222222222222';
 const T_C='c2222222-2222-4222-8222-222222222222';
 const CHILD='a3333333-3333-4333-8333-333333333333';
 before(async()=>{
- for(let i=1;i<=10;i++){
+ for(let i=1;i<=11;i++){
   const name=String(i).padStart(4,'0');
   const {readdirSync}=await import('node:fs');
   const file=readdirSync('backend/db/migrations').find(f=>f.startsWith(name+'_')&&f.endsWith('.sql'));
@@ -33,10 +33,10 @@ before(async()=>{
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,parent_id,title) VALUES($1,$2,$3,$4,'Child task')",[CHILD,A,WS_A,T_A]);
 });
 after(async()=>{await pool.end();});
-test('all ten production migrations execute without dependency errors',async()=>{
+test('all eleven production migrations execute without dependency errors',async()=>{
  const {rows}=await pool.query('SELECT version FROM dayframe.schema_migrations ORDER BY version');
- assert.equal(rows.length,10);
- assert.equal(rows[9].version,'0010_notification_delivery');
+ assert.equal(rows.length,11);
+ assert.equal(rows[10].version,'0011_time_sessions');
 });
 test('stale revisions cannot trash or restore a parent or children',async()=>{
  const upd=await pool.query('UPDATE dayframe.tasks SET notes=$2,revision=revision+1 WHERE id=$1 RETURNING revision',[T_A,'Edited on another device']);
