@@ -19,6 +19,13 @@ mockDb.notes=[
 ];
 mockDb.noteConvertCalls=[];
 cloudApi.listQuickNotes=async()=>mockDb.notes.filter(n=>!n.deletedAt).map(n=>({...n}));
+cloudApi.listTrashedQuickNotes=async()=>mockDb.notes.filter(n=>Boolean(n.deletedAt)).map(n=>({...n}));
+cloudApi.restoreQuickNote=async(id,revision)=>{
+ const note=mockDb.notes.find(n=>n.id===id&&n.deletedAt);
+ if(!note||note.revision!==revision)
+  throw Object.assign(Error('Deleted note changed'),{status:409});
+ note.deletedAt=null;note.revision++;return {...note};
+};
 cloudApi.createQuickNote=async body=>{
  const prior=mockDb.notes.find(n=>n.id===body.id);
  if(prior){
