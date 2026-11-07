@@ -116,3 +116,93 @@ test('push endpoint cannot be silently transferred between separate owners',asyn
  const sameOwner=await pool.query(PUSH_SUB_SAVE_SQL,[C,endpoint]);
  assert.equal(sameOwner.rows.length,1);
 });
+
+
+const OWNER_D='audit-user-m51';
+const WSD='d1111111-1111-4111-8111-111111111111';
+const TASK_D='d2222222-2222-4222-8222-222222222222';
+const TASK_D2='d3333333-3333-4333-8333-333333333333';
+const changeTime=(owner,action,id,task=null,revision=null,previous=null)=>
+ pool.query('SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,$6) AS session',
+ [owner,action,id,task,revision,previous]).then(r=>r.rows[0].session);
+
+test('M5.1 server clock: start, pause, resume and stop preserve segments and one active session',async()=>{
+ await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'General','general')",[WSD,OWNER_D]);
+ for(const [id,title] of [[TASK_D,'First timer task'],[TASK_D2,'Second timer task']])
+  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title) VALUES($1,$2,$3,$4)",[id,OWNER_D,WSD,title]);
+ const sessionId='d4444444-4444-4444-8444-444444444444';
+ const started=await changeTime(OWNER_D,'start',sessionId,TASK_D,0);
+ assert.equal(started.id,sessionId);assert.equal(started.taskId,TASK_D);
+ assert.equal(started.state,'running');assert.equal(started.revision,1);
+ assert.ok(started.serverNow&&started.segmentStartedAt);
+ assert.equal(started.accumulatedMs,0);
+ await new Promise(resolve=>setTimeout(resolve,35));
+ const paused=await changeTime(OWNER_D,'pause',sessionId,null,1);
+ assert.equal(paused.state,'paused');assert.equal(paused.revision,2);
+ assert.ok(paused.accumulatedMs>=0);assert.equal(paused.segmentStartedAt,null);
+ const stillPaused=await changeTime(OWNER_D,'start',sessionId,TASK_D,0);
+ assert.equal(stillPaused.state,'paused'); // Same UUID replay cannot start another session.
+ await assert.rejects(changeTime(OWNER_D,'start','d5555555-5555-4555-8555-555555555555',TASK_D,0),
+  error=>error.code==='40001');
+ const resumed=await changeTime(OWNER_D,'resume',sessionId,null,2);
+ assert.equal(resumed.state,'running');assert.equal(resumed.revision,3);
+ assert.equal(resumed.accumulatedMs,paused.accumulatedMs);
+ const stopped=await changeTime(OWNER_D,'stop',sessionId,null,3);
+ assert.equal(stopped.state,'stopped');assert.equal(stopped.revision,4);
+ assert.equal(stopped.endReason,'stopped');assert.ok(stopped.endedAt);
+ assert.ok(stopped.accumulatedMs>=paused.accumulatedMs);
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM dayframe.time_sessions WHERE owner_user_id=$1 AND state<>\'stopped\'',[OWNER_D])).rows[0].n,0);
+ assert.equal((await pool.query('SELECT status FROM dayframe.tasks WHERE id=$1',[TASK_D])).rows[0].status,'open');
+});
+test('M5.1 cross-worker atomic start rejects a second active session and protects owner',async()=>{
+ const one='d6666666-6666-4666-8666-666666666666';
+ const two='d7777777-7777-4777-8777-777777777777';
+ const results=await Promise.allSettled([
+  changeTime(OWNER_D,'start',one,TASK_D,0),
+  changeTime(OWNER_D,'start',two,TASK_D2,0)
+ ]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(results.filter(r=>r.status==='rejected').length,1);
+ assert.equal(results.find(r=>r.status==='rejected').reason.code,'40001');
+ const winner=results.find(r=>r.status==='fulfilled').value;
+ await assert.rejects(changeTime('some-other-owner','stop',winner.id,null,winner.revision),
+  err=>err.code==='40001');
+ const closed=await changeTime(OWNER_D,'stop',winner.id,null,winner.revision);
+ assert.equal(closed.state,'stopped');
+});
+test('M5.1 atomic switch closes the former session and reopens on another task',async()=>{
+ const priorId='d8888888-8888-4888-8888-888888888888',nextId='d9999999-9999-4999-8999-999999999999';
+ const prior=await changeTime(OWNER_D,'start',priorId,TASK_D,0);
+ assert.equal(prior.state,'running');
+ const next=await changeTime(OWNER_D,'switch',nextId,TASK_D2,prior.revision,priorId);
+ assert.equal(next.taskId,TASK_D2);assert.equal(next.state,'running');
+ assert.equal((await pool.query('SELECT state,end_reason FROM dayframe.time_sessions WHERE id=$1',[priorId])).rows[0].end_reason,'switched');
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM dayframe.time_sessions WHERE owner_user_id=$1 AND state IN (\'running\',\'paused\')',[OWNER_D])).rows[0].n,1);
+ await assert.rejects(changeTime(OWNER_D,'pause',priorId,null,1),err=>err.code==='40001');
+ const replay=await changeTime(OWNER_D,'switch',nextId,TASK_D2,prior.revision,priorId);
+ assert.equal(replay.id,nextId);
+ // Completing the task automatically closes its running stopwatch.
+ await pool.query("UPDATE dayframe.tasks SET status='done' WHERE id=$1",[TASK_D2]);
+ const ended=(await pool.query('SELECT state,end_reason,accumulated_ms FROM dayframe.time_sessions WHERE id=$1',[nextId])).rows[0];
+ assert.equal(ended.state,'stopped');assert.equal(ended.end_reason,'task_closed');
+ // Confirmed permanent delete keeps the historical time record by clearing
+ // only its task reference; snapshot still describes the session.
+ await pool.query('DELETE FROM dayframe.tasks WHERE id=$1',[TASK_D2]);
+ const historical=(await pool.query('SELECT task_id,task_title_snapshot FROM dayframe.time_sessions WHERE id=$1',[nextId])).rows[0];
+ assert.equal(historical.task_id,null);
+ assert.equal(historical.task_title_snapshot,'Second timer task');
+});
+test('M5.1 concurrent pause/stop cannot double-count the active segment',async()=>{
+ const id='daa11111-1111-4111-8111-111111111111';
+ const started=await changeTime(OWNER_D,'start',id,TASK_D,0);
+ const updates=await Promise.allSettled([
+  changeTime(OWNER_D,'pause',id,null,started.revision),
+  changeTime(OWNER_D,'stop',id,null,started.revision)
+ ]);
+ assert.equal(updates.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(updates.filter(r=>r.status==='rejected').length,1);
+ assert.equal(updates.find(r=>r.status==='rejected').reason.code,'40001');
+ const current=(await pool.query('SELECT state,revision,accumulated_ms FROM dayframe.time_sessions WHERE id=$1',[id])).rows[0];
+ assert.equal(current.revision,2);assert.ok(Number(current.accumulated_ms)>=0);
+ if(current.state==='paused')await changeTime(OWNER_D,'stop',id,null,2);
+});
