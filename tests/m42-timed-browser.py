@@ -9,6 +9,9 @@ HTML='<!doctype html><html><head><meta name="viewport" content="width=device-wid
 TASK='44444444-4444-4444-8444-444444444444'
 
 def navigation(p,width,page):
+ if width<760 and page=='calendar':
+  p.locator('.page-plan [data-action="nav"][data-page="calendar"]').click()
+  return
  nav='.mobile-nav' if width<760 else '.sidebar'
  p.locator(f'{nav} [data-page="{page}"]').click()
 
