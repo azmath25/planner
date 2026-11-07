@@ -314,9 +314,10 @@ test('M5.2 nested rollups include every descendant once and preserve all-time wo
  snapshot=await query();
  const afterMove=Object.fromEntries(snapshot.tasks.map(t=>[t.taskId,t]));
  assert.equal(afterMove[root].totalMs,'5000');
- assert.equal(afterMove[child].totalMs,afterMove[grandchild].totalMs==='3000'?'5000':null);
- assert.deepEqual(Object.fromEntries(snapshot.workspaces.map(w=>[w.workspaceId,w.totalMs])),
-  {[workspace1]:snapshot.workspaces.find(w=>w.workspaceId===workspace1).totalMs,[workspace2]:'5000'});
+ assert.equal(afterMove[child].totalMs,afterMove[grandchild].totalMs==='3000'?'5000':'unexpected');
+ assert.equal(snapshot.workspaces.find(w=>w.workspaceId===workspace2).totalMs,'5000');
+ assert.ok(Number(snapshot.workspaces.find(w=>w.workspaceId===workspace1).totalMs)>=16000,
+  'Workspace attribution is based on original session workspace, not current ancestry');
 
  // Deleting a task disconnects its parent attribution but preserves original
  // workspace/global time in the immutable session snapshot.
