@@ -157,16 +157,37 @@ function recordAndStop(reason='stopped'){
   state.sessions.push(entry);
   state.timer=null;
 }
-function finishTask(id){
-  const task=findTask(id);if(!task)return;
-  if(state.timer?.taskId===id)recordAndStop('completed');
-  task.status='done';
-  persist();render();
+async function saveCloudTask(task,changes){
+  const current={...task,...changes};
+  const row=await cloudApi.updateTask(task.id,remoteTask(current));
+  const priorMs=task.spentMs||0,priorSpent=task.spent||0;
+  Object.assign(task,localTask(row),{spentMs:priorMs,spent:priorSpent});
 }
-function toggleTask(id){
-  const t=findTask(id);if(!t)return;
-  if(t.status==='done'){t.status='open';persist();render();return}
-  finishTask(id);
+async function finishTask(id){
+  const task=findTask(id);if(!task)return;
+  if(isCloud){
+    if(state.cloudBusy)return;
+    state.cloudBusy=true;
+    try{await saveCloudTask(task,{status:'done'});}
+    catch(err){saveError(err);return;}
+    finally{state.cloudBusy=false;}
+  }
+  if(state.timer?.taskId===id)recordAndStop('completed');
+  task.status='done';persist();render();
+}
+async function toggleTask(id){
+  const task=findTask(id);if(!task)return;
+  if(task.status==='done'){
+    if(isCloud){
+      if(state.cloudBusy)return;
+      state.cloudBusy=true;
+      try{await saveCloudTask(task,{status:'open'});}
+      catch(err){saveError(err);return;}
+      finally{state.cloudBusy=false;}
+    }
+    task.status='open';persist();render();return;
+  }
+  await finishTask(id);
 }
 function updateTimer(action,id){
   if(action==='start'){
@@ -187,8 +208,37 @@ function updateTimer(action,id){
   else if(action==='stop'&&state.timer){recordAndStop('stopped');}
   persist();render();
 }
-trackListener('click',e=>{if(e.target.dataset.backdrop){closeModal();return}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':navigate(b.dataset.page);break;case'create':state.modal='create';render();break;case'modal-task':state.modal='task';state.modalTask=id||null;render();break;case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;render();break;case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();break;case'task-tab':state.taskTab=b.dataset.value;render();break;case'toggle-task':toggleTask(id);break;case'finish-task':finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{const m=state.mediaTarget;if(m){delete state.media[mediaKey(m.kind,m.id,m.slot)];delete state.mediaPos[mediaKey(m.kind,m.id,m.slot)];}state.modal=null;persist();render();break;}case'modal-delete-task':state.modal='delete-task';state.modalTask=id;render();break;case'confirm-delete-task':{const tid=state.modalTask;state.tasks=state.tasks.filter(t=>t.id!==tid);for(const day of Object.keys(state.pools))state.pools[day]=state.pools[day].filter(x=>x!==tid);state.scheduled=state.scheduled.filter(s=>s.taskId!==tid);if(state.timer?.taskId===tid)state.timer=null;state.sessions=state.sessions.filter(x=>x.taskId!==tid);state.modal=null;state.modalTask=null;state.page='tasks';persist();render();break}case'delete-note':state.modal='delete-note';state.modalTask=id;render();break;case'confirm-delete-note':state.notes=state.notes.filter(n=>n.id!==state.modalTask);state.modal=null;persist();render();break;case'reset':state.modal='reset';render();break;case'confirm-reset':localStorage.removeItem(STORAGE);location.reload();break;default:break}});
-trackListener('submit',e=>{e.preventDefault();const form=e.target;const data=new FormData(form);if(form.id==='task-form'){const existing=state.modal==='edit'&&findTask(state.modalTask);const entry={title:String(data.get('title')||'').trim(),workspace:String(data.get('workspace')||'general'),estimate:Number(data.get('estimate'))||30,deadline:String(data.get('deadline')||'')||null,deadlineTime:String(data.get('deadlineTime')||'')||null,reminder:String(data.get('reminder')||'')||null,reminderTime:String(data.get('reminderTime')||'')||null,long:data.has('long'),notes:String(data.get('notes')||'')};if(!entry.title)return;if(existing)Object.assign(existing,entry);else state.tasks.unshift({id:newId(),spent:0,status:'open',priority:'medium',parent:null,...entry});state.modal=null;state.modalTask=null;persist();render()}
+trackListener('click',async e=>{if(e.target.dataset.backdrop){closeModal();return}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':navigate(b.dataset.page);break;case'create':state.modal='create';render();break;case'modal-task':state.modal='task';state.modalTask=id||null;render();break;case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':state.modal='note';state.modalTask=id||null;render();break;case'modal-plan-add':state.modal='plan-add';render();break;case'modal-schedule':state.modal='schedule';state.modalTask=id||null;render();break;case'close':closeModal();break;case'filter':state.filter=b.dataset.value;render();break;case'workspace':state.viewWorkspace=id;state.page='workspace';render();break;case'detail':state.taskId=id;state.taskTab='overview';state.page='detail';render();break;case'task-tab':state.taskTab=b.dataset.value;render();break;case'toggle-task':await toggleTask(id);break;case'finish-task':await finishTask(id);break;case'start':updateTimer('start',id);break;case'pause':updateTimer('pause');break;case'resume':updateTimer('resume');break;case'stop':updateTimer('stop');break;case'pool-add':if(!state.pool.includes(id))state.pool.push(id);state.modal=null;persist();render();break;case'pool-remove':state.pool=state.pool.filter(x=>x!==id);persist();render();break;case'pool-up':case'pool-down':{const i=state.pool.indexOf(id),j=i+(a==='pool-up'?-1:1);if(j>=0&&j<state.pool.length)[state.pool[i],state.pool[j]]=[state.pool[j],state.pool[i]];persist();render();break}case'unschedule':{const s=state.scheduled.find(x=>x.id===id);if(s&&!state.pool.includes(s.taskId))state.pool.push(s.taskId);state.scheduled=state.scheduled.filter(x=>x.id!==id);persist();render();break}case'report-period':state.reportPeriod=b.dataset.value;render();break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{const m=state.mediaTarget;if(m){delete state.media[mediaKey(m.kind,m.id,m.slot)];delete state.mediaPos[mediaKey(m.kind,m.id,m.slot)];}state.modal=null;persist();render();break;}case'modal-delete-task':state.modal='delete-task';state.modalTask=id;render();break;case'confirm-delete-task':{const tid=state.modalTask;state.tasks=state.tasks.filter(t=>t.id!==tid);for(const day of Object.keys(state.pools))state.pools[day]=state.pools[day].filter(x=>x!==tid);state.scheduled=state.scheduled.filter(s=>s.taskId!==tid);if(state.timer?.taskId===tid)state.timer=null;state.sessions=state.sessions.filter(x=>x.taskId!==tid);state.modal=null;state.modalTask=null;state.page='tasks';persist();render();break}case'delete-note':state.modal='delete-note';state.modalTask=id;render();break;case'confirm-delete-note':state.notes=state.notes.filter(n=>n.id!==state.modalTask);state.modal=null;persist();render();break;case'reset':state.modal='reset';render();break;case'confirm-reset':localStorage.removeItem(STORAGE);location.reload();break;default:break}});
+trackListener('submit',async e=>{e.preventDefault();const form=e.target;const data=new FormData(form);if(form.id==='task-form'){
+ if(state.cloudBusy)return;
+ const existing=state.modal==='edit'&&findTask(state.modalTask);
+ const entry={title:String(data.get('title')||'').trim(),workspace:String(data.get('workspace')||'general'),
+ estimate:Number(data.get('estimate'))||30,deadline:String(data.get('deadline')||'')||null,
+ deadlineTime:String(data.get('deadlineTime')||'')||null,
+ reminder:String(data.get('reminder')||'')||null,
+ reminderTime:String(data.get('reminderTime')||'')||null,long:data.has('long'),
+ notes:String(data.get('notes')||'')};
+ if(!entry.title)return;
+ if(isCloud){
+  state.cloudBusy=true;
+  const saveButton=form.querySelector('button[type="submit"]');
+  if(saveButton)saveButton.disabled=true;
+  try{
+   if(existing){
+    const row=await cloudApi.updateTask(existing.id,remoteTask({...existing,...entry}));
+    const time=existing.spentMs||0,spent=existing.spent||0;
+    Object.assign(existing,localTask(row),{spentMs:time,spent});
+   }else{
+    const id=crypto.randomUUID();
+    const row=await cloudApi.createTask(remoteTask({id,spent:0,status:'open',priority:'medium',parent:null,...entry}));
+    state.tasks.unshift(localTask(row));
+   }
+  }catch(err){saveError(err);return;}
+  finally{state.cloudBusy=false;if(saveButton)saveButton.disabled=false;}
+ }else if(existing)Object.assign(existing,entry);
+ else state.tasks.unshift({id:newId(),spent:0,status:'open',priority:'medium',parent:null,...entry});
+ state.modal=null;state.modalTask=null;persist();render();
+}
 if(form.id==='note-form'){const title=String(data.get('title')||'').trim();if(!title)return;state.notes.unshift({id:newId(),title,content:String(data.get('content')||''),workspace:String(data.get('workspace')||'general'),color:['cream','lilac','green','blue'][state.notes.length%4],pinned:false});state.modal=null;persist();render()}
 if(form.id==='schedule-form'){const start=String(data.get('start')),end=String(data.get('end'));if(parseClock(end)<=parseClock(start)){alert('End time must be later than start time.');return}const taskId=String(data.get('task'));if(!findTask(taskId))return;state.scheduled.push({id:newId(),taskId,day:state.planDay,start,end});if(remainingUnscheduled(findTask(taskId),state.planDay)>0){if(!state.pool.includes(taskId))state.pool.push(taskId)}else state.pool=state.pool.filter(x=>x!==taskId);state.modal=null;state.modalTask=null;persist();render()}});
 trackListener('input',e=>{if(e.target.id==='media-position'){const preview=document.querySelector('.media-preview');if(preview)preview.style.backgroundPosition=`center ${e.target.value}%`;return;}if(e.target.id==='task-search'){state.search=e.target.value;const pos=e.target.selectionStart;render();const input=$('#task-search');input?.focus();input?.setSelectionRange(pos,pos)}});
