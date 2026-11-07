@@ -72,7 +72,8 @@ test('M4.3 push enrollment is owner scoped and rejects untrusted push hosts',asy
    calls.push({sql,args});
    if(sql===NOTIFICATION_PREF_GET_SQL)return {rows:[]};
    if(sql===NOTIFICATION_PREF_SAVE_SQL)return {rows:[{timeZone:args[1]}]};
-   if(sql===PUSH_SUB_SAVE_SQL||sql===PUSH_SUB_DELETE_SQL)return {rows:[]};
+   if(sql===PUSH_SUB_SAVE_SQL)return {rows:args[0]==='alice'?[{endpoint:args[1]}]:[]};
+   if(sql===PUSH_SUB_DELETE_SQL)return {rows:[]};
    if(sql===PUSH_SUB_STATUS_SQL)return {rows:args[0]==='alice'?[{registered:1}]:[]};
    throw Error('Unexpected query');
   }
@@ -90,10 +91,11 @@ test('M4.3 push enrollment is owner scoped and rejects untrusted push hosts',asy
   assert.equal((await req('/v1/push-subscription','PUT','alice',{endpoint:bad})).status,400,bad);
  }
  assert.equal((await req('/v1/push-subscription','PUT','alice',{endpoint})).status,200);
+ assert.equal((await req('/v1/push-subscription','PUT','bob',{endpoint})).status,409);
  assert.equal((await req('/v1/push-subscription/status','POST','alice',{endpoint})).status,200);
  assert.equal((await (await req('/v1/push-subscription/status','POST','bob',{endpoint})).json()).registered,false);
  assert.equal((await req('/v1/push-subscription','DELETE','alice',{endpoint})).status,200);
  assert.ok(calls.some(x=>x.sql===PUSH_SUB_SAVE_SQL&&x.args[0]==='alice'));
  assert.ok(calls.some(x=>x.sql===PUSH_SUB_STATUS_SQL&&x.args[0]==='bob'));
- assert.equal(calls.length,6);
+ assert.equal(calls.length,7);
 });
