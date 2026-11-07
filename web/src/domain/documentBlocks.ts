@@ -51,3 +51,14 @@ export function assertDocumentBlocks(value:unknown):asserts value is unknown[]{
 export function emptyDocumentBlocks():unknown[]{
  return [{type:'paragraph',props:{},content:[],children:[]}];
 }
+
+/** Compare JSON after PostgreSQL jsonb reorders object keys. */
+export function canonicalDocumentJSON(value:unknown):string{
+ if(Array.isArray(value))return '['+value.map(canonicalDocumentJSON).join(',')+']';
+ if(value!==null&&typeof value==='object'){
+  const record=value as Record<string,unknown>;
+  return '{'+Object.keys(record).sort().map(key=>
+   JSON.stringify(key)+':'+canonicalDocumentJSON(record[key])).join(',')+'}';
+ }
+ return JSON.stringify(value);
+}
