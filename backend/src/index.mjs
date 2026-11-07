@@ -79,6 +79,10 @@ export const DAY_POOL_PUT_SQL="SELECT dayframe.replace_daily_pool($1,$2::date,$3
 export const TIME_ACTIVE_SQL="SELECT dayframe.time_session_snapshot(s) AS session "+
  "FROM dayframe.time_sessions s WHERE s.owner_user_id=$1 AND s.state IN ('running','paused') LIMIT 1";
 export const TIME_TRANSITION_SQL="SELECT dayframe.transition_time_session($1,$2,$3,$4,$5,$6) AS session";
+export const TIME_DIRECT_TOTALS_SQL="SELECT task_id::text AS \"taskId\", "+
+ "SUM(accumulated_ms)::text AS \"totalMs\" FROM dayframe.time_sessions "+
+ "WHERE owner_user_id=$1 AND task_id IS NOT NULL GROUP BY task_id";
+
 export const ALERT_LIST_SQL =
  "WITH occurrences AS ("+
  "SELECT t.id::text AS \"taskId\",t.title,kind.kind, "+
@@ -339,7 +343,8 @@ return {async fetch(req){
     if(path==='/v1/time-session'){
       if(req.method==='GET'){
         const {rows}=await query(TIME_ACTIVE_SQL,[uid]);
-        return json({session:rows[0]?.session??null},200,hdr);
+        const totals=await query(TIME_DIRECT_TOTALS_SQL,[uid]);
+        return json({session:rows[0]?.session??null,taskTotals:totals.rows},200,hdr);
       }
       if(req.method==='POST'){
         const body=await readBody(req,3000);
