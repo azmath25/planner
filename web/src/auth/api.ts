@@ -255,8 +255,8 @@ export const cloudApi={
  async deleteTaskMedia(id:string,slot:'cover'|'avatar'):Promise<void>{
   await call('/v1/tasks/'+encodeURIComponent(id)+'/media/'+slot,{method:'DELETE'});
  },
- async trashTask(id:string):Promise<void>{
-  await call('/v1/tasks/'+encodeURIComponent(id),{method:'DELETE'});
+ async trashTask(id:string,revision:number):Promise<void>{
+  await call('/v1/tasks/'+encodeURIComponent(id),{method:'DELETE',body:{revision}});
  },
  async listTrash():Promise<CloudTask[]>{
   const tasks:CloudTask[]=[];
@@ -272,7 +272,7 @@ export const cloudApi={
   }
   return tasks;
  },
- async restoreTask(id:string):Promise<CloudTask>{
-  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/restore',{method:'POST'})).task;
+ async restoreTask(id:string,revision:number):Promise<CloudTask>{
+  return (await call<{task:CloudTask}>('/v1/tasks/'+encodeURIComponent(id)+'/restore',{method:'POST',body:{revision}})).task;
  }
 };
