@@ -211,7 +211,7 @@ return {async fetch(req){
       if(existing.rows.length&&matchesTask(existing.rows[0],args))return json({task:existing.rows[0]},200,hdr);
       throw fail(409,'Task id already exists or workspace unavailable');
     }
-    const mediaPath=/^\\/v1\\/tasks\\/([a-f0-9-]{36})\\/media(?:\\/(cover|avatar))?$/i.exec(path);
+    const mediaPath=/^\/v1\/tasks\/([a-f0-9-]{36})\/media(?:\/(cover|avatar))?$/i.exec(path);
     if(mediaPath){
       const id=uuid(mediaPath[1],'task id'),slot=mediaPath[2]||null;
       const owned=" FROM dayframe.task_media m JOIN dayframe.tasks t ON t.id=m.task_id AND t.owner_user_id=m.owner_user_id "+
@@ -224,7 +224,7 @@ return {async fetch(req){
       if(slot&&req.method==='PUT'){
         const body=await readBody(req,265000);
         if(typeof body.data!=='string')throw fail(400,'Invalid image data');
-        const match=/^data:(image\\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.data);
+        const match=/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.data);
         if(!match)throw fail(400,'Invalid supported image');
         const bytes=Buffer.from(match[2],'base64');
         if(bytes.length<16||bytes.length>180000||bytes.toString('base64')!==match[2])throw fail(413,'Image must be under 180 KB');
