@@ -1,0 +1,27 @@
+name: Dayframe M4.2 Timed Scheduling browser regression
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/build-m42-harness.mjs'
+      - 'tests/m42-timed-browser.py'
+      - '.github/workflows/m42-timed-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm install --no-audit --no-fund
+      - run: node tests/build-m42-harness.mjs && node --check tests/.harness/m42-app.js
+      - run: pip install playwright
+      - run: python -m playwright install chromium --with-deps
+      - run: python tests/m42-timed-browser.py
