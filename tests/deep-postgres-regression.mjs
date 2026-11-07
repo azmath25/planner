@@ -4,7 +4,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
-import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL} from '../backend/src/index.mjs';
+import {TASK_TRASH_SQL,TASK_RESTORE_SQL,TIMED_SAVE_SQL,ALERT_ACTION_SQL,PUSH_SUB_SAVE_SQL,TIME_ROLLUPS_SQL,TIME_WEEK_SQL,TIME_WEEK_TARGET_SQL,NOTE_INSERT_SQL,NOTE_UPDATE_SQL,NOTE_DELETE_SQL,NOTE_RESTORE_SQL,NOTES_TRASH_SQL,NOTE_CONVERT_SQL,NOTE_BY_ID_SQL} from '../backend/src/index.mjs';
 const connectionString=process.env.PG_AUDIT_URL;
 if(!connectionString)throw Error('PG_AUDIT_URL is required. Never point this suite at Neon or production.');
 if(!/^(postgres(?:ql)?):\/\/audit:/.test(connectionString)||!connectionString.includes('127.0.0.1:5432/dayframe_audit'))
@@ -452,6 +452,13 @@ test('M6.1 note CRUD: owner isolation, stale edits and recoverable soft deletion
  assert.equal((await pool.query(NOTE_DELETE_SQL,[owner,id,2])).rows.length,1);
  assert.equal((await pool.query(NOTE_BY_ID_SQL,[owner,id])).rows.length,0);
  assert.equal((await pool.query("SELECT count(*)::int AS count FROM dayframe.quick_notes WHERE id=$1 AND deleted_at IS NOT NULL",[id])).rows[0].count,1);
+ assert.equal((await pool.query(NOTES_TRASH_SQL,[other,100,0])).rows.length,0);
+ assert.equal((await pool.query(NOTES_TRASH_SQL,[owner,100,0])).rows[0].id,id);
+ assert.equal((await pool.query(NOTE_RESTORE_SQL,[other,id,3])).rows.length,0);
+ assert.equal((await pool.query(NOTE_RESTORE_SQL,[owner,id,2])).rows.length,0);
+ assert.equal((await pool.query(NOTE_RESTORE_SQL,[owner,id,3])).rows[0].revision,4);
+ assert.equal((await pool.query(NOTE_BY_ID_SQL,[owner,id])).rows[0].id,id);
+ assert.equal((await pool.query(NOTES_TRASH_SQL,[owner,100,0])).rows.length,0);
 });
 test('M6.1 note conversion is exactly-once across retries and refuses cross-account attempts',async()=>{
  const owner='m61-convert-a',other='m61-convert-b';
