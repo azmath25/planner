@@ -11,7 +11,7 @@ const insightHelper=ts.transpileModule(
 // Keep its parser helpers scoped, exposing only the real CSV helper to
 // the otherwise dependency-free legacy mock UI.
 const csvCode='const timeInsightsCsv=(function(){'+insightHelper+
- '\\nreturn timeInsightsCsv;\\n})();\\n';
+ '\nreturn timeInsightsCsv;\n})();\n';
 if(index<0)throw Error('Missing account fixture mount');
 const adapter=`
 mockDb.insightsCalls=[];
