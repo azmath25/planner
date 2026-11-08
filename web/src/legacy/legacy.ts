@@ -607,6 +607,7 @@ function home(){
     `<div class="card df-home-empty-note"><p class="tiny">Your notes appear here as you create them.</p>
      <button class="btn small secondary" data-action="modal-note">Write a note</button></div>`}
   </section>
+  ${homePins()}
   <section class="df-home-workspaces"><div class="section-head"><h2>My workspaces</h2>
    <button class="text-link" data-action="nav" data-page="workspaces">All workspaces ${icon('arrow')}</button>
    </div>${workspaceCards()}</section>
