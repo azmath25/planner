@@ -14,7 +14,7 @@ export function pieSegments(rows:PieInput[],{limit=7}:{limit?:number}={}):PieMod
  return {total,segments:top.map((r,i)=>{
    const start=degrees;
    degrees+=r.value/total*360;
-   return {...r,color:COLORS[i%COLORS.length],start,end:degrees,
+   return {...r,color:COLORS[i%COLORS.length]!,start,end:degrees,
     percentage:Math.round(r.value/total*1000)/10};
  })};
 }
