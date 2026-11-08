@@ -50,3 +50,30 @@ Only run the following against a feature-compatible **approved** browser origin 
 2. After a Vercel preview origin exists, allow that **exact origin only** in staging Auth and staging backend CORS. Keep the production frontend/API defaults unchanged and establish hard guards against cross-environment requests.
 3. Deploy only to the isolated staging project after an explicit staging-deploy checkpoint; run signed-out API, user A/B separation, session restore, logout, Safari and mobile/browser tests. Protect credentials and suppress token logging.
 4. H4.4 acceptance and H5 production release are still **pending**. No Actions, production migration, main merge or public production deployment authorized.
+
+## H4.4 isolated Vercel staging wiring — 2026-11-08
+
+The owner's preferred next frontend platform is **Vercel Hobby**; the connected team `azmath25s-projects` confirmed the `hobby` plan. Created standalone, **unlinked and undeployed** Vercel project `dayframe-h44-staging` (ID `prj_boouNVDs7mB9LfI9Ekwo7Cam8nkj`), with Vite, `npm ci`, `npm run build`, `dist`, and preview auto-deploy disabled. No domain or deployment exists. The project currently reports Node 26.x; the frontend's source gate accepts Node 24+, and the Neon API runtime remains Node 24.
+
+Feature-branch source changes:
+- Explicit `VITE_DAYFRAME_TARGET=staging` selects root-hosted Vite assets, stages the PWA manifest `id`/`start_url`/`scope` to `/` via `scripts/finalize-site.mjs`, and uses the isolated staging Auth URL. Default production/GitHub Pages output remains `/planner/`.
+- Staging compilation **must** specify `VITE_DAYFRAME_STAGING_API_URL` as a *separate* Neon Function endpoint. It rejects an absent URL, an incorrectly shaped endpoint, or the original production endpoint. The optional staging Auth override must exactly equal the known separate staging Auth URL. No private credentials may enter `VITE_*` variables.
+- Backend staging CORS supports exactly one `DAYFRAME_STAGING_ORIGIN` with a `*.vercel.app` HTTPS host. It refuses to activate staging CORS unless `DAYFRAME_ENV=staging` and its injected `NEON_AUTH_BASE_URL` matches the **isolated** staging Auth service. Otherwise, the original production Pages origin remains.
+- Updated `scripts/check-dist.mjs` to verify the correct target's asset and manifest scope; the unauthenticated H4.2 public smoke still probes the pinned **production** endpoints.
+- No staging API was deployed; the previous `backend/packaged/dayframeapi.b64` artifact predates M6–M8 and is NOT feature-matched. Rebuild the full source with esbuild/Node 24 before any staging API deploy.
+
+### Operator checks before any staging deployment
+
+From the feature checkout (do not use GitHub Actions):
+```bash
+cd ~/dayframe-h2
+git pull --ff-only origin feature/dayframe-m53-release-20261107
+node -v
+npm run test:source
+npm run test:api
+npm run build
+npm run check:dist
+```
+The default build checks GitHub Pages output and never deploys. Do not set `VITE_DAYFRAME_TARGET=staging` for Vercel until a separate staging API HTTPS URL exists and `VITE_DAYFRAME_STAGING_API_URL` is pinned. After that, rerun the build and `check:dist` with both variables set, and verify no production hostname was compiled into the staging bundle before releasing the preview.
+
+**Still pending:** stage-compatible full Neon API deployment, staging CORS origin pin, Vercel preview launch, two-account browser sign-in/ownership tests, Safari session persistence and PWA install review. An unlinked Vercel project and a staged database are **not** a running or accepted Dayframe release.
