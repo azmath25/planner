@@ -69,3 +69,15 @@ git pull --ff-only origin feature/dayframe-m53-release-20261107
 bash scripts/h2-security-trial.sh
 ```
 If new Shell account/home, clone the feature branch and generate its own legitimate lockfile first. The successful build lockfile is currently still local and uncommitted; do not declare H2 complete.
+
+## H2.5 — isolated patched dependency trial passed (2026-11-08)
+
+The operator ran `scripts/h2-security-trial.sh` on Google Cloud Shell. The trial's npm dependency overrides were applied **only in an isolated home directory**, not in the working checkout or feature branch: `better-auth`, `@better-auth/drizzle-adapter`, `@better-auth/oauth-provider` pinned to `1.7.7` and `zod` to `4.6.6`.
+
+The shell log reached the final success marker after source tests, domain tests, mock/backend API tests, TypeScript build, Vite bundling and distribution/PWA assertions. The patched trial's `npm audit --omit=dev --audit-level=high` **exited successfully** with **7 remaining low-severity vulnerabilities** originating in `deepmerge` via `html-to-text → @react-email/render → @react-email/components → @daveyplate/better-auth-ui → @neondatabase/auth-ui → @neondatabase/auth`. This is an improvement over the earlier working checkout audit (**6 low, 3 high, 1 critical**), but the trial is not the shipped dependency graph.
+
+The trial script retained its generated files at `~/dayframe-security-trial.UVDP6MEm`. **Preserve that trial until the dependency diff and lockfile are reviewed**; the safe Cloud Shell cleanup script may remove verified Dayframe trials if explicitly applied. Do not use `npm audit fix --force` and do not copy its overrides into the main checkout without testing authentication.
+
+The following remain release blockers: (1) Neon Auth real-browser sign-in/token/session compatibility with the patched dependency set; (2) review and intentional adoption of patched dependency versions; (3) committing a genuine reviewed `package-lock.json` on the feature branch; (4) disposable PostgreSQL 16 migration and regression testing; (5) browser/mobile/PWA and Safari checks. No merges, deployment, cloud/Neon production writes or GitHub Actions were performed in this milestone.
+
+Next safe operation is a read-only comparison between the trial's `package.json`/`package-lock.json` and the unmodified Dayframe checkout. Avoid publishing secrets or full environment files.
