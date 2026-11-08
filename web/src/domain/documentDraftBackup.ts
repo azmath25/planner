@@ -36,7 +36,7 @@ export function readUnsyncedDraft(
    !Number.isSafeInteger(row.revision)||Number(row.revision)<1||
    typeof row.title!=='string'||row.title.length>160||
    !Array.isArray(row.blocks)||!Number.isFinite(row.updatedAt))return null;
-  return row as UnsyncedDocumentDraft;
+  return row as unknown as UnsyncedDocumentDraft;
  }catch{return null;}
 }
 export function clearUnsyncedDraft(
