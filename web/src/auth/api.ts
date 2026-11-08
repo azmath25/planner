@@ -364,6 +364,32 @@ export const cloudApi={
   }
   return documents;
  },
+ async getDocumentPhotos(id:string):Promise<Array<{slot:number;data:string}>>{
+  if(!isUuid(id))throw new Error('Invalid document ID');
+  const result=await call<{photos:unknown}>('/v1/documents/'+id+'/attachments');
+  if(!Array.isArray(result.photos)||result.photos.length>4)throw new Error('Invalid document photos');
+  const seen=new Set<number>();
+  return result.photos.map((p:unknown)=>{
+   if(!p||typeof p!=='object')throw new Error('Invalid document image');
+   const photo=p as Record<string,unknown>,slot=photo.slot;
+   if(typeof slot!=='number'||!Number.isInteger(slot)||slot<0||slot>3||seen.has(slot)||
+    typeof photo.data!=='string'||
+    !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(photo.data)||
+    photo.data.length>250000)throw new Error('Invalid document image');
+   seen.add(slot);return {slot,data:photo.data};
+  });
+ },
+ async putDocumentPhoto(id:string,slot:number,data:string):Promise<void>{
+  if(!isUuid(id)||!Number.isInteger(slot)||slot<0||slot>3||
+   !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(data)||
+   data.length>250000)throw new Error('Invalid document photo');
+  await call('/v1/documents/'+id+'/attachments',{method:'PUT',body:{slot,data}});
+ },
+ async deleteDocumentPhoto(id:string,slot:number):Promise<void>{
+  if(!isUuid(id)||!Number.isInteger(slot)||slot<0||slot>3)
+   throw new Error('Invalid document photo slot');
+  await call('/v1/documents/'+id+'/attachments?slot='+slot,{method:'DELETE'});
+ },
  async exportDocument(id:string):Promise<{schema:'dayframe.document.export.v1';exportedAt:string;document:CloudDocument}>{
   if(!isUuid(id))throw new Error('Invalid document identifier');
   const data=await call<{schema:unknown;exportedAt:unknown;document:unknown}>('/v1/documents/'+id+'/export');
