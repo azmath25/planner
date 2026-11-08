@@ -12,6 +12,17 @@ if (!existsSync(resolve(dir, 'assets'))) throw new Error('Build assets folder is
 const assets = readdirSync(resolve(dir, 'assets'));
 if (!assets.some(name => /^index-.*\.js$/.test(name))) throw new Error('React entry bundle is missing');
 if (!assets.some(name => /^index-.*\.css$/.test(name))) throw new Error('Compiled CSS is missing');
+if(stage){
+ const js=assets.filter(name=>name.endsWith('.js')).map(name=>
+  readFileSync(resolve(dir,'assets',name),'utf8')).join('\n');
+ if(!js.includes('br-delicate-violet-b9cnjyuh-dayframeapi')||
+    !js.includes('ep-wispy-surf-b94f834t.neonauth'))
+  throw new Error('Missing isolated staging endpoints in compiled JS');
+ if(js.includes('br-shiny-king-b9np2anx-dayframeapi')||
+    js.includes('ep-blue-salad-b9534bb3.neonauth'))
+  throw new Error('Production hostname leaked into staging JavaScript');
+ console.log('PASS: staging bundle includes only isolated Neon endpoints');
+}
 for(const name of ['sw.js','manifest.webmanifest','icon.svg',
  'icon-192.png','icon-512.png','offline.html']){
  if(!existsSync(resolve(dir,name)))throw new Error('Missing public PWA asset '+name);
