@@ -155,7 +155,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    const status=(e&&typeof e==='object'&&'status' in e)?Number(e.status):0;
    if(status===409){
     setConflict(true);
-    setError('A newer version exists on the server. Your local draft is untouched. Download it or reload the latest version before continuing.');
+    setError('A newer version exists on the server. Your local draft remains backed up.');
+   }else if([400,413,415].includes(status)){
+    // Structural security and size limits remain; never keep retrying a
+    // server-rejected request, but keep the raw draft safe on this device.
+    setConflict(true);
+    setError('Cloud rejected an oversized or unsafe document. Your local draft remains backed up and can be downloaded.');
    }else{
     uncertainSave.current=attempt;setAutoSavePaused(true);
     setError('Cloud save unconfirmed. Local draft retained; retrying after checking the server.');
@@ -175,31 +180,48 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  },[active?.id,active?.revision,title,blocks,dirty,busy,conflict,autoSavePaused,pendingCreate]);
  const reconcileUncertainSave=async()=>{
   if(!active||busy||savingRef.current||!autoSavePaused)return;
-  setBusy(true);setError('');
+  setBusy(true);
   try{
    const remote=await cloudApi.getDocument(active.id);
-   assertDocumentBlocks(remote.blocks);
    if(!alive.current)return;
-   const identical=remote.title===title.trim()&&
-    remote.workspace===active.workspace&&remote.taskId===active.taskId&&
-    remote.parentId===active.parentId&&
-    canonicalDocumentJSON(remote.blocks)===canonicalDocumentJSON(blocks);
-   if(identical){
-    resetDraft(remote);setError('');
-   }else if(remote.revision!==active.revision){
-    setConflict(true);
-    setError('The server has a newer, different version. Your draft is preserved. Download it or reload the server version.');
+   const pending=uncertainSave.current;
+   const same=(a:unknown,b:unknown)=>canonicalDocumentJSON(a)===canonicalDocumentJSON(b);
+   const currentTitle=(title.trim()||documentTitleFromBlocks(blocks)||'Untitled document').slice(0,160);
+   const exactlyLocal=remote.title===currentTitle&&same(remote.blocks,blocks);
+   const committedAttempt=pending&&pending.docId===remote.id&&
+    remote.revision>pending.baseRevision&&remote.title===pending.title&&
+    same(remote.blocks,pending.blocks);
+   if(exactlyLocal||committedAttempt){
+    setActive(remote);setAutoSavePaused(false);setConflict(false);
+    uncertainSave.current=null;retryDelay.current=3500;
+    if(exactlyLocal&&(!pending||draftVersion.current===pending.version)){
+     setDirty(false);clearUnsyncedDraft(draftScope,remote.id);
+    }else setDirty(true);
+    setError('');
+   }else if(remote.revision===active.revision){
+    // The last write did not commit. Revision fencing makes a retry safe.
+    uncertainSave.current=null;retryDelay.current=3500;
+    setAutoSavePaused(false);setError('');
    }else{
-    setAutoSavePaused(false);
-    setError('The server still has the previous version; autosave is enabled again after your explicit check.');
+    setConflict(true);
+    setError('Another version exists on the server. Your local draft is backed up; review before overwriting.');
    }
   }catch(e){
    if(alive.current){
     setAutoSavePaused(true);
-    setError(e instanceof Error?e.message:'Could not verify server version; local draft remains unsaved');
+    setError('Cloud unavailable. Local draft retained; another check will run automatically.');
    }
   }finally{if(alive.current)setBusy(false);}
  };
+ useEffect(()=>{
+  if(!autoSavePaused||conflict||!active||busy||savingRef.current)return;
+  const timer=window.setTimeout(()=>{
+   retryDelay.current=Math.min(retryDelay.current*2,30000);
+   void reconcileUncertainSave();
+  },retryDelay.current);
+  return ()=>window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[autoSavePaused,conflict,active?.id,busy]);
  const reloadLatest=async()=>{
   if(!active||busy||savingRef.current)return;
   if(!window.confirm('Discard the local document draft and load the newest saved version?'))return;
