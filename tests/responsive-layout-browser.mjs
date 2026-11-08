@@ -122,7 +122,8 @@ try{
      return {w:r.width,h:r.height,radius:getComputedStyle(el).borderRadius};
     });
     assert.ok(Math.abs(pie.w-pie.h)<=1,`Pie aspect ratio not circular at ${width}px: ${JSON.stringify(pie)}`);
-    assert.ok(parseFloat(pie.radius)>pie.w*.4,`Pie has square edges at ${width}px`);
+    const radius=pie.radius.endsWith('%')?parseFloat(pie.radius)/100*pie.w:parseFloat(pie.radius);
+    assert.ok(radius>pie.w*.4,`Pie has square edges at ${width}px: ${JSON.stringify(pie)}`);
    }
 
   }
