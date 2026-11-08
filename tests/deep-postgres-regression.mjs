@@ -738,7 +738,9 @@ test('M7.3 date-only deadlines end at next local midnight; late completion measu
 });
 
 test('M7.3 audit-event deadlines and estimates stay owner-scoped and classify midnight',async()=>{
- const owner='m73-insights-owner',other='m73-insights-other';
+ // These accounts must be distinct from the preceding M7.3 fixture; otherwise
+ // preference rows and completion events contaminate the period aggregates.
+ const owner='m73-events-owner',other='m73-events-other';
  // Distinct fixture UUIDs from M7.2; global primary keys cannot be reused across owner-scoped tests.
  const wa='c9111111-1111-4111-8111-111111111111';
  const wb='c9222222-2222-4222-8222-222222222222';
