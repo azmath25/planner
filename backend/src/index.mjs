@@ -9,7 +9,14 @@ import { TIME_INSIGHTS_SQL } from './time-insights.mjs';
 export { TIME_INSIGHTS_SQL } from './time-insights.mjs';
 export { TIME_PERIOD_REPORT_SQL } from './time-period-report.mjs';
 
-const ORIGIN='https://azmath25.github.io';
+// Staging must use its own Neon branch and an exact browser origin.
+// Production retains its original origin and ignores staging settings.
+const stagingBranch=process.env.NEON_BRANCH==='main' && process.env.DAYFRAME_ENV==='staging';
+const stagingOrigin=process.env.DAYFRAME_STAGING_ORIGIN;
+if (process.env.DAYFRAME_ENV==='staging' && (!stagingOrigin ||
+  !/^https:\/\/[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app$/.test(stagingOrigin)))
+  throw Error('Staging requires an exact Vercel HTTPS origin');
+const ORIGIN=stagingBranch ? stagingOrigin : 'https://azmath25.github.io';
 const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer',vary:'Origin'};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const json=(body,status,headers)=>Response.json(body,{status,headers:{...headers,'content-type':'application/json; charset=utf-8'}});
