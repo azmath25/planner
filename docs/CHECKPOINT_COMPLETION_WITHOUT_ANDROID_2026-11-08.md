@@ -50,3 +50,11 @@ The current public site's Neon API is still deployment **6**, serving its previo
 - **Excluded:** Android Play Store publication and migration of the older Neon project.
 
 No production DB schema changes, old data deletion, branch merge, GitHub Actions, or Quizer/Mimo work occurred in this checkpoint.
+
+## Task-linked documents — stale M6.3 banner removal
+
+- Removed the visible “Autosave arrives in M6.3” text from the task Notes panel and replaced the generic “Task documents” button with **“Add or open documents.”**
+- The button continues to open the task-filtered Documents library. That library now explicitly says **“Task documents”**, identifies the selected task, and offers **“New task document.”** New pages inherit the selected task ID and workspace.
+- Removed the obsolete “Save edits explicitly” guidance from the Notes page. Rich document drafts autosave; Quick Notes remain a separate explicit-save workflow.
+- Regression: `node --test tests/taskDocumentsWiring.test.mjs` passed all three checks; TypeScript typecheck, source tests, document tests and Vite distribution build passed in a disposable sandbox.
+- **Not yet live:** production remains on the earlier Vercel READY release until its Hobby deployment quota resets. No GitHub Actions or database changes.
