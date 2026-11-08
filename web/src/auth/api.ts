@@ -395,7 +395,7 @@ export const cloudApi={
   const documents:CloudDocumentMeta[]=[];let offset:number|null=0;
   for(let page=0;offset!==null;page++){
    if(page>1000)throw new Error('Too many deleted document pages');
-   const data=await call<{documents:unknown[];nextOffset:number|null}>(
+   const data:{documents:unknown[];nextOffset:number|null}=await call<{documents:unknown[];nextOffset:number|null}>(
     '/v1/documents/trash?limit=50&offset='+offset);
    if(!Array.isArray(data.documents)||!data.documents.every(verifyDocumentMeta)||
     data.documents.some(d=>!d.deletedAt))throw new Error('Invalid deleted document list');
@@ -419,7 +419,7 @@ export const cloudApi={
   const notes:CloudQuickNote[]=[];let offset:number|null=0;
   for(let page=0;offset!==null;page++){
    if(page>1000)throw new Error('Too many note pages');
-   const result=await call<{notes:unknown[];nextOffset:number|null}>(
+   const result:{notes:unknown[];nextOffset:number|null}=await call<{notes:unknown[];nextOffset:number|null}>(
     '/v1/notes?limit=100&offset='+offset);
    if(!Array.isArray(result.notes)||!result.notes.every(verifyQuickNote))
     throw new Error('Invalid note list response');
@@ -435,7 +435,7 @@ export const cloudApi={
   const notes:CloudQuickNote[]=[];let offset:number|null=0;
   for(let page=0;offset!==null;page++){
    if(page>1000)throw new Error('Too many deleted note pages');
-   const result=await call<{notes:unknown[];nextOffset:number|null}>(
+   const result:{notes:unknown[];nextOffset:number|null}=await call<{notes:unknown[];nextOffset:number|null}>(
     '/v1/notes/trash?limit=100&offset='+offset);
    if(!Array.isArray(result.notes)||!result.notes.every(verifyQuickNote)||
     result.notes.some(note=>!note.deletedAt))
