@@ -739,13 +739,14 @@ test('M7.3 date-only deadlines end at next local midnight; late completion measu
 
 test('M7.3 audit-event deadlines and estimates stay owner-scoped and classify midnight',async()=>{
  const owner='m73-insights-owner',other='m73-insights-other';
- const wa='e7111111-1111-4111-8111-111111111111';
- const wb='e7222222-2222-4222-8222-222222222222';
- const ta='e7333333-3333-4333-8333-333333333333';
- const tb='e7444444-4444-4444-8444-444444444444';
- const tc='e7555555-5555-4555-8555-555555555555';
- const sa='e7666666-6666-4666-8666-666666666666';
- const sb='e7777777-7777-4777-8777-777777777777';
+ // Distinct fixture UUIDs from M7.2; global primary keys cannot be reused across owner-scoped tests.
+ const wa='c9111111-1111-4111-8111-111111111111';
+ const wb='c9222222-2222-4222-8222-222222222222';
+ const ta='c9333333-3333-4333-8333-333333333333';
+ const tb='c9444444-4444-4444-8444-444444444444';
+ const tc='c9555555-5555-4555-8555-555555555555';
+ const sa='c9666666-6666-4666-8666-666666666666';
+ const sb='c9777777-7777-4777-8777-777777777777';
  await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Insights A','custom'),($3,$4,'Insights B','custom')",[wa,owner,wb,other]);
  await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku'),($2,'Asia/Baku')",[owner,other]);
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline) VALUES($1,$2,$3,'Tracked task',30,'2026-11-07'),($4,$2,$3,'Unsegmented task',20,'2026-11-07')",[ta,owner,wa,tb]);
