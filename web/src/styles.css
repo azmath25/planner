@@ -572,3 +572,98 @@
  .df-report-options .filter{font-size:11px;padding:6px 8px}
  .df-home-focus-select{flex-basis:100%}
 }
+
+
+/* M10 — Standard, compact settings rather than stacked promotional cards. */
+.df-settings{width:100%;max-width:1020px;margin-inline:auto;min-width:0}
+.df-settings-group{padding:19px 0 22px;border-bottom:1px solid var(--line);min-width:0}
+.df-settings-group:first-of-type{border-top:1px solid var(--line)}
+.df-settings-group-head{display:flex;justify-content:space-between;align-items:center;
+ flex-wrap:wrap;gap:8px;margin-bottom:15px}
+.df-settings-group-head h2{font-size:17px;line-height:1.4;margin:0}
+.df-settings-themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:9px}
+.df-settings-theme{min-width:0;text-align:left;display:grid;gap:8px;background:var(--surface);
+ color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:9px;cursor:pointer}
+.df-settings-theme.selected{border:2px solid var(--accent);padding:8px}
+.df-settings-theme>strong{font-size:12px;font-weight:650}
+.df-settings-theme .tiny{font-size:10px}
+.df-settings-theme-preview{height:55px;border:1px solid var(--line);
+ padding:9px;display:flex;align-items:flex-start;gap:5px}
+.df-settings-theme-preview i{width:30%;height:35px;background:#fff8;border:1px solid #7774}
+.df-settings-theme-preview i:nth-child(2){height:23px}
+.df-settings-theme-preview i:nth-child(3){height:30px}
+.df-settings-advanced{padding:12px 0 2px}
+.df-settings-advanced>summary{font-size:13px;font-weight:600;cursor:pointer}
+.df-settings-advanced>.accent-palette{padding-top:10px}
+.df-settings-row{display:flex;justify-content:space-between;align-items:center;
+ gap:20px;padding:13px 0;min-width:0;border-top:1px solid var(--line)}
+.df-settings-row>label,.df-settings-row>div:first-child{display:grid;gap:4px;min-width:0;flex:1}
+.df-settings-row .tiny{display:block;max-width:550px;margin:0}
+.df-settings-row .field{width:min(245px,40vw);min-width:125px;max-width:100%}
+.df-settings-row button{flex-shrink:0}
+.df-report-tile{display:flex;align-items:flex-start;justify-content:space-between;
+ flex-direction:column;gap:10px}
+.df-metric-report{max-width:100%;white-space:normal;text-align:left;min-height:42px}
+.df-report-distribution .card-title{align-items:flex-start}
+.df-report-distribution .card-title button{flex-shrink:0}
+.df-note-photo-area{border-top:1px solid var(--line);margin-top:12px;padding-top:12px;
+ display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.df-note-photo-heading{flex-basis:100%;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.df-note-photo-preview{flex-basis:100%;min-height:42px;display:flex;align-items:center;
+ padding:7px;border:1px solid var(--line);border-radius:9px}
+.df-note-photo{display:block;width:auto;height:auto;max-width:100%;max-height:250px;
+ object-fit:contain;border-radius:6px}
+.df-note-photo-picker{cursor:pointer}
+.note p a,.df-home-note p a{color:var(--accent-strong);text-decoration:underline;
+ text-underline-offset:2px;overflow-wrap:anywhere}
+.note .note-foot{gap:8px;flex-wrap:wrap}
+@media(max-width:540px){
+ .df-settings-themes{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .df-settings-row{gap:12px;align-items:flex-start;flex-direction:column}
+ .df-settings-row .field{width:100%}
+ .df-settings-row button{align-self:stretch}
+ .df-settings-group{padding-block:16px}
+ .df-report-tile>.df-metric-report{width:100%}
+}
+@media(max-width:350px){
+ .df-settings-themes{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* True straight-edged black/white mode. Inline report palettes are desaturated,
+   while the user's photos can retain fidelity for viewing/export. */
+[data-theme="monochrome"]{
+ --bg:#fff;--surface:#fff;--surface-2:#f7f7f7;--ink:#101010;--muted:#555;
+ --muted-2:#666;--line:#222;--accent:#000;--accent-strong:#000;
+ --accent-soft:#ededed;--danger:#333;--warning:#555;--shadow:none;--radius:0px;
+ color-scheme:light
+}
+[data-theme="monochrome"] .card,
+[data-theme="monochrome"] .btn,
+[data-theme="monochrome"] .field,
+[data-theme="monochrome"] .note,
+[data-theme="monochrome"] .badge,
+[data-theme="monochrome"] .pill,
+[data-theme="monochrome"] .filter,
+[data-theme="monochrome"] .theme-choice,
+[data-theme="monochrome"] .df-settings-theme,
+[data-theme="monochrome"] .df-settings-theme-preview,
+[data-theme="monochrome"] .df-note-photo-preview,
+[data-theme="monochrome"] .df-pie-disc,
+[data-theme="monochrome"] .df-home-pie,
+[data-theme="monochrome"] .df-report-large-pie,
+[data-theme="monochrome"] .global-timer,
+[data-theme="monochrome"] .df-home-focus{border-radius:0!important;box-shadow:none!important}
+[data-theme="monochrome"] .note,
+[data-theme="monochrome"] .note.cream,
+[data-theme="monochrome"] .note.lilac,
+[data-theme="monochrome"] .note.green,
+[data-theme="monochrome"] .note.blue{background:#fff!important;color:#111!important;border:1px solid #222}
+[data-theme="monochrome"] .df-home-pie,
+[data-theme="monochrome"] .df-pie-disc,
+[data-theme="monochrome"] .df-report-large-pie,
+[data-theme="monochrome"] .df-report-bar-fill,
+[data-theme="monochrome"] .df-home-swatch{filter:grayscale(1)}
+[data-theme="monochrome"] .btn:not(.secondary),
+[data-theme="monochrome"] .filter.active{background:#000!important;color:#fff!important}
+[data-theme="monochrome"] .df-home-bell-count{background:#000;color:#fff;border:1px solid #fff;border-radius:0}
+[data-theme="monochrome"] a{color:#111}
