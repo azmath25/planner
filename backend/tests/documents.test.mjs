@@ -39,9 +39,9 @@ function setup(run){
  return {request,calls};
 }
 test('M6.2a INSERT uses PostgreSQL-valid AS alias for RETURNING fields',()=>{
- assert.match(DOCUMENT_INSERT_SQL,/^INSERT INTO dayframe\\.documents AS d \\(/);
- assert.match(DOCUMENT_INSERT_SQL,/RETURNING d\\.id::text AS id/);
- assert.doesNotMatch(DOCUMENT_INSERT_SQL,/^INSERT INTO dayframe\\.documents d \\(/);
+ assert.match(DOCUMENT_INSERT_SQL,/^INSERT INTO dayframe\.documents AS d \(/);
+ assert.match(DOCUMENT_INSERT_SQL,/RETURNING d\.id::text AS id/);
+ assert.doesNotMatch(DOCUMENT_INSERT_SQL,/^INSERT INTO dayframe\.documents d \(/);
 });
 test('M6.2a private documents require JWT and scope all list/detail SQL',async()=>{
  const {request,calls}=setup();
