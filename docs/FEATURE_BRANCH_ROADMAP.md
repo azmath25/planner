@@ -31,3 +31,15 @@ Optional habits, AI, calendar integration, whiteboards and new infrastructure re
 ## Checkpoints
 
 Commit feature work to this branch only. Do not modify the production database while staging. Keep `docs/CHECKPOINT_M6.1.md`, etc., with what exists and **what has not been tested**. At the final release gate, reconcile branch head against `main`, check for intervening production changes and ask for authorization before any merge or deployment.
+
+## Deployment platform decision — 2026-11-08
+
+The owner specified **Vercel's free Hobby plan** for the **next Dayframe frontend deployment**, replacing the earlier GitHub Pages release path. This is a future deployment choice, **not** permission to publish now. Keep the existing Pages site and live Neon project untouched until a separate deployment approval.
+
+- The Hobby tier is for personal, non-commercial use only. Confirm that Dayframe's eventual use qualifies before relying on it; if it becomes commercial, revisit the plan.
+- Host only the static Vite-built frontend on Vercel; keep database, Managed Better Auth and protected APIs on Neon. Do not expose server connection strings, passwords, JWTs or Neon database credentials as Vite environment variables.
+- Prefer a **dedicated staging Vercel project** or isolated preview with staging-only Auth/API targets. The production bundle must not accidentally call the staging backend, and a staging bundle must not accidentally call production.
+- Configure the exact Vercel origin in **staging-only** Auth trusted origins and backend CORS after the preview URL is known. Do not relax production CORS to `*` or add disposable preview origins to the production database.
+- Vercel's Git integration/builds do not require paid GitHub Actions. Do not silently enable automatic publishing from branch pushes before the staging security and release gates are approved.
+- Current frontend contains a `/planner/` GitHub Pages base path; review Vite base, asset references, routing and PWA scope for a root-hosted Vercel deployment before publishing.
+- First complete staging migration/Auth/API tests, cross-browser session verification, account isolation and security checks, then request explicit approval for any public production cutover.
