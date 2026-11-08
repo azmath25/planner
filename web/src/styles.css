@@ -721,3 +721,79 @@
 [data-theme="monochrome"] .df-home-pie,
 [data-theme="monochrome"] .df-pie-disc,
 [data-theme="monochrome"] .df-report-large-pie{border-radius:50%!important;aspect-ratio:1}
+
+
+/* Consistent, symmetrical controls across navigation, tasks, notes, forms and reports.
+   Don't force icon-only close/check controls into full-width buttons. */
+.page-head .actions,.section-head .actions,.card-title .actions{
+ display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;min-width:0
+}
+.page-head .actions>.btn,.section-head .actions>.btn,
+.card-title .actions>.btn{min-height:40px;display:inline-flex;align-items:center;justify-content:center}
+.df-home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));width:min(100%,640px);
+ justify-content:center;align-items:stretch}
+.df-home-shortcuts>.btn{min-width:0;width:100%;height:100%;min-height:46px;
+ text-align:center;white-space:normal;overflow-wrap:anywhere}
+.df-home-focus>.btn,.df-doc-writing-bar>.btn,.df-doc-options .btn,
+.df-settings-row>.btn,.df-metric-report{display:inline-flex;align-items:center;justify-content:center;
+ text-align:center;gap:7px}
+.df-home-focus>.btn{min-height:42px}
+.df-home-metrics>.card{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.df-home-metric>strong{line-height:1.2;min-height:1.25em}
+.df-report-options{align-items:center}
+.df-report-options .actions{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
+.df-report-options .filter{min-height:40px;display:inline-flex;align-items:center;justify-content:center;
+ text-align:center;padding:7px 13px}
+.df-doc-writing-bar{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap}
+.df-doc-writing-bar>.btn,.df-doc-writing-bar>details>summary{min-height:40px;
+ display:inline-flex;align-items:center;justify-content:center}
+.df-doc-writing-bar .df-doc-save-status{flex:1 1 155px;min-width:130px}
+.df-doc-zoom-control{display:inline-grid;grid-template-columns:40px 64px 40px;align-items:stretch;gap:3px}
+.df-doc-zoom-control>.btn{width:100%;min-height:40px;display:flex;justify-content:center;padding:6px}
+.df-doc-options[open] .actions>.btn{min-height:40px;justify-content:center;width:100%;white-space:normal}
+.df-doc-photo-grid>.df-doc-photo figcaption .btn{min-height:38px}
+.df-doc-photo-grid>.df-doc-photo{height:100%}
+.df-settings-row>.btn,.df-settings-row>button{min-height:40px}
+.df-profile-reminder-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px;align-items:stretch}
+.df-profile-reminder-actions>.btn{min-width:0;min-height:43px;height:100%;white-space:normal;text-align:center}
+.modal-footer{display:flex;align-items:stretch;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.modal-footer>.btn{min-height:42px;display:inline-flex;justify-content:center;align-items:center}
+.df-quick-note-actions>.btn,.df-quick-note-actions>.mini-btn{min-height:36px;
+ display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.df-home-notes .section-head .actions{min-height:40px}
+@media(max-width:700px){
+ .page-head .actions,.section-head .actions,.card-title .actions{gap:7px}
+ .df-report-options{align-items:stretch}
+ .df-report-options>.actions{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+ .df-report-options .filter{min-width:0;width:100%;white-space:normal;font-size:12px;padding:7px 6px}
+ .df-doc-writing-bar .df-doc-save-status{flex-basis:100%;order:9;text-align:left;margin:0}
+ .df-doc-writing-bar>.df-doc-download{flex:1 1 120px;max-width:220px}
+}
+@media(max-width:540px){
+ .df-home-shortcuts{width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .df-home-shortcuts>.btn{min-height:48px;line-height:1.25;padding:8px 10px}
+ .df-home-focus-select{flex-basis:100%;width:100%}
+ .df-home-focus>.btn{flex:1 1 120px}
+ .modal-footer{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+ .modal-footer>.btn{min-width:0;width:100%;white-space:normal;min-height:44px}
+ .modal-footer>.btn:last-child:nth-child(odd){grid-column:1/-1}
+ .df-doc-writing-bar>.df-doc-back{flex:1 1 125px}
+ .df-doc-writing-bar>.df-doc-download{flex:1 1 125px;max-width:none}
+ .df-doc-writing-bar>.df-doc-options{flex:0 1 auto;margin-left:auto}
+ .df-doc-writing-bar>.df-doc-zoom-control{order:3}
+ .df-doc-writing-bar .df-doc-save-status{order:8}
+ .df-settings-row .btn{width:100%}
+ .df-profile-reminder-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .df-profile-reminder-actions>.btn:last-child:nth-child(odd){grid-column:1/-1}
+}
+@media(max-width:370px){
+ .df-home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ .df-home-shortcuts>.btn{font-size:11px;padding:8px 6px}
+ .df-doc-writing-bar>.df-doc-zoom-control{grid-template-columns:36px 56px 36px}
+ .df-profile-reminder-actions{grid-template-columns:minmax(0,1fr)}
+ .df-profile-reminder-actions>.btn:last-child:nth-child(odd){grid-column:auto}
+}
+/* Global square-corner setting must never square off a pie. */
+[data-theme="monochrome"] .df-pie-disc,
+[data-theme="monochrome"] .df-report-large-pie,
+[data-theme="monochrome"] .df-home-pie{border-radius:50%!important}
