@@ -56,7 +56,7 @@ test('Document editor saves safe links, LaTeX, code and existing long headings',
  assert.doesNotThrow(()=>assertDocumentBlocks(contents));
  assert.equal(safeDocumentLink('https://example.org'),true);
  for(const unsafe of ['javascript:alert(1)','data:text/html,foo','https://user:pw@example.org',
-  'file:///etc/passwd','https://example.org/\\nhello'])assert.equal(safeDocumentLink(unsafe),false);
+  'file:///etc/passwd','https://example.org/'+String.fromCharCode(10)+'hello'])assert.equal(safeDocumentLink(unsafe),false);
 });
 test('LaTeX and links cannot bypass bounded, text-only persistence',()=>{
  const base=good()[0];
