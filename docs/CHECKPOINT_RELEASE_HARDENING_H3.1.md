@@ -42,3 +42,9 @@ Evidence from the terminal:
 **Caution:** `ERESOLVE overriding peer dependency` warnings persist. The installed tree includes `@better-auth/core@1.7.18` requiring `@better-fetch/fetch@1.3.3` and `better-call@1.4.5`, while Neon Auth depends on lower versions; the auth UI also has conflicting `better-call@2.0.2` and `@better-auth/api-key@1.7.18`. Passing test suites does **not** demonstrate compatibility of real login, token refresh, or browser sessions. Treat this as a separate H3.2 gate, not a harmless warning.
 
 The tested `package-lock.json` **has not yet been committed** to the feature branch; it resides in the operator's local checkout. Publish only that generated lockfile after inspecting local git status. No prod Neon/GCP changes or deployment have been authorized.
+
+## H3.1 finalization completed — 2026-11-08
+
+The operator ran `scripts/h3-finalize-lock.sh` in the actual Cloud Shell checkout. Genuine `package-lock.json` was validated and committed as `47d7c9a` on `feature/dayframe-m53-release-20261107`, then successfully pushed to GitHub. This **closes the lockfile publication gate**. The prior statement that the lockfile exists only in Cloud Shell is historical.
+
+Further checks remain independent: dependency peer warnings and real Neon Auth/browser integration, plus H4 disposable SQL/browser release testing. Do not deploy based only on successful lockfile publication.
