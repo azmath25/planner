@@ -1,6 +1,7 @@
 // M7.3 isolated audit insights UI adapter; no Neon API calls.
 import fs from 'node:fs';
 import ts from 'typescript';
+import {wrapInsightsCsvHelper} from './insights-harness-code.mjs';
 import './build-m72-harness.mjs';
 const source=fs.readFileSync('tests/.harness/m72-app.js','utf8');
 const index=source.lastIndexOf('mountApp();');
@@ -10,8 +11,7 @@ const insightHelper=ts.transpileModule(
  }).outputText.replace(/^export \{\};?$/gm,'').replace(/\bexport /g,'');
 // Keep its parser helpers scoped, exposing only the real CSV helper to
 // the otherwise dependency-free legacy mock UI.
-const csvCode='const timeInsightsCsv=(function(){'+insightHelper+
- '\nreturn timeInsightsCsv;\n})();\n';
+const csvCode=wrapInsightsCsvHelper(insightHelper);
 if(index<0)throw Error('Missing account fixture mount');
 const adapter=`
 mockDb.insightsCalls=[];
