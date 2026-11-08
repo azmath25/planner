@@ -16,9 +16,9 @@ assert.equal(actual,branch,'H4.2 must run from the Dayframe feature checkout.');
 const apiSource=readFileSync('web/src/auth/api.ts','utf8');
 const authSource=readFileSync('web/src/auth/client.ts','utf8');
 const backend=readFileSync('backend/src/index.mjs','utf8');
-const api=apiSource.match(/export const API_URL='(https:\/\/[^']+)'/)?.[1];
-const auth=authSource.match(/'(https:\/\/[^']+\/dayframe\/auth)'/)?.[1];
-const origin=backend.match(/const ORIGIN='(https:\/\/[^']+)'/)?.[1];
+const api=apiSource.match(/const PRODUCTION_API='(https:\/\/[^']+)'/)?.[1];
+const auth=authSource.match(/const PROD_AUTH = '(https:\/\/[^']+\/dayframe\/auth)'/)?.[1];
+const origin=backend.match(/const ORIGIN=stage \? stageOrigin : '(https:\/\/[^']+)'/)?.[1];
 assert.ok(api&&auth&&origin,'Cannot find fixed frontend API/Auth URLs and backend origin.');
 // Pin to known Neon/Pages domains before any request (never follow arbitrary
 // user/env URLs). The URLs here are public service locations, not credentials.
