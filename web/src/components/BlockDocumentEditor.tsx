@@ -11,7 +11,6 @@ import { BlockNoteView } from '@blocknote/mantine';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import '@blocknote/math-block/style.css';
-import { assertDocumentBlocks } from '../domain/documentBlocks';
 
 // Notion-like editing: a simple pair of heading levels, text and code, safe
 // hyperlinks and editable LaTeX math (inline or display). No image uploads or
@@ -75,10 +74,8 @@ export function BlockDocumentEditor({blocks,onEdit,readOnly=false}:EditorProps){
   slashMenu={false}
   onChange={()=>{
    const current:unknown[]=JSON.parse(JSON.stringify(editor.document));
-   try{assertDocumentBlocks(current);onEdit(current,null);}
-   catch(error){
-    onEdit(current,error instanceof Error?error.message:'Unsupported document content');
-   }
+   // Preserve unfinished content without validating its syntax on each keystroke.
+   onEdit(current,null);
   }}
  >
   <SuggestionMenuController
