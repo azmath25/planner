@@ -1049,6 +1049,48 @@ return {async fetch(req){
         return json({note:existing.rows[0]},200,hdr);
       throw fail(409,'Note ID already used or workspace unavailable');
     }
+    // Private Note photo: one bounded owner-scoped image; no public URL.
+    const notePhotoPath=/^\/v1\/notes\/([a-f0-9-]{36})\/photo$/i.exec(path);
+    if(notePhotoPath){
+      const id=uuid(notePhotoPath[1],'note ID');
+      const note=await query(NOTE_BY_ID,[uid,id]);
+      if(!note.rows.length)throw fail(404,'Note unavailable');
+      if(req.method==='GET'){
+        const {rows}=await query(
+          "SELECT mime,encode(image_bytes,'base64') AS base64 FROM dayframe.note_photos "+
+          "WHERE owner_user_id=$1 AND note_id=$2",[uid,id]);
+        return json({photo:rows.length?
+          {data:'data:'+rows[0].mime+';base64,'+rows[0].base64}:null},200,hdr);
+      }
+      if(req.method==='PUT'){
+        const body=await readBody(req,265000);
+        if(typeof body.data!=='string')throw fail(400,'Invalid photo data');
+        const m=/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.data);
+        if(!m)throw fail(400,'Only JPEG, PNG and WebP photos are supported');
+        const bytes=Buffer.from(m[2],'base64');
+        if(bytes.length<16||bytes.length>180000||bytes.toString('base64')!==m[2])
+          throw fail(413,'Photo must be smaller than 180 KB after compression');
+        const mime=m[1];
+        const matches={'image/png':bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71,
+          'image/jpeg':bytes[0]===255&&bytes[1]===216,
+          'image/webp':bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP'};
+        if(!matches[mime])throw fail(400,'Photo content does not match its type');
+        const {rows}=await query(
+          "INSERT INTO dayframe.note_photos(note_id,owner_user_id,mime,image_bytes) "+
+          "VALUES($2,$1,$3,decode($4,'base64')) "+
+          "ON CONFLICT(note_id) DO UPDATE SET mime=EXCLUDED.mime,image_bytes=EXCLUDED.image_bytes,"+
+          "updated_at=now() WHERE dayframe.note_photos.owner_user_id=EXCLUDED.owner_user_id "+
+          "RETURNING note_id",[uid,id,mime,m[2]]);
+        if(!rows.length)throw fail(409,'Photo changed or note unavailable');
+        return json({saved:true},200,hdr);
+      }
+      if(req.method==='DELETE'){
+        await query("DELETE FROM dayframe.note_photos WHERE owner_user_id=$1 AND note_id=$2",
+          [uid,id]);
+        return json({deleted:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,DELETE,OPTIONS'});
+    }
     const noteConvert=/^\/v1\/notes\/([a-f0-9-]{36})\/convert$/i.exec(path);
     if(noteConvert&&req.method==='POST'){
       const id=uuid(noteConvert[1],'note ID'),body=await readBody(req,1500);
