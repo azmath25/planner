@@ -52,6 +52,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const autoTitleRef=useRef(false);
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
+ const [attachDocumentId,setAttachDocumentId]=useState('');
  const [showTrash,setShowTrash]=useState(false);
  const writing=Boolean(active&&!showTrash);
  useEffect(()=>{
@@ -308,6 +309,33 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     '. Use Retry creation to reconcile this request before starting a different document.');}
   finally{if(alive.current)setBusy(false);}
  };
+ const attachExisting=async()=>{
+  if(!filterTask||!initialWorkspaceId||!attachDocumentId||
+   busy||!canDiscard())return;
+  const candidate=documents.find(d=>d.id===attachDocumentId&&
+   d.workspace===initialWorkspaceId&&d.taskId===null&&d.parentId===null&&
+   !documents.some(child=>child.parentId===d.id));
+  if(!candidate){setError('Choose an unassigned document from this workspace.');return;}
+  setBusy(true);setError('');
+  try{
+   const full=await cloudApi.getDocument(candidate.id);
+   // Fetch the latest revision; never move a document that was linked elsewhere
+   // while this picker was open.
+   if(full.workspace!==initialWorkspaceId||full.taskId!==null||
+    full.parentId!==null)
+    throw new Error('This document was moved. Refresh before linking it.');
+   const attached=await cloudApi.updateDocument(full.id,full.revision,{
+    workspace:full.workspace,taskId:filterTask,parentId:null,
+    title:full.title,blocks:full.blocks
+   });
+   if(!alive.current)return;
+   setDocuments(list=>list.map(d=>d.id===attached.id?attached:d));
+   setAttachDocumentId('');
+   resetDraft(attached);
+  }catch(e){
+   if(alive.current)setError(e instanceof Error?e.message:'Could not link this document');
+  }finally{if(alive.current)setBusy(false);}
+ };
  const remove=async()=>{
   if(!active||busy)return;
   if(!window.confirm('Move this document to Recently Deleted? Child pages must be deleted first.'))return;
@@ -398,6 +426,11 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     parentId:active.parentId,title,blocks}
   },'dayframe-unsaved-draft-'+active.id+'.json');
  };
+ const attachCandidates=useMemo(()=>filterTask&&initialWorkspaceId?
+  documents.filter(d=>d.workspace===initialWorkspaceId&&d.taskId===null&&
+   d.parentId===null&&!documents.some(child=>child.parentId===d.id))
+   .sort((a,b)=>a.title.localeCompare(b.title)||a.id.localeCompare(b.id)):[],
+  [documents,filterTask,initialWorkspaceId]);
  const filtered=useMemo(()=>(searchTerm.trim().length>=2?(searchResults??[]):documents)
  .filter(d=>
   (filterWorkspace==='all'||d.workspace===filterWorkspace)&&
@@ -485,6 +518,22 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       <button className="text-link" onClick={()=>{if(canDiscard()){setFilterTask(null);resetDraft(null);}}}
        type="button">Show all tasks</button>
      </p>}
+     {filterTask&&initialWorkspaceId&&<div className="df-doc-attach-existing">
+      <label className="field-wrap">
+       <span className="form-label">Add an existing document to this task</span>
+       <select className="field" aria-label="Choose an unassigned document"
+        value={attachDocumentId} disabled={busy}
+        onChange={e=>setAttachDocumentId(e.target.value)}>
+        <option value="">Choose an unassigned document</option>
+        {attachCandidates.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}
+       </select>
+      </label>
+      <button className="btn small secondary" type="button"
+       disabled={busy||!attachDocumentId} onClick={()=>void attachExisting()}>
+       Attach to task
+      </button>
+      <p className="tiny">Only unassigned pages without child pages can be linked here.</p>
+     </div>}
     </>}
     <div className="df-doc-list">
      {loading?<p role="status">Loading documents…</p>:showTrash?
