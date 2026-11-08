@@ -46,7 +46,7 @@ export function createQuickNoteAutosaver(opts:Options){
   const target=id??slot;
   const result=saveQuickNoteDraft(opts.scope,target,revision,fields,
    storage,clientId??undefined);
-  if(id)clearQuickNoteDraft(opts.scope,'new',storage);
+  if(slot==='new'&&id)clearQuickNoteDraft(opts.scope,'new',storage);
   return result;
  };
  const status=(kind:Status['kind'],message:string)=>{
@@ -93,8 +93,12 @@ export function createQuickNoteAutosaver(opts:Options){
    if(disposed)return;
    const match=notes.find(n=>n.id===(id??clientId));
    if(!match){
-    // The original request did not commit, or its result is not visible yet.
-    // The next create uses exactly the same client UUID, never a new note ID.
+    if(id){
+     conflict=true;
+     status('conflict','This note is missing from the server. Your local edits remain backed up.');
+     return;
+    }
+    // An uncertain creation gets exactly the same client UUID on retry.
     unknown=false;attempt=null;
     schedule(400);
     return;
