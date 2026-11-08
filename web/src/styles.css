@@ -257,3 +257,83 @@
  .df-insight-track{max-width:125px}
  .report-table-scroll{max-width:100%;overflow-x:auto}
 }
+
+
+/* Full-width writing mode: do not waste the document viewport on folders,
+   navigation, form labels and non-writing actions. */
+.df-writing-open .sidebar,
+.df-writing-open .mobile-top,
+.df-writing-open .mobile-nav,
+.df-writing-open .topline,
+.df-writing-open .global-timer,
+.df-writing-open .df-documents>.page-head,
+.df-writing-open .df-doc-library{display:none!important}
+.df-writing-open .main{width:100%;min-width:0}
+.df-writing-open .content{width:100%;max-width:none;margin:0;padding:12px clamp(12px,2vw,28px) 36px}
+.df-writing-open .df-doc-grid{display:block;min-width:0}
+.df-writing-open .df-doc-content{
+ width:100%;min-width:0;min-height:calc(100dvh - 48px);
+ padding:clamp(12px,2vw,26px);display:flex;flex-direction:column
+}
+.df-doc-writing-bar{
+ display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+ position:sticky;top:0;z-index:11;background:var(--surface);
+ padding:4px 0 10px;border-bottom:1px solid var(--line)
+}
+.df-doc-writing-bar .df-doc-save-status{margin-left:auto;overflow-wrap:anywhere}
+.df-doc-controls .df-doc-title-field{margin:0}
+.df-doc-title-field .form-label{font-size:11px;line-height:1.2}
+.df-doc-title-field .field{font-size:clamp(17px,2vw,23px);font-weight:680}
+.df-doc-options{position:relative}
+.df-doc-options summary{list-style:none;display:flex;align-items:center;cursor:pointer}
+.df-doc-options summary::-webkit-details-marker{display:none}
+.df-doc-options[open] .actions{
+ position:absolute;right:0;top:calc(100% + 6px);z-index:30;
+ display:flex;flex-direction:column;align-items:stretch;width:min(290px,85vw);
+ padding:12px;border:1px solid var(--line);border-radius:14px;
+ box-shadow:var(--shadow);background:var(--surface)
+}
+.df-doc-options[open] .actions .btn{width:100%;text-align:left;justify-content:flex-start}
+.df-writing-open .df-document-editor{flex:1;min-height:calc(100dvh - 190px);margin-top:8px}
+.df-writing-open .df-document-editor .bn-editor{
+ min-height:calc(100dvh - 210px);padding:clamp(12px,2vw,28px);
+ width:100%;max-width:100%
+}
+/* Quick-note editing is a writing task too: wide on desktop, edge-to-edge
+   on phones. A click outside this dialog no longer discards the draft. */
+.modal-backdrop:has(.modal-note-editor){padding:12px}
+.modal.modal-note-editor{
+ width:max(75vw,min(92vw,1300px));max-width:calc(100vw - 24px);
+ height:min(92dvh,1100px);max-height:92dvh;
+ display:flex;flex-direction:column;overflow:auto
+}
+.modal-note-editor #note-form{display:flex;flex-direction:column;flex:1;min-height:0}
+.modal-note-editor #note-form .field-wrap:has(#ncontent){
+ display:flex;flex-direction:column;flex:1;min-height:240px
+}
+.modal-note-editor #ncontent{
+ flex:1;min-height:clamp(230px,42dvh,650px);
+ resize:vertical;line-height:1.55;font-size:15px
+}
+.modal-note-editor .modal-head{margin-bottom:12px}
+.modal-note-editor #note-form .modal-footer{margin-top:auto;padding-top:12px}
+@media(max-width:850px){
+ .df-writing-open .content{padding:0}
+ .df-writing-open .df-doc-content{
+  min-height:100dvh;border-radius:0;padding:calc(8px + env(safe-area-inset-top)) 12px
+   calc(14px + env(safe-area-inset-bottom))
+ }
+ .df-doc-writing-bar{gap:7px}
+ .df-doc-writing-bar .df-doc-save-status{order:4;width:100%;text-align:left;margin:0}
+ .df-writing-open .df-document-editor{min-height:calc(100dvh - 160px)}
+ .df-writing-open .df-document-editor .bn-editor{
+  min-height:calc(100dvh - 180px);padding:12px 6px
+ }
+ .modal-backdrop:has(.modal-note-editor){padding:0}
+ .modal.modal-note-editor{
+  width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;
+  border-radius:0;padding:calc(12px + env(safe-area-inset-top)) 14px
+   calc(16px + env(safe-area-inset-bottom))
+ }
+ .modal-note-editor #ncontent{min-height:36dvh}
+}
