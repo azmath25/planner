@@ -255,7 +255,22 @@ async function enableBrowserPush(){
   await navigator.serviceWorker.ready;
   const raw=settings.publicKey.replace(/-/g,'+').replace(/_/g,'/');
   const bytes=Uint8Array.from(atob(raw+'='.repeat((4-raw.length%4)%4)),c=>c.charCodeAt(0));
-  const existing=await registration.pushManager.getSubscription();
+  let existing=await registration.pushManager.getSubscription();
+  // A changed VAPID key requires a new browser subscription. Otherwise a
+  // previously enabled device silently stops receiving scheduled pushes.
+  if(existing){
+   const key=existing.options.applicationServerKey;
+   const prior=key?new Uint8Array(key):null;
+   const matches=prior?.length===bytes.length&&
+    bytes.every((item,index)=>prior[index]===item);
+   if(!matches){
+    try{await cloudApi.removePushSubscription(existing.endpoint);}
+    catch{/* An obsolete server record expires when the sender sees it. */}
+    if(!await existing.unsubscribe())
+     throw new Error('Old browser push subscription could not be replaced. Disable notifications and retry.');
+    existing=null;
+   }
+  }
   const subscription=existing||await registration.pushManager.subscribe({
    userVisibleOnly:true,applicationServerKey:bytes
   });
