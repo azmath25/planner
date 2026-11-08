@@ -10,10 +10,10 @@ const profile=section('function profileNotifications(){','\nlet documentPageClea
 const distribution=section('function reportDistribution(report){','function signedInReportsPage(){');
 
 test('Home prioritizes reports, today tasks, then editable Quick Notes',()=>{
- const report=home.indexOf('homeWeeklyReport()');
  const tasks=home.indexOf('df-home-today');
  const notes=home.indexOf('df-home-notes');
- assert.ok(report>=0&&tasks>report&&notes>tasks);
+ assert.ok(tasks>=0&&notes>tasks);
+ assert.doesNotMatch(home,/homeWeeklyReport\(\)/);
  assert.match(home,/state\.notes\.filter/);
  assert.match(home,/data-action="edit-note"/);
  assert.match(home,/data-action="modal-note"/);
