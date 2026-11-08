@@ -121,3 +121,29 @@ The operator subsequently stated that all checks passed on the corrected `script
 The existing separate Vercel Hobby project `dayframe-h44-staging` was checked: it has **no deployment** and no project domains. Added preview-only public build setting `VITE_DAYFRAME_TARGET=staging`; no staging API URL is set yet, and no Vercel build/publish was triggered. Verified isolated Neon project `wispy-meadow-90135924` still has **no Functions deployed**. No production changes, GitHub Actions, merges, or production migrations took place.
 
 **Immediate dependency:** obtain the freshly built, exact feature ZIP artifact from the operator's Cloud Shell `/tmp` (file uploaded to this conversation is sufficient) or use an explicitly staging-pinned Neon CLI deployment in Cloud Shell. Do not substitute `backend/packaged/dayframeapi.b64`, which predates M6–M8. After a successful isolated Neon API deployment provides the exact service URL, configure `VITE_DAYFRAME_STAGING_API_URL` in the Vercel *preview* environment. Vercel preview must not be published before the backend is pinned to staging and the exact preview origin can be registered with staging-only Auth and API CORS.
+
+## H4.4 isolated Neon API + Vercel feature-preview deployment (2026-11-08)
+
+**Result: staging infrastructure deployed and unauthenticated smoke passed; browser sign-in/ownership acceptance still pending.**
+
+Source/branch:
+- Repo `azmath25/planner`, feature branch `feature/dayframe-m53-release-20261107`. Latest frontend preview source commit `d9e09f683324a982ab7b2506d22a5f8233fb49b1`. No merge to `main`.
+- Verified independently in an isolated temporary Vercel sandbox using Node 24, `npm ci`, local `test:source` and `test:api`, current API bundle, and `node --check`. The backend package built from source commit `66f47cc48e76446bf33dc33ea785c302670ad5da` had SHA-256 `326d7de75a1ddcc601497edc711e247788c2f11dd7961afc18b7fcee1af351f7`; it was the package deployed to Neon. Staging runtime import/CORS regression tests were added in `backend/tests/staging-config.test.mjs`.
+- A real staging API 502 was found during smoke testing: `stageOrigin is not defined`. Root cause was an overescaped newline inside a source comment that hid the constant. Fixed at `65697e0`, retested and redeployed. This demonstrates why a bundle/syntax pass alone was insufficient.
+- Frontend static isolation hardened at commits `478c30e` (exact Neon staging API pin) and `d9e09f6` (fail the staging distribution check if production service hostnames appear). Rebuilt using the three *public* preview environment variables and verified `npm run check:dist` PASS: isolated staging endpoints present, production Neon service hostnames absent, root-hosted CSS/assets and `/` PWA manifest correct.
+
+Neon staging:
+- Separate Neon project `wispy-meadow-90135924`, branch `br-delicate-violet-b9cnjyuh`, database `dayframe`. Verified **20 migrations**, zero rows in workspaces, tasks, quick_notes and documents at deployment checkpoint.
+- Neon Function slug `dayframeapi`, active deployment **3** `completed`, Node 24, with branch-local DATABASE_URL, Neon staging Auth issuer and JWKS. No environment secret was placed in GitHub or `VITE_*`.
+- API invocation: `https://br-delicate-violet-b9cnjyuh-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech/`.
+- Staging Auth trusted domain and Function's exact CORS origin: `https://dayframe-h44-staging-git-feature-dayf-e2f364-azmath25s-projects.vercel.app`. Unknown origins rejected.
+- **Live observed HTTP smoke**: `GET /health` 200 with `service: dayframe, status: ok`; unauthenticated `GET /v1/me` 401; trusted origin `OPTIONS /v1/me` 204 with the exact allow-origin header; an unknown origin `OPTIONS /v1/me` 403 without that header. These checks did **not** create an account or verify real JWT authorization.
+
+Vercel staging:
+- Free Hobby project `dayframe-h44-staging`, Git connected to `azmath25/planner`, Node 24. Latest verified feature-branch preview is READY, deployment `dpl_PU1Zwim9eX66VsT5L7SESDPSKfE1` at commit `d9e09f6`. Stable feature alias: `https://dayframe-h44-staging-git-feature-dayf-e2f364-azmath25s-projects.vercel.app`.
+- Preview-only build env: `VITE_DAYFRAME_TARGET=staging`, `VITE_DAYFRAME_STAGING_API_URL` points exclusively to the staging Neon Function, `VITE_NEON_AUTH_URL` points exclusively to separate staging Better Auth. Vercel's build log confirmed `Dayframe PWA manifest scope: /`.
+- The project has Vercel Authentication/SSO protection. Anonymous HTTP visits return 302 to Vercel SSO. **Authenticated browser checks have not been performed**, including signup/login, session reload, sign-out, cross-user record isolation, Safari cookies, and mobile PWA install.
+- Project-level ignored-build command is scoped to `VERCEL_ENV=preview` and the exact feature branch; non-feature/production-target builds are skipped. Doc-only updates under `docs/` are skipped. An initial incorrectly targeted production-mode deployment on this **staging Vercel project** was canceled by the ignore guard, and no production Dayframe release was made.
+- No GitHub Actions were triggered or used to deploy; no production Neon database, existing Dayframe Pages site, Quizer or Mimo systems were altered.
+
+**Outstanding H4.4 gate:** In the protected preview, exercise two distinct disposable staging accounts through the real Neon Auth browser flow; verify fresh login, reload, `/v1/me`, create/list/update/delete for owned tasks/notes/documents, cross-owner denial, logout, Safari cookie behavior and responsive/mobile UI. Only after that can H4.4 be marked fully accepted. Production promotion still requires separate authorization.
