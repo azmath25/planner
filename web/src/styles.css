@@ -438,3 +438,20 @@
 @media(max-width:520px){
  .df-doc-attach-existing>.btn{align-self:stretch}
 }
+
+
+/* Quick Notes use transparent, nonblocking sync feedback. Distinguish
+   cloud persistence from a device-only recovery copy on every screen size. */
+.df-note-autosave-status{
+ min-height:24px;margin:8px 0 4px;font-size:12px;
+ line-height:1.5;overflow-wrap:anywhere
+}
+.df-note-autosave-status[data-sync="saved"]{color:var(--muted)}
+.df-note-autosave-status[data-sync="local"],
+.df-note-autosave-status[data-sync="pending"]{color:var(--text)}
+.df-note-autosave-status[data-sync="error"],
+.df-note-autosave-status[data-sync="conflict"]{color:var(--danger,var(--text))}
+.modal-note-editor #note-form .modal-footer{gap:10px;flex-wrap:wrap}
+@media(max-width:420px){
+ .modal-note-editor #note-form .modal-footer>.btn{flex:1 1 120px;min-height:42px}
+}
