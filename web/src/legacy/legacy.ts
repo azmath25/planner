@@ -7,6 +7,7 @@ import { getElapsedMs, startTimer, pauseTimer, resumeTimer, finishSession, forma
 import { cloudApi } from '../auth/api';
 import { periodReportCsv } from '../domain/reportCsv';
 import { timeInsightsCsv } from '../domain/timeInsights';
+import {pieSegments,pieGradient} from '../domain/reportPie';
 
 export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cloud: any = null, account: any = {}) {
  const accountName=String(account?.name|| (cloud?'Account':'Local demo')).trim()||'Account';
@@ -745,6 +746,29 @@ function insightsPanel(){
    cover the full selected period. Parent/subtask tracked time is never added twice.</p>
  </section>`;
 }
+function renderWorkspacePie(title,rows,kind){
+ const pie=pieSegments(rows);
+ const units=kind==='focus'?'of recorded time':'of fixed planned time';
+ const time=value=>kind==='focus'?formatElapsed(value):minsText(value);
+ const legend=pie.segments.map(slice=>
+  `<li class="df-pie-legend-item">
+    <span class="df-pie-key" style="background:${slice.color}" aria-hidden="true"></span>
+    <span class="df-pie-name">${escapeHTML(slice.label)}</span>
+    <strong>${slice.percentage.toFixed(1)}%</strong>
+    <small>${time(slice.value)}</small></li>`).join('');
+ return `<section class="card df-pie-card" aria-label="${escapeHTML(title)}">
+   <h3>${escapeHTML(title)}</h3>
+   <p class="tiny">Share ${units} by workspace, from the selected saved period.</p>
+   ${pie.total?
+     `<div class="df-pie-content">
+       <div class="df-pie-disc" role="img"
+        aria-label="${escapeHTML(title+'; '+pie.segments.map(x=>x.label+' '+x.percentage.toFixed(1)+' percent').join(', '))}"
+        style="background:${pieGradient(pie)}"></div>
+       <ul class="df-pie-legend">${legend}</ul>
+      </div>`:
+     '<p class="df-pie-empty">No saved time for this period yet.</p>'}
+  </section>`;
+}
 function signedInReportsPage(){
  const period=state.reportPeriod,report=state.periodReport;
  const controls=`<div class="filters" style="display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:17px">
@@ -794,6 +818,14 @@ function signedInReportsPage(){
     <div class="metric-note">Separate from recorded time; session-start attribution</div></div>
   </div>
   ${report.accountLegacyEstimatedMs?'<div class="info-banner">Older sessions lack detailed segment timestamps. Their remaining duration is estimated into the period of the session start and is not included in exact recorded totals.</div>':''}
+  <div class="df-pie-section" aria-label="Time distribution charts">
+   ${renderWorkspacePie('Recorded focus by workspace',
+     report.workspaces.map(w=>({label:(w.name||'Deleted workspace')+(w.archived?' (archived)':''),
+      value:w.recordedMs})), 'focus')}
+   ${renderWorkspacePie('Planned minutes by workspace',
+     report.workspaces.map(w=>({label:(w.name||'Deleted workspace')+(w.archived?' (archived)':''),
+      value:w.plannedMinutes})), 'planned')}
+  </div>
   <div class="section card"><div class="card-title"><h2>By workspace</h2></div>
    <div class="report-table-scroll"><table class="report-table"><thead><tr>
     <th>Workspace</th><th>Recorded</th><th>Fixed plan</th><th>Legacy estimate</th>
