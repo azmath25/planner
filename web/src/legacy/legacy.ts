@@ -1249,8 +1249,8 @@ else if(state.modal==='note'||state.modal==='note-edit'){
   <p class="tiny">Paste a link (https://…) into a note to make it clickable in previews and downloads.</p>
   <div class="df-note-photo-area">
    <div class="df-note-photo-heading"><strong>Photo</strong><span class="tiny">One private image per note, up to 180 KB after compression</span></div>
-   <div id="note-photo-preview" class="df-note-photo-preview">${n&&notePhotos.has(n.id)&&notePhotos.get(n.id)?
-     '<img class="df-note-photo" alt="Attached note photo" src="'+notePhotos.get(n.id)+'"/>':
+   <div id="note-photo-preview" class="df-note-photo-preview">${n&&(notePhotos.has(n.id)&&notePhotos.get(n.id)||!isCloud&&state.media[mediaKey('note',n.id,'photo')])?
+     '<img class="df-note-photo" alt="Attached note photo" src="'+(notePhotos.get(n.id)||state.media[mediaKey('note',n.id,'photo')])+'"/>':
      '<span class="tiny">No photo attached.</span>'}</div>
    <label class="btn small secondary df-note-photo-picker" for="note-photo-file">Add / replace photo</label>
    <input type="file" id="note-photo-file" accept="image/jpeg,image/png,image/webp" hidden/>
@@ -1476,7 +1476,7 @@ async function loadNotePhoto(id){
 function exportNoteFile(note,format='html'){
  const id=note.id;
  const render=async()=>{
-  let photo=notePhotos.get(id)??null;
+  let photo=notePhotos.get(id)??(!isCloud?state.media[mediaKey('note',id,'photo')]??null:null);
   if(isCloud&&id&&!notePhotos.has(id)){
    photo=await cloudApi.getQuickNotePhoto(id);
    notePhotos.set(id,photo);
