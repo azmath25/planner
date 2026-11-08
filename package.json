@@ -16,7 +16,7 @@
     "test:pwa": "node --test tests/pwa-worker.test.mjs",
     "test:reports": "node --experimental-strip-types --test tests/timeReports.test.mjs tests/timeInsights.test.mjs tests/reportCsv.test.mjs tests/reportPie.test.mjs",
     "test:responsive": "node tests/responsive-layout-browser.mjs",
-    "test:quicknotes": "node --test tests/quickNoteAutosave.test.mjs"
+    "test:quicknotes": "node --test tests/quickNoteAutosave.test.mjs tests/quickNoteFormWiring.test.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.57.0",
