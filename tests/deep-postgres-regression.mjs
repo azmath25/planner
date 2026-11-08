@@ -751,10 +751,13 @@ test('M7.3 audit-event deadlines and estimates stay owner-scoped and classify mi
  const sb='c9777777-7777-4777-8777-777777777777';
  await pool.query("INSERT INTO dayframe.workspaces(id,owner_user_id,name,kind) VALUES($1,$2,'Insights A','custom'),($3,$4,'Insights B','custom')",[wa,owner,wb,other]);
  await pool.query("INSERT INTO dayframe.notification_preferences(owner_user_id,time_zone) VALUES($1,'Asia/Baku'),($2,'Asia/Baku')",[owner,other]);
- await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline) VALUES($1,$2,$3,'Tracked task',30,'2026-11-07'),($4,$2,$3,'Unsegmented task',20,'2026-11-07')",[ta,owner,wa,tb]);
+ await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline) VALUES($1,$2,$3,'Tracked task',30,'2026-11-07'),($4,$2,$3,'Unsegmented task',20,'2026-11-06')",[ta,owner,wa,tb]);
  await pool.query("INSERT INTO dayframe.tasks(id,owner_user_id,workspace_id,title,estimate_minutes,deadline) VALUES($1,$2,$3,'Other owner',30,'2026-11-07')",[tc,other,wb]);
  await pool.query("UPDATE dayframe.tasks SET status='done' WHERE id IN ($1,$2,$3)",[ta,tb,tc]);
- for(const [o,t,when] of [[owner,ta,'2026-11-07T15:00:00Z'],[owner,tb,'2026-11-07T20:00:00Z'],[other,tc,'2026-11-07T15:00:00Z']]){
+ // Asia/Baku is UTC+04: 15:00Z and 19:00Z both fall on Nov 7 locally.
+ // The second task was due Nov 6, so its Nov 7 23:00 completion is late.
+ // 20:00Z would already be Nov 8 local and must not count in this daily report.
+ for(const [o,t,when] of [[owner,ta,'2026-11-07T15:00:00Z'],[owner,tb,'2026-11-07T19:00:00Z'],[other,tc,'2026-11-07T15:00:00Z']]){
   const result=await pool.query("UPDATE dayframe.task_events SET created_at=$3::timestamptz WHERE owner_user_id=$1 AND task_id=$2 AND event_type='completed' RETURNING event_id",[o,t,when]);
   assert.equal(result.rows.length,1,'Completion audit snapshot must exist');
  }
