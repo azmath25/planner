@@ -672,3 +672,52 @@
 [data-theme="monochrome"] .df-report-large-pie{
  aspect-ratio:1;border-radius:50%!important;
 }
+
+
+/* Today has two functional navigation shortcuts; Reports is in the header. */
+.df-home-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ width:min(100%,640px);margin:12px auto 18px;gap:10px}
+.df-home-shortcuts>.btn{justify-content:center;min-height:48px}
+@media(max-width:370px){
+ .df-home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ .df-home-shortcuts>.btn{min-height:44px}
+}
+/* Sticky/Quick Notes: open by tapping the body, with Delete as the sole action. */
+.df-quick-note-card{min-width:0;display:flex;flex-direction:column;gap:8px}
+.df-quick-note-preview{display:block;flex:1;min-width:0;cursor:pointer;
+ border-radius:8px;padding:4px;outline-offset:2px}
+.df-quick-note-preview:focus-visible{outline:2px solid var(--accent)}
+.df-quick-note-preview>h3{margin:0 0 8px;overflow-wrap:anywhere}
+.df-quick-note-preview>p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;
+ display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;margin:0}
+.df-quick-note-actions{display:flex;justify-content:flex-end;margin-top:auto}
+.df-note-delete{display:inline-flex;align-items:center;gap:5px}
+.df-home-note.df-quick-note-card{min-height:148px}
+.df-home-note .df-quick-note-preview p{display:-webkit-box;max-width:100%;overflow:hidden}
+[data-theme="monochrome"] .df-quick-note-preview{border-radius:0}
+
+/* Document photos belong to the full editor, not short-note cards. */
+.df-doc-photo-section{border-top:1px solid var(--line);padding:18px 14px;
+ margin-top:18px;display:grid;gap:12px;min-width:0}
+.df-doc-photo-heading{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.df-doc-photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px}
+.df-doc-photo{margin:0;min-width:0;display:grid;gap:6px;padding:9px;
+ border:1px solid var(--line);border-radius:9px}
+.df-doc-photo>img{max-width:100%;max-height:260px;width:100%;height:auto;
+ object-fit:contain;display:block}
+.df-doc-photo figcaption{display:flex;gap:8px;align-items:center;
+ justify-content:space-between;flex-wrap:wrap;font-size:12px}
+.df-doc-photo-add{position:relative;cursor:pointer;justify-self:start}
+.df-doc-photo-add:has(input:disabled){opacity:.45;cursor:not-allowed}
+.df-doc-download{white-space:nowrap}
+@media(max-width:480px){
+ .df-doc-photo-section{padding:12px 4px}
+ .df-doc-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .df-doc-photo{padding:5px}
+ .df-doc-photo-add{min-height:42px}
+}
+/* Every pie stays circular regardless of theme or ancestor border policy. */
+.df-home-pie,.df-pie-disc,.df-report-large-pie,
+[data-theme="monochrome"] .df-home-pie,
+[data-theme="monochrome"] .df-pie-disc,
+[data-theme="monochrome"] .df-report-large-pie{border-radius:50%!important;aspect-ratio:1}
