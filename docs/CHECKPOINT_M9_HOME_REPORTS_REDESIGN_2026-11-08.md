@@ -26,7 +26,8 @@ The former welcome banner and large reminder inbox were removed from Home. The n
 4. A weekly activity card loaded from the existing owner-scoped Neon `GET /v1/time-report?period=week&day=<today>`, with exact recorded focus, fixed planned minutes, and a workspace focus pie with accessible text legend. Loading/error/zero states replace invented sample totals.
 5. Today's task rows, a task selector and direct Start action that uses existing validated timer logic and its switch confirmation. The selector is retained across unrelated page updates.
 6. **Quick Notes immediately below today's tasks**, showing pinned notes first followed by recently updated notes, with content previews, Open Note and New Note controls. No second notes database or duplicate editor.
-7. Workspaces section below the main dashboard.
+7. Existing pinned task and workspace shortcuts remain available below Quick Notes.
+8. Workspaces section below the main dashboard.
 
 The new UI is responsive, with explicit 660px and 370px layout rules, wrapping shortcuts and compact metrics/notes.
 
@@ -67,6 +68,8 @@ Current feature source was tested in an isolated Vercel sandbox, without GitHub 
 - `npm run test:api`: passed.
 - `npm run typecheck`: passed.
 - `npm run build` with the existing current Dayframe API/Auth origins, followed by `npm run check:dist`: passed.
+
+The final source (including restored pinned-item shortcuts) was retested in a fresh sandbox: dashboard regression, TypeScript, Vite build and distribution checks all passed.
 
 **Not verified:** real signed-in mobile Chrome/iOS Safari/tablet visual regression, keyboard/safe-area/landscape layout, report drill-down behavior against real historical per-task period data, and push notifications from the new reminder schedule. A separate eight-width Chromium test exists but previously could not execute in Vercel's universal sandbox due to missing OS browser libraries; do not call it passed.
 
