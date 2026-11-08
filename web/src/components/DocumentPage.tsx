@@ -426,12 +426,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  },[filtered,ids]);
  return <section className={'df-documents'+(writing?' df-documents-writing':'')} aria-label="Private document library">
   <div className="page-head">
-   <div><div className="eyebrow">PRIVATE LIBRARY</div><h1>Documents</h1>
-    <p className="subtitle">Autosave keeps unfinished writing and imperfect math. Unsynced edits are backed up on this device.</p>
+   <div><div className="eyebrow">PRIVATE LIBRARY</div><h1>{filterTask?'Task documents':'Documents'}</h1>
+    <p className="subtitle">{filterTask
+     ?<>For {initialTaskName||'this task'} · New documents here stay linked to the task and autosave while you write.</>
+     :'Autosave keeps unfinished writing and imperfect math. Unsynced edits are backed up on this device.'}</p>
    </div>
    <div className="actions">
     <button className="btn secondary small" type="button" onClick={()=>void refresh()} disabled={busy||loading}>Refresh</button>
-    <button className="btn" type="button" onClick={()=>void create(false)} disabled={busy||showTrash}>New document</button>
+    <button className="btn" type="button" onClick={()=>void create(false)} disabled={busy||showTrash}>
+     {filterTask?'New task document':'New document'}</button>
    </div>
   </div>
   {error&&<p role="alert" className="info-banner">{error}</p>}
