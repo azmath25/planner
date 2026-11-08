@@ -73,7 +73,7 @@ const initialTasks=()=>[
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
-const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
+const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',homeFocusTask:'',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
@@ -582,7 +582,7 @@ function home(){
     ${focusTasks.length?`<label class="df-home-focus-select"><span class="form-label">Focus task</span>
       <select class="field" id="df-home-focus-task">
        <option value="">Choose a task</option>
-       ${focusTasks.map(t=>`<option value="${escapeHTML(t.id)}">${escapeHTML(t.title)}</option>`).join('')}
+       ${focusTasks.map(t=>`<option value="${escapeHTML(t.id)}" ${state.homeFocusTask===t.id?'selected':''}>${escapeHTML(t.title)}</option>`).join('')}
       </select></label>
       <button class="btn" type="button" data-action="home-start-focus">${icon('play')} Start</button>`:
       '<button class="btn secondary" data-action="nav" data-page="tasks">Choose a task</button>'}
@@ -1026,19 +1026,16 @@ function signedInReportsPage(){
     <tbody>${taskHtml}</tbody></table></div>
   </div>`;
 }
-function reportsPage(){if(isCloudTime)return signedInReportsPage();const periods=[['day','Daily'],['week','Weekly'],['month','Monthly']];const series=state.reportPeriod==='day'?[3,4,2,6,5,4,2]:state.reportPeriod==='week'?[4,6,3,7,5,2,1]:[2,5,4,6,5,7,4];const labels=state.reportPeriod==='day'?['8','10','12','14','16','18','20']:state.reportPeriod==='week'?['Mon','Tue','Wed','Thu','Fri','Sat','Sun']:['W1','W2','W3','W4','W5','W6','W7'];
- const rows=isCloudTime?
-  Object.entries(state.timeRollups?.workspaces||{}).map(([id,ms])=>{
-   const w=workspaces.find(x=>serverWorkspaceId(x.id)===id);
-   const name=w?escapeHTML(w.name):'Archived workspace ('+escapeHTML(id.slice(0,8))+')';
-   const live=state.timeSession?.workspaceIdAtStart===id?activeTimeDeltaMs():0;
-   return `<tr><td>${name}</td><td>${formatElapsed(ms+live)}</td></tr>`;
-  }).join('')||'<tr><td colspan="2">No recorded sessions yet</td></tr>':
-  '<tr><td>General</td><td>3h 45m</td></tr><tr><td>Research</td><td>7h 15m</td></tr><tr><td>Development</td><td>5h 20m</td></tr>';
- const total=isCloudTime?(state.timeLoaded?formatElapsed(accountTimeMs()):'—'):'16h 20m';
- const finished=isCloudTime?String(state.tasks.filter(t=>t.status==='done').length):'12';
- const note=isCloudTime?'All-time saved Neon sessions, including time from deleted tasks. Current active time is included.':'Illustrative account preview';
- return `${titleHead('Your progress','Reports','Activity across every workspace, with individual summaries as well.')}<div class="info-banner">${icon('spark')} ${isCloudTime?'Focused time and workspace totals are live from Neon. Charts and period-specific analysis arrive in M7.':'Preview numbers are illustrative. Real time-series reports arrive in M7.'}</div>${weeklyReportsPanel()}<div class="filters" style="margin-bottom:16px">${periods.map(([v,l])=>`<button class="filter ${state.reportPeriod===v?'active':''}" data-action="report-period" data-value="${v}">${l}</button>`).join('')}</div><div class="report-cards"><div class="card metric"><div class="metric-label">Focused time</div><div class="metric-value" data-current-account-time>${total}</div><div class="metric-note">${isCloudTime?'All-time across all workspaces':'Illustrative focus time'}</div></div><div class="card metric"><div class="metric-label">Tasks finished</div><div class="metric-value">${finished}</div><div class="metric-note">${isCloudTime?'Completed tasks currently visible':'Preview count'}</div></div><div class="card metric"><div class="metric-label">On-time rate</div><div class="metric-value">${isCloudTime?'—':'87%'}</div><div class="metric-note">Detailed metrics arrive in M7</div></div><div class="card metric"><div class="metric-label">Planned / actual</div><div class="metric-value">${isCloudTime?'—':'92%'}</div><div class="metric-note">Detailed metrics arrive in M7</div></div></div><div class="section dash-grid"><div class="card"><div class="card-title"><h2>Recorded activity</h2><span class="pill gray">Hours</span></div>${isCloudTime?'<p class="tiny">Daily, weekly and monthly time-series charts are planned for M7. The totals shown here are all-time.</p>':`<div class="report-chart">${series.map((v,i)=>`<div class="chart-col"><div class="chart-bar" style="height:${Math.round(v/8*100)}%"></div><small>${labels[i]}</small></div>`).join('')}</div>`}</div><div class="card"><div class="card-title"><h2>By workspace</h2><span class="tiny">Time tracked</span></div><table class="report-table"><tbody>${rows}<tr><td><strong>Total</strong></td><td>${total}</td></tr></tbody></table><p class="banner-note">${note} Parent task rollups are not added together when calculating the account total.</p></div></div>`}
+function reportsPage(){
+ if(isCloudTime)return signedInReportsPage();
+ return `${titleHead('ACCOUNT ACTIVITY','Reports','Real focus and planning summaries.')}
+ <section class="card df-report-distribution">
+  <h2>Sign in for reports</h2>
+  <p class="tiny">The local preview does not invent time totals or progress charts.
+   Your signed-in account uses saved sessions, workspaces and tasks.</p>
+  <button class="btn secondary" data-action="nav" data-page="profile">Open Profile</button>
+ </section>`;
+}
 function calendarPage(){
  const [from,to]=rangeForCalendar();
  const days=[];for(let d=from;d<=to;d=dayAdd(d,1))days.push(d);
@@ -2416,6 +2413,7 @@ trackListener('change',async e=>{
    .map(t=>'<option value="'+escapeHTML(t.id)+'">'+escapeHTML(t.title)+'</option>').join('');
  return;
 }if(e.target.id==='note-filter'){state.noteFilter=e.target.value;render();return;}
+if(e.target.id==='df-home-focus-task'){state.homeFocusTask=e.target.value;return;}
 if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){
  state.planDay=e.target.value;render();
  if(isCloud){void loadCloudPool(state.planDay);void loadCloudSchedule(state.planDay,state.planDay);}
