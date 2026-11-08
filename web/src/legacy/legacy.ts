@@ -871,22 +871,26 @@ function renderWorkspacePie(title,rows,kind){
   </section>`;
 }
 function reportDistribution(report){
- const scope=state.reportScope,chart=state.reportChart;
+ const scope=state.reportScope,chart=state.reportChart,context=state.reportContext;
  let heading='',description='',rows=[];
  if(scope==='workspace'){
   heading='By workspace';description='Recorded focus for the selected day, week or month.';
-  rows=report.workspaces.map(w=>({label:w.name||'Archived workspace',value:w.recordedMs}));
+  rows=report.workspaces.filter(w=>!context||context.scope!=='workspace'||
+   w.workspaceId===serverWorkspaceId(context.id))
+   .map(w=>({label:w.name||'Archived workspace',value:w.recordedMs}));
  }else if(scope==='workflow'){
   heading='By workflow / long-term project';
   description='Period focus from top-level long-term projects. Nested project rollups are omitted to avoid double-counting; other tasks are not included.';
   const projects=report.longTermTasks;
-  rows=projects.filter(p=>!projects.some(ancestor=>ancestor.taskId!==p.taskId&&
-   isDescendantOf(p.taskId,ancestor.taskId)))
+  rows=projects.filter(p=>context?.scope==='workflow'?
+    p.taskId===context.id:
+    !projects.some(ancestor=>ancestor.taskId!==p.taskId&&isDescendantOf(p.taskId,ancestor.taskId)))
    .map(p=>({label:p.title,value:p.recordedMs}));
  }else{
   heading='By individual task';
   description='All-time direct task focus (including active time), not the selected period. Period-specific task reporting requires a backend extension.';
-  rows=state.tasks.map(t=>({label:t.title,value:taskTimeMs(t)}));
+  rows=state.tasks.filter(t=>!context||context.scope!=='task'||t.id===context.id)
+   .map(t=>({label:t.title,value:taskTimeMs(t)}));
  }
  const values=rows.filter(x=>Number.isFinite(x.value)&&x.value>0)
   .sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label));
@@ -918,8 +922,11 @@ function reportDistribution(report){
    <tr><th>Total displayed</th><td>${formatElapsed(total)}</td><td>100%</td></tr>
   </tbody></table></div>`;
  return `<section class="card df-report-distribution">
-  <div class="card-title"><div><h2>${escapeHTML(heading)}</h2>
-   <p class="tiny">${escapeHTML(description)}</p></div></div>
+  <div class="card-title"><div><h2>${escapeHTML(context?
+   context.label+' · '+heading:heading)}</h2>
+   <p class="tiny">${escapeHTML(description)}</p></div>
+   ${context?'<button type="button" class="btn small secondary" data-action="report-context-clear">All reports</button>':''}
+  </div>
   <div class="df-report-options">
    <div class="actions" role="group" aria-label="Report breakdown">
     ${[['workspace','Workspaces'],['workflow','Workflows'],['task','Tasks']].map(([value,label])=>`
@@ -2073,8 +2080,9 @@ case'unschedule':{
   persist();
  }
  render();break;
-}case'report-scope':if(['workspace','workflow','task'].includes(b.dataset.value)){
- state.reportScope=b.dataset.value;render();
+}case'report-context-clear':state.reportContext=null;render();break;
+case'report-scope':if(['workspace','workflow','task'].includes(b.dataset.value)){
+ state.reportScope=b.dataset.value;state.reportContext=null;render();
 }break;
 case'report-chart':if(['bar','pie','table'].includes(b.dataset.value)){
  state.reportChart=b.dataset.value;render();
