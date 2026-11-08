@@ -97,3 +97,19 @@ python3 scripts/h44-package-staging-api.py --plan
 python3 scripts/h44-package-staging-api.py --build
 ```
 Do not run a Neon deploy or enable Vercel preview publishing without verifying the exact target, staging origin and build; no app-hosted user/session acceptance has been performed.
+
+## Cloud Shell H4.4 package attempt — corrected test syntax (2026-11-08)
+
+The operator ran `scripts/h44-package-staging-api.py --plan` and `--build` after pulling the feature branch. Plan passed with Node 26.13.0. Source checks passed, including 2 Insights helper tests. The API suite reported **74 pass, 1 fail** because Node could not parse `backend/tests/documents.test.mjs` at line 42: `Invalid regular expression ... Unterminated group`. This was a **test-source syntax error**, not a failed SQL assertion, authenticated integration test, or API deployment.
+
+Corrected three overescaped JavaScript regex literals in that test (`\\.`→`\.`, `\\(`→`\(`) at feature commit `f9c15829`. An isolated Node 22 syntax/match control for the corrected expressions passed; this does **not** count as rerunning Dayframe's backend suite. **The full test suite and staging package remain pending rerun.**
+
+Safe Cloud Shell next step:
+
+```bash
+cd ~/dayframe-h2
+git pull --ff-only origin feature/dayframe-m53-release-20261107
+python3 scripts/h44-package-staging-api.py --build
+```
+
+This command reruns source and API tests, then packages the ZIP under `/tmp` only on success. No GitHub Actions, production deployment, Neon migrations, merge, or Vercel publication occurs.
