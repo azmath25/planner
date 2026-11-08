@@ -16,6 +16,7 @@ type Options={
  api:NoteAutosaveApi;
  onSaved:(note:CloudNote)=>void;
  onStatus:(status:Status)=>void;
+ storage?:Pick<Storage,'setItem'|'getItem'|'removeItem'>;
  delayMs?:number;
 };
 /** One controller per open note. Writes are serialized, revision-fenced and
@@ -27,7 +28,8 @@ export function createQuickNoteAutosaver(opts:Options){
  let timer:ReturnType<typeof setTimeout>|null=null;
  let backoff=3500,unknown=false;
  let attempt:{id:string;revision:number;fields:WriteFields;version:number}|null=null;
- const saved=readQuickNoteDraft(opts.scope,slot);
+ const storage=opts.storage??localStorage;
+ const saved=readQuickNoteDraft(opts.scope,slot,storage);
  let clientId=saved?.clientId||(!id?crypto.randomUUID():null);
  if(saved){
   fields=saved.fields;
@@ -43,8 +45,8 @@ export function createQuickNoteAutosaver(opts:Options){
  const saveLocal=()=>{
   const target=id??slot;
   const result=saveQuickNoteDraft(opts.scope,target,revision,fields,
-   localStorage,clientId??undefined);
-  if(id)clearQuickNoteDraft(opts.scope,'new');
+   storage,clientId??undefined);
+  if(id)clearQuickNoteDraft(opts.scope,'new',storage);
   return result;
  };
  const status=(kind:Status['kind'],message:string)=>{
@@ -67,15 +69,15 @@ export function createQuickNoteAutosaver(opts:Options){
   if(!disposed)opts.onSaved(note);
   if(version===writeVersion&&equal(fields,note)){
    cleanVersion=version;
-   clearQuickNoteDraft(opts.scope,slot);
-   if(id!==slot)clearQuickNoteDraft(opts.scope,id);
+   clearQuickNoteDraft(opts.scope,slot,storage);
+   if(id!==slot)clearQuickNoteDraft(opts.scope,id,storage);
    status('saved','Saved to cloud');
   }else{
    saveLocal();
    status('local','Newer edits saved on this device; syncing next.');
    schedule(250);
   }
-  if(!previousId&&id!==slot)clearQuickNoteDraft(opts.scope,'new');
+  if(!previousId&&id!==slot)clearQuickNoteDraft(opts.scope,'new',storage);
  };
  const retry=()=>{
   if(disposed||conflict)return;
