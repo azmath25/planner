@@ -336,6 +336,30 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    if(alive.current)setError(e instanceof Error?e.message:'Could not link this document');
   }finally{if(alive.current)setBusy(false);}
  };
+ const unlinkFromTask=async()=>{
+  if(!active||!active.taskId||busy)return;
+  if(dirty||savingRef.current){
+   setError('Finish cloud saving this document before removing its task link.');return;
+  }
+  if(active.parentId||documents.some(d=>d.parentId===active.id)){
+   setError('Nested documents must stay with their parent page.');return;
+  }
+  if(!window.confirm('Remove this document from its task? The document and its contents will be kept.'))return;
+  setBusy(true);setError('');
+  try{
+   const remote=await cloudApi.getDocument(active.id);
+   if(remote.revision!==active.revision||remote.taskId!==active.taskId)
+    throw new Error('This document changed. Refresh before removing its link.');
+   const updated=await cloudApi.updateDocument(remote.id,remote.revision,{
+    workspace:remote.workspace,taskId:null,parentId:null,
+    title:remote.title,blocks:remote.blocks
+   });
+   if(!alive.current)return;
+   setDocuments(list=>list.map(d=>d.id===updated.id?updated:d));
+   resetDraft(null);
+  }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Could not unlink this document');}
+  finally{if(alive.current)setBusy(false);}
+ };
  const remove=async()=>{
   if(!active||busy)return;
   if(!window.confirm('Move this document to Recently Deleted? Child pages must be deleted first.'))return;
@@ -580,6 +604,9 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
          <button type="button" className="btn small secondary" disabled={busy||!dirty}
           onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
          <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void exportSaved()}>Download saved JSON</button>
+         {active.taskId&&!active.parentId&&<button type="button" className="btn small secondary"
+          disabled={busy||dirty||documents.some(d=>d.parentId===active.id)}
+          onClick={()=>void unlinkFromTask()}>Remove from task</button>}
          <button type="button" className="btn small secondary" disabled={busy||dirty} onClick={()=>void remove()}>Delete</button>
         </div>
        </details>
