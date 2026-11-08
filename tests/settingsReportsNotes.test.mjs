@@ -13,7 +13,8 @@ test('Home has small metrics but no duplicated giant report card',()=>{
  const home=subset('function home(){','\nfunction ');
  assert.doesNotMatch(home,/homeWeeklyReport\(\)/);
  assert.match(home,/df-home-metrics/);
- assert.match(home,/data-page="reports"/);
+ assert.doesNotMatch(home,/data-page="reports"/);
+ assert.match(home,/data-action="home-focus-jump"/);
 });
 test('tasks have sixth reports metric and workspaces have contextual report button',()=>{
  assert.match(ui,/class="card metric df-report-tile"/);
@@ -36,13 +37,23 @@ test('Appearance settings are flat, allow true monochrome, and control activity 
  assert.match(css,/--radius:0px/);
  assert.match(css,/border-radius:0!important/);
 });
-test('Quick Notes support safe links, HTML export and one owner-private photo',()=>{
- assert.match(ui,/noteLinksHtml\(n\.content\)/);
- assert.match(ui,/data-action="download-note"/);
- assert.match(ui,/data-action="download-current-note"/);
- assert.match(ui,/noteDownloadHtml/);
- assert.match(ui,/id="note-photo-file"/);
- assert.match(ui,/saveQuickNotePhoto/);
- assert.match(ui,/deleteQuickNotePhoto/);
- assert.match(ui,/if\(e\.target\?\.id==='note-photo-file'\)return/);
+test('Quick Note cards have only Delete and rich documents carry photos/downloads',()=>{
+ const home=subset('function home(){','\nfunction ');
+ const notes=subset('function notesPage(){','\nfunction ');
+ assert.match(home,/df-quick-note-card/);
+ assert.match(notes,/df-quick-note-card/);
+ assert.match(home,/data-action="delete-note"/);
+ assert.match(notes,/data-action="delete-note"/);
+ assert.doesNotMatch(home,/data-action="download-note"|data-action="toggle-note-pin"|Open task/);
+ assert.doesNotMatch(notes,/data-action="download-note"|data-action="toggle-note-pin"|data-action="convert-note"/);
+ assert.doesNotMatch(ui.slice(ui.indexOf('<form id="note-form"'),ui.indexOf('<form id="note-form"')+4900),
+  /note-photo-file|download-current-note/);
+});
+test('Browser Back traverses Dayframe history before leaving a nested page',()=>{
+ assert.match(ui,/window\.history\.pushState\(entry/);
+ assert.match(ui,/window\.addEventListener\('popstate',onAppPopState\)/);
+ assert.match(ui,/window\.removeEventListener\('popstate',onAppPopState\)/);
+ assert.match(ui,/function onAppPopState\(event\)/);
+ assert.match(ui,/state\.page=destination/);
+ assert.match(ui,/state\.modal=\['note','note-edit'\]/);
 });
