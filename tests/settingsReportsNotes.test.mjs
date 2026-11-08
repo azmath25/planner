@@ -44,4 +44,5 @@ test('Quick Notes support safe links, HTML export and one owner-private photo',(
  assert.match(ui,/id="note-photo-file"/);
  assert.match(ui,/saveQuickNotePhoto/);
  assert.match(ui,/deleteQuickNotePhoto/);
+ assert.match(ui,/if\(e\.target\?\.id==='note-photo-file'\)return/);
 });
