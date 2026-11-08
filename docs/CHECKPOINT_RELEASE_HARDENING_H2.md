@@ -27,3 +27,9 @@ The script refuses to operate outside the named feature branch and requires Node
 ## Acceptance boundary
 
 **H2 is not complete.** To close H2, run the local gate in a network-enabled Node 24+ checkout, review and commit the resulting `package-lock.json` on the feature branch, and fix any actual test/type/build failures. M8.3 disposable PostgreSQL, Chromium and Safari tests remain separate, later gates. Production release approval remains withheld.
+
+## H2.1 — Cloud Shell npm ETARGET repair (2026-11-08)
+
+The operator used a separate `~/dayframe-h2` checkout in Google Cloud Shell, selected Node v24.22.2 and ran `scripts/h2-bootstrap-local.sh`. npm reached the registry but refused `@mantine/utils@9.7.5` with `ETARGET`. Registry metadata confirms `@mantine/utils` has no 9.7.5 release (latest 6.0.22), while `@mantine/core` and `@mantine/hooks` each publish 9.7.5. No direct `@mantine/utils` import was found in repository code search; BlockNote's Mantine integration uses the core/hooks peer packages. Removed only the invalid direct manifest dependency, preserving the currently pinned core/hooks and BlockNote versions.
+
+The peer resolution warnings about `better-call` are separate and were not the terminating npm error. Do not suppress them with global peer-dependency overrides before the next install result is available. `package-lock.json`, `npm ci`, TypeScript/build, security scan, and all runtime tests remain unverified until the operator pulls this feature-branch fix and reruns H2.
