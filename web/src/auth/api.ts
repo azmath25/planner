@@ -2,7 +2,17 @@ import { AUTH_URL, authClient } from './client';
 import {parsePeriodReport,type PeriodReport,type ReportPeriod} from '../domain/timeReports';
 import {parseTimeInsights,type TimeInsights} from '../domain/timeInsights';
 
-export const API_URL='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
+const PRODUCTION_API='https://br-shiny-king-b9np2anx-dayframeapi.compute.c-7.eu-central-1.aws.neon.tech';
+const stagingApi = import.meta.env.VITE_DAYFRAME_STAGING_API_URL as string | undefined;
+const target=import.meta.env.VITE_DAYFRAME_TARGET;
+if(target==='staging'){
+  // An explicit URL is required; do not fall through to the production API.
+  if(!stagingApi || !/^https:\/\/[a-z0-9-]+-dayframeapi\.compute\.c-7\.eu-central-1\.aws\.neon\.tech\/?$/.test(stagingApi))
+    throw new Error('Dayframe staging API must be a separate Neon Function HTTPS origin');
+  if(new URL(stagingApi).hostname===new URL(PRODUCTION_API).hostname)
+    throw new Error('Dayframe staging must never use the production API');
+}
+export const API_URL=target==='staging' ? (stagingApi as string).replace(/\/$/,'') : PRODUCTION_API;
 
 export type CloudWorkspace={
   id:string;kind:'general'|'custom';name:string;subtitle:string;color:string;cover:string;
