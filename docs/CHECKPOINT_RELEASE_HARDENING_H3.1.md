@@ -28,3 +28,17 @@ bash scripts/h3-verify-security-lock.sh
 ## H3.2 boundary
 
 A green dependency graph **does not prove Neon Auth works**. Browser sign-in (including session retrieval, sign-out, protected API JWT validation, Safari behavior, and refresh across reload) needs an independently approved test setup with no exposure of credentials. Do not access production accounts or migrate production data to supply the test. No production release is authorized.
+
+## H3.1 real Cloud Shell verification — passed on 2026-11-08
+
+The operator pulled the H3.1 dependency override changes and ran `bash scripts/h3-verify-security-lock.sh` on Node 24.22.2/npm 11.19.1 in the existing feature checkout.
+
+Evidence from the terminal:
+- `npm install --package-lock-only --ignore-scripts` regenerated the actual local lockfile; script confirmed one lockfile entry each for `better-auth@1.7.7`, `@better-auth/drizzle-adapter@1.7.7`, `@better-auth/oauth-provider@1.7.7`, and `zod@4.6.6`.
+- `scripts/h2-bootstrap-local.sh` reached its final PASS after tests, TypeScript, Vite build and PWA/distribution checks.
+- `npm audit --omit=dev --audit-level=high` exited successfully: **seven low-severity transitive findings**, no reported high or critical.
+- Log saved locally at `~/dayframe-h3-verify.S1SjsP2l.log` and previous lockfile backed up to `/tmp/dayframe-h3-lock-backup.k3681Z1R.json`. Do not rely on these transient locations outside that session.
+
+**Caution:** `ERESOLVE overriding peer dependency` warnings persist. The installed tree includes `@better-auth/core@1.7.18` requiring `@better-fetch/fetch@1.3.3` and `better-call@1.4.5`, while Neon Auth depends on lower versions; the auth UI also has conflicting `better-call@2.0.2` and `@better-auth/api-key@1.7.18`. Passing test suites does **not** demonstrate compatibility of real login, token refresh, or browser sessions. Treat this as a separate H3.2 gate, not a harmless warning.
+
+The tested `package-lock.json` **has not yet been committed** to the feature branch; it resides in the operator's local checkout. Publish only that generated lockfile after inspecting local git status. No prod Neon/GCP changes or deployment have been authorized.
