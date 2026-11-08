@@ -1232,19 +1232,62 @@ else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="s
 else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">${isCloud?'This clears browser-local preferences, workspace photos and older device-only timer history. It does NOT delete your saved Neon tasks, schedules, reminders or time sessions.':'This clears local demo changes and restores sample data. No online data is involved.'}</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
 return `<div class="modal-backdrop" data-backdrop="true"><section class="modal ${['note','note-edit'].includes(state.modal)?'modal-note-editor':''}" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
 function parseClock(s){const [h,m]=s.split(':').map(Number);return h*60+m}
-function profilePage(){
- const subtitle=isCloud?'Your Dayframe account':'This is a local, unsynchronized preview.';
- return `${titleHead('My account','Profile','Account details and session controls in one place.')}
- <section class="card profile-panel" aria-label="Profile and account">
-  <div class="profile-identity"><div class="profile-avatar profile-avatar-large" aria-hidden="true">${escapeHTML(accountInitials)}</div>
-  <div><div class="eyebrow">${isCloud?'Signed in':'Local preview'}</div><h2>${escapeHTML(accountName)}</h2>
-  ${accountEmail?`<p class="profile-email">${escapeHTML(accountEmail)}</p>`:''}</div></div>
-  <div class="profile-data-note"><strong>${subtitle}</strong><p>${isCloud?'Workspaces, tasks, daily plans, timed blocks, reminders and new time sessions are saved in Neon across signed-in devices. Capacity, workspace photos and older device-only timer history remain local. Optional browser push has been tested in one browser; other devices still need verification.':'Changes in this preview stay in this browser and are not attached to an account.'}</p></div>
-  <div class="profile-actions">
-  ${isCloud&&typeof account.onRefresh==='function'?`<button type="button" class="btn secondary" data-action="account-refresh">${icon('refresh')} Refresh saved data</button>`:''}
-  <button type="button" class="btn secondary" data-action="account-sign-out">${icon('back')} ${isCloud?'Sign out':'Return to sign in'}</button>
+function profileNotifications(){
+ if(!isCloud||!alertsBackendEnabled)return `<section class="card df-profile-reminders" id="profile-notifications">
+  <h2>Notifications & reminders</h2>
+  <p class="tiny">Sign in to manage notification preferences on your devices.</p>
+ </section>`;
+ return `<section class="card df-profile-reminders" id="profile-notifications" aria-label="Notifications and reminders">
+  <div class="card-title"><h2>Notifications & reminders</h2>
+   <button class="btn small secondary" data-action="refresh-alerts"
+    ${state.alertLoading?'disabled':''}>Refresh</button></div>
+  <p class="tiny">Reminder rules, notification permissions, quiet hours and time zones belong here.
+   Due alerts stay accessible from Home's bell.</p>
+  <div class="df-profile-reminder-actions">
+   <button type="button" class="btn small secondary"
+    data-action="${state.pushEnabled?'disable-push':'enable-push'}"
+    ${state.pushBusy?'disabled':''}>${state.pushEnabled?'Disable':'Enable'} browser notifications</button>
+   <button type="button" class="btn small secondary" data-action="use-device-zone"
+    ${state.pushBusy?'disabled':''}>Use device time zone</button>
+   <button type="button" class="btn small secondary" data-action="quiet-hours">Quiet hours</button>
+  </div>
+  ${state.pushMessage?`<p class="tiny" role="status">${escapeHTML(state.pushMessage)}</p>`:''}
+  ${state.alertError?`<p class="tiny" role="alert">${escapeHTML(state.alertError)}</p>`:''}
+  <div class="df-profile-alerts">
+   <h3>Reminder inbox</h3>
+   ${state.alerts.length?state.alerts.map((a,i)=>`<article class="alert-row">
+    <div class="alert-icon ${a.kind==='deadline'?'danger':''}">${icon(a.kind==='deadline'?'alert':'bell')}</div>
+    <div><strong>${escapeHTML(a.title)}</strong><p class="tiny">
+     ${a.kind==='deadline'?'Hard deadline':a.kind==='note'?'Note reminder':'Soft reminder'}
+     · ${escapeHTML(a.day)} ${escapeHTML(a.time)}</p>
+     <div class="actions">
+      <button class="btn small secondary" data-action="alert-ack" data-index="${i}"
+       ${state.alertBusy?'disabled':''}>Acknowledge</button>
+      <button class="btn small secondary" data-action="alert-snooze" data-index="${i}"
+       ${state.alertBusy?'disabled':''}>Snooze 1 hour</button>
+     </div></div>
+   </article>`).join(''):
+   `<p class="tiny">${state.alertLoading?'Loading alerts…':'No alerts in your inbox.'}</p>`}
   </div>
  </section>`;
+}
+function profilePage(){
+ const subtitle=isCloud?'Your Dayframe account':'This is a local, unsynchronized preview.';
+ return `${titleHead('ACCOUNT','Profile','Account details and reminder preferences.')}
+ <section class="card profile-panel">
+  <div class="profile-identity"><div class="profile-avatar profile-avatar-large" aria-hidden="true">${escapeHTML(accountInitials)}</div>
+   <div><div class="eyebrow">${isCloud?'Signed in':'Local preview'}</div>
+    <h2>${escapeHTML(accountName)}</h2>${accountEmail?`<p class="profile-email">${escapeHTML(accountEmail)}</p>`:''}</div></div>
+  <p class="tiny">${subtitle}. Workspaces, tasks, notes and time sessions use your current Dayframe account.
+   Browser notification permission is device-specific.</p>
+  <div class="profile-actions">
+   ${isCloud&&typeof account.onRefresh==='function'?`<button class="btn secondary"
+    data-action="account-refresh">${icon('refresh')} Refresh saved data</button>`:''}
+   <button class="btn secondary" data-action="account-sign-out">
+    ${icon('back')} ${isCloud?'Sign out':'Return to sign in'}</button>
+  </div>
+ </section>
+ ${profileNotifications()}`;
 }
 let documentPageCleanup=null;
 let documentPageMounted=false;
@@ -1398,6 +1441,7 @@ function navigate(page){
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
  if(isCloud&&page==='home')void loadCloudAlerts();
+ if(isCloudTime&&page==='home')void loadCloudHomeReport();
  if(isCloud&&['notes','workspace'].includes(page))void loadCloudNotes();
  if(isCloudTime&&page==='workspace')void loadCloudWeek();
  if(isCloudTime&&page==='reports')void loadCloudPeriod();
@@ -1481,6 +1525,24 @@ async function loadCloudInsights(){
  }
 }
 let periodReportRequest=0;
+async function loadCloudHomeReport(force=false){
+ if(!isCloudTime||disposed||state.homeReportLoading)return;
+ const day=today();
+ if(!force&&state.homeReport&&state.homeReportDay===day)return;
+ state.homeReportLoading=true;state.homeReportError='';
+ try{
+  const report=await cloudApi.getTimePeriod('week',day);
+  if(disposed)return;
+  state.homeReport=report;state.homeReportDay=day;
+ }catch(err){
+  if(!disposed)state.homeReportError=err instanceof Error?err.message:'Could not load weekly report';
+ }finally{
+  if(!disposed){
+   state.homeReportLoading=false;
+   if(state.page==='home')render();
+  }
+ }
+}
 async function loadCloudPeriod(){
  if(!isCloudTime||disposed)return;
  const request=++periodReportRequest;
@@ -1640,7 +1702,26 @@ trackListener('click',async e=>{if(e.target.dataset.backdrop){
  // Accidental outside clicks during note writing must never close the draft.
  if(!['note','note-edit'].includes(state.modal))closeModal();
  return;
-}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':
+}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'open-notifications':{
+ navigate('profile');
+ const section=document.getElementById('profile-notifications');
+ section?.scrollIntoView({block:'start',behavior:'smooth'});
+ break;
+}
+case'home-focus-jump':{
+ const section=document.getElementById('df-home-focus');
+ section?.scrollIntoView({block:'center',behavior:'smooth'});
+ section?.querySelector('select')?.focus({preventScroll:true});
+ break;
+}
+case'home-start-focus':{
+ const selected=document.getElementById('df-home-focus-task')?.value;
+ if(!selected||!openTasks().some(t=>t.id===selected))break;
+ updateTimer('start',selected);
+ break;
+}
+case'home-report-refresh':if(isCloudTime)void loadCloudHomeReport(true);break;
+case'nav':
  if(b.dataset.page==='documents'){state.documentWorkspaceId=null;state.documentTaskId=null;}
  navigate(b.dataset.page);break;
 case'pin-workspace':{
@@ -2336,6 +2417,7 @@ if(isCloud)void loadCloudNotes();
 if(isCloud)void loadCloudPool(today());
 if(isCloud)void loadCloudAlerts();
 if(isCloudTime)void loadCloudTime();
+if(isCloudTime)void loadCloudHomeReport();
 const onTimeFocus=()=>{
  // Background refresh must not erase an in-progress weekly-goal edit.
  if(isCloudTime&&!document.hidden&& !document.querySelector('#weekly-goal-form input:focus')){
