@@ -46,6 +46,10 @@ export const cloudApi={
  },
  async createDocument(id,body){
   creations.push({id,body:clone(body)});
+  if(window.__docMock.failNextCreateBeforeCommit){
+   window.__docMock.failNextCreateBeforeCommit=false;
+   throw Object.assign(Error('Synthetic rejected document creation'),{status:400});
+  }
   const prior=get(id);
   if(prior){
    if(JSON.stringify(prior.blocks)!==JSON.stringify(body.blocks)||
@@ -81,4 +85,4 @@ export const cloudApi={
   item.deletedAt=null;item.revision++;return clone(item);
  }
 };
-Object.assign(window,{__docMock:{items,updates,creations,searches,exports,workspace:WORKSPACE,seed:SEED,failNextCreateAfterCommit:false}});
+Object.assign(window,{__docMock:{items,updates,creations,searches,exports,workspace:WORKSPACE,seed:SEED,failNextCreateAfterCommit:false,failNextCreateBeforeCommit:false}});
