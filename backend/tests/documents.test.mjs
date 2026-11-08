@@ -122,10 +122,16 @@ test('M6.3b authenticated search uses literal text and returns metadata only',as
  assert.match(DOCUMENT_SEARCH_SQL,/d.owner_user_id=\$1/);
  assert.match(DOCUMENT_SEARCH_SQL,/strpos\(lower\(d.blocks::text\),lower\(\$4\)\)/);
  assert.doesNotMatch(DOCUMENT_SEARCH_SQL,/ILIKE/);
- for(const query of ['a','x'.repeat(121),'%00']){
+ // A real NUL code point, encoded as %00 in the URL, is invalid.
+ // The three printable characters "%00" instead encode to %2500 and must
+ // remain a literal, safe search term (not get mistaken for a NUL).
+ for(const query of ['a','x'.repeat(121),'\0']){
   const r=await request('/v1/documents/search?q='+encodeURIComponent(query));
-  assert.equal(r.status,400);
+  assert.equal(r.status,400,'Expected invalid query to be rejected: '+JSON.stringify(query));
  }
+ const literal=await request('/v1/documents/search?q='+encodeURIComponent('%00'));
+ assert.equal(literal.status,200,'Literal percent text is not a NUL character');
+ assert.equal(calls.at(-1).args[3],'%00');
  assert.equal((await request('/v1/documents/search?q=math&limit=1000')).status,400);
 });
 test('M6.3b JSON export is owner-only, private, no-store and bounded to a single document',async()=>{
