@@ -54,6 +54,22 @@ export function validateDocumentBlocks(blocks){
    throw fault();
   }
  }
+ // BlockNote's content:\"plain\" block specs serialize their source as
+ // [{type:'text',text:'...',styles:{}}], not a JavaScript string.
+ // Old string-form test fixtures remain accepted for compatibility.
+ function plainSource(content,maxChars){
+  if(typeof content==='string'){
+   if(content.length>maxChars)throw fault();
+   return;
+  }
+  if(!Array.isArray(content)||content.length>300)throw fault();
+  let chars=0;
+  for(const run of content){
+   styledText(run);
+   chars+=run.text.length;
+   if(chars>maxChars)throw fault();
+  }
+ }
  function visit(items,depth){
   if(depth>6||!Array.isArray(items))throw fault();
   for(const item of items){
@@ -76,9 +92,10 @@ export function validateDocumentBlocks(blocks){
     }else if(!safeProp(value))throw fault();
    }
    if(item.type==='mathBlock'){
-    if(!limitedString(item.content,6000)||Object.keys(item.props??{}).length)throw fault();
+    if(Object.keys(item.props??{}).length)throw fault();
+    plainSource(item.content,6000);
    }else if(item.type==='codeBlock'){
-    if(!limitedString(item.content,20000))throw fault();
+    plainSource(item.content,20000);
    }else inline(item.content);
    visit(item.children,depth+1);
   }
