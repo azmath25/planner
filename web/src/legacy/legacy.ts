@@ -1142,6 +1142,73 @@ let documentPageMounted=false;
 let documentPageSerial=0;
 let documentPageDirty=false;
 let noteFormDirty=false;
+let noteAutoController=null;
+let noteAutoStatusKind='saved';
+let noteAutoStatusMessage='Changes save automatically while you write.';
+function noteFormFields(form){
+ const d=new FormData(form);
+ return {
+  workspace:serverWorkspaceId(String(d.get('workspace')||'general')),
+  title:String(d.get('title')||''),
+  content:String(d.get('content')||''),
+  color:String(d.get('color')||'cream'),
+  pinned:d.has('pinned'),
+  reminder:String(d.get('reminder')||'')||null,
+  reminderTime:String(d.get('reminderTime')||'')||null
+ };
+}
+function updateNoteStatus(kind,message){
+ noteAutoStatusKind=kind;noteAutoStatusMessage=message;
+ if(kind==='saved')noteFormDirty=false;
+ const node=document.querySelector('#note-autosave-status');
+ if(node){node.textContent=message;node.dataset.sync=kind;}
+}
+function beginNoteAutosave(){
+ if(!isCloud||!['note','note-edit'].includes(state.modal))return;
+ noteAutoController?.dispose();noteAutoController=null;
+ const form=document.querySelector('#note-form');
+ if(!form)return;
+ const original=state.modal==='note-edit'?state.notes.find(n=>n.id===state.modalTask):null;
+ noteAutoStatusKind='saved';noteAutoStatusMessage='Changes save automatically while you write.';
+ const controller=createQuickNoteAutosaver({
+  scope:storageKey,id:original?.id||null,revision:original?.revision||0,
+  initial:noteFormFields(form),
+  api:{
+   create:(id,body)=>cloudApi.createQuickNote({...body,id}),
+   update:(id,revision,body)=>cloudApi.updateQuickNote(id,{...body,revision}),
+   list:()=>cloudApi.listQuickNotes()
+  },
+  onSaved(note){
+   if(disposed)return;
+   upsertQuickNote(note);
+   if(state.modal==='note'&&noteAutoController===controller){
+    state.modal='note-edit';state.modalTask=note.id;
+    const current=document.querySelector('#note-form');
+    if(current)current.dataset.noteContext='note-edit:'+note.id;
+   }
+  },
+  onStatus(info){
+   if(disposed)return;
+   state.noteBusy=info.kind==='saving';
+   updateNoteStatus(info.kind,info.message);
+  }
+ });
+ noteAutoController=controller;
+ if(controller.recovered){
+  const restored=controller.initialFields;
+  for(const [name,value] of Object.entries(restored)){
+   const input=form.elements.namedItem(name);
+   if(!input)continue;
+   if(input instanceof HTMLInputElement&&input.type==='checkbox')
+    input.checked=Boolean(value);
+   else if(input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement||
+    input instanceof HTMLSelectElement)
+    input.value=name==='workspace'?localWorkspaceId(String(value)):String(value??'');
+  }
+  noteFormDirty=true;
+  controller.resume();
+ }
+}
 function render(){
  // Legacy background refreshes must not erase an in-progress Quick Note.
  // Snapshot input values, focus and caret before layout() replaces its HTML.
