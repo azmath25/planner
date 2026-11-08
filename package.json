@@ -21,7 +21,6 @@
     "@blocknote/react": "0.57.0",
     "@mantine/core": "9.7.5",
     "@mantine/hooks": "9.7.5",
-    "@mantine/utils": "9.7.5",
     "@neondatabase/auth": "0.7.0-beta",
     "jose": "^6.1.0",
     "pg": "^8.16.3",
