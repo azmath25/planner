@@ -1527,6 +1527,76 @@ function beginNoteAutosave(){
   controller.resume();
  }
 }
+// Browser and Android hardware Back traverse Dayframe views instead of exiting
+// from every nested page. Home remains a normal browser-history root.
+let historyInitialized=false,historyRestoring=false,lastHistoryKey='';
+const appHistoryState=()=>({
+ dayframe:1,page:state.page,viewWorkspace:state.viewWorkspace,
+ taskId:state.taskId,modal:state.modal,modalTask:state.modalTask
+});
+const appHistoryKey=item=>[
+ item.page,item.page==='workspace'?item.viewWorkspace:'',
+ item.page==='detail'?item.taskId:'',
+ ['note','note-edit'].includes(item.modal)?'note-editor':item.modal||''
+].join('|');
+function syncAppHistory(){
+ if(historyRestoring)return;
+ const entry=appHistoryState(),key=appHistoryKey(entry);
+ const target=window.location.pathname+window.location.search+'#dayframe-'+
+  encodeURIComponent(entry.page);
+ if(!historyInitialized){
+  window.history.replaceState(entry,'',window.location.href);
+  historyInitialized=true;
+ }else if(key!==lastHistoryKey){
+  window.history.pushState(entry,'',target);
+ }else{
+  window.history.replaceState(entry,'',window.location.href);
+ }
+ lastHistoryKey=key;
+}
+function onAppPopState(event){
+ if(disposed)return;
+ const entry=event.state?.dayframe===1?event.state:{page:'home',modal:null};
+ const destination=typeof entry.page==='string'&&
+  ['home','plan','tasks','detail','workspace','workspaces','notes','documents',
+   'reports','calendar','settings','profile','trash','task-archive','workspace-archive'].includes(entry.page)
+  ?entry.page:'home';
+ if(state.page==='documents'&&destination!=='documents'&&documentPageDirty&&
+   !window.confirm('The document may contain unsynced edits. Leave anyway?')){
+  window.history.pushState(appHistoryState(),'',
+   window.location.pathname+window.location.search+'#dayframe-'+state.page);
+  return;
+ }
+ if(['note','note-edit'].includes(state.modal)&&noteFormDirty&&
+   noteAutoStatusKind==='error'&&!window.confirm(
+    'This Quick Note could not be backed up on this device. Close anyway?')){
+  window.history.pushState(appHistoryState(),'',
+   window.location.pathname+window.location.search+'#dayframe-'+state.page);
+  return;
+ }
+ noteAutoController?.dispose();noteAutoController=null;
+ historyRestoring=true;
+ state.page=destination;
+ state.viewWorkspace=typeof entry.viewWorkspace==='string'?entry.viewWorkspace:state.viewWorkspace;
+ state.taskId=typeof entry.taskId==='string'?entry.taskId:state.taskId;
+ state.modal=['note','note-edit'].includes(entry.modal)?entry.modal:null;
+ state.modalTask=typeof entry.modalTask==='string'?entry.modalTask:null;
+ state.search='';
+ window.scrollTo({top:0,behavior:'instant'});
+ render();
+ lastHistoryKey=appHistoryKey(appHistoryState());
+ historyRestoring=false;
+ if(state.modal)beginNoteAutosave();
+ if(isCloud&&['home','profile'].includes(destination))void loadCloudAlerts();
+ if(isCloud&&['notes','workspace'].includes(destination))void loadCloudNotes();
+ if(isCloudTime&&destination==='home')void loadCloudHomeReport();
+ if(isCloudTime&&destination==='reports')void loadCloudPeriod();
+ if(isCloudTime&&destination==='workspace')void loadCloudWeek();
+ if(isCloud&&destination==='plan')void loadCloudSchedule(state.planDay,state.planDay);
+ if(isCloud&&destination==='calendar'){
+  const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);
+ }
+}
 function render(){
  // Legacy background refreshes must not erase an in-progress Quick Note.
  // Snapshot input values, focus and caret before layout() replaces its HTML.
@@ -1600,6 +1670,7 @@ function render(){
    console.error('Document editor initialization failed',error instanceof Error?error.name:'Unknown');
   });
  }
+ syncAppHistory();
 }
 function navigate(page){
  // Tapping the selected navigation destination toggles back to Home.
@@ -2694,6 +2765,7 @@ const onStorage=(event)=>{
   }catch(err){console.warn('Could not synchronize demo timer tab',err)}
 };
 window.addEventListener('storage',onStorage);
+window.addEventListener('popstate',onAppPopState);
 render();
 if(isCloud)void loadCloudNotes();
 if(isCloud)void loadCloudPool(today());
@@ -2737,6 +2809,7 @@ if(isCloud)void loadCloudSchedule(today(),today());
     window.removeEventListener('focus',onTimeFocus);
     document.removeEventListener('visibilitychange',onTimeFocus);
     window.removeEventListener('storage',onStorage);
+    window.removeEventListener('popstate',onAppPopState);
     for (const [eventName, handler] of listeners) document.removeEventListener(eventName, handler);
     const mount = document.getElementById('app');
     noteAutoController?.dispose();noteAutoController=null;
