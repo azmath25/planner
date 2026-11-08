@@ -18,6 +18,7 @@ test('Home prioritizes reports, today tasks, then editable Quick Notes',()=>{
  assert.match(home,/data-action="edit-note"/);
  assert.match(home,/data-action="modal-note"/);
  assert.match(home,/data-page="notes"/);
+ assert.match(home,/homePins\(\)/);
  assert.doesNotMatch(home,/A little progress|goes a long way|Welcome back/);
 });
 test('Home shortcuts are functional rather than decorative Android placeholders',()=>{
