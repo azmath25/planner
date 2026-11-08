@@ -895,6 +895,73 @@ function renderWorkspacePie(title,rows,kind){
      '<p class="df-pie-empty">No saved time for this period yet.</p>'}
   </section>`;
 }
+function reportDistribution(report){
+ const scope=state.reportScope,chart=state.reportChart;
+ let heading='',description='',rows=[];
+ if(scope==='workspace'){
+  heading='By workspace';description='Recorded focus for the selected day, week or month.';
+  rows=report.workspaces.map(w=>({label:w.name||'Archived workspace',value:w.recordedMs}));
+ }else if(scope==='workflow'){
+  heading='By workflow / long-term project';
+  description='Period focus from top-level long-term projects. Nested project rollups are omitted to avoid double-counting; other tasks are not included.';
+  const projects=report.longTermTasks;
+  rows=projects.filter(p=>!projects.some(ancestor=>ancestor.taskId!==p.taskId&&
+   isDescendantOf(p.taskId,ancestor.taskId)))
+   .map(p=>({label:p.title,value:p.recordedMs}));
+ }else{
+  heading='By individual task';
+  description='All-time direct task focus (including active time), not the selected period. Period-specific task reporting requires a backend extension.';
+  rows=state.tasks.map(t=>({label:t.title,value:taskTimeMs(t)}));
+ }
+ const values=rows.filter(x=>Number.isFinite(x.value)&&x.value>0)
+  .sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label));
+ const total=values.reduce((sum,x)=>sum+x.value,0),limit=chart==='table'?50:8;
+ const items=values.length>limit?[...values.slice(0,limit-1),
+  {label:'Other',value:values.slice(limit-1).reduce((sum,x)=>sum+x.value,0)}]:values;
+ const pie=pieSegments(items);
+ const bars=`<div class="df-report-bars">
+  ${items.map(row=>`<div class="df-report-bar-row">
+   <div class="df-report-bar-label"><span>${escapeHTML(row.label)}</span><strong>${formatElapsed(row.value)}</strong></div>
+   <div class="df-report-bar-track"><div class="df-report-bar-fill"
+    style="width:${(100*row.value/Math.max(...items.map(x=>x.value))).toFixed(2)}%"></div></div>
+  </div>`).join('')}</div>`;
+ const circle=`<div class="df-report-pie-content">
+  <div class="df-report-large-pie" role="img"
+   aria-label="${escapeHTML(heading+': '+pie.segments.map(x=>x.label+' '+x.percentage.toFixed(1)+'%').join(', '))}"
+   style="background:${pieGradient(pie)}"></div>
+  <ul class="df-home-pie-legend">${pie.segments.map(x=>`<li>
+    <span class="df-home-swatch" aria-hidden="true" style="background:${x.color}"></span>
+    <span>${escapeHTML(x.label)}</span><strong>${x.percentage.toFixed(1)}%</strong></li>`).join('')}
+  </ul>
+ </div>`;
+ const table=`<div class="report-table-scroll"><table class="report-table">
+  <thead><tr><th>${scope==='workspace'?'Workspace':scope==='workflow'?'Project':'Task'}</th>
+   <th>Recorded focus</th><th>Share of displayed data</th></tr></thead>
+  <tbody>${items.map(row=>`<tr><td>${escapeHTML(row.label)}</td>
+   <td>${formatElapsed(row.value)}</td>
+   <td>${(row.value/total*100).toFixed(1)}%</td></tr>`).join('')}
+   <tr><th>Total displayed</th><td>${formatElapsed(total)}</td><td>100%</td></tr>
+  </tbody></table></div>`;
+ return `<section class="card df-report-distribution">
+  <div class="card-title"><div><h2>${escapeHTML(heading)}</h2>
+   <p class="tiny">${escapeHTML(description)}</p></div></div>
+  <div class="df-report-options">
+   <div class="actions" role="group" aria-label="Report breakdown">
+    ${[['workspace','Workspaces'],['workflow','Workflows'],['task','Tasks']].map(([value,label])=>`
+     <button type="button" class="filter ${scope===value?'active':''}"
+      aria-pressed="${scope===value}" data-action="report-scope" data-value="${value}">${label}</button>`).join('')}
+   </div>
+   <div class="actions" role="group" aria-label="Chart type">
+    ${[['bar','Bars'],['pie','Pie'],['table','Table']].map(([value,label])=>`
+     <button type="button" class="filter ${chart===value?'active':''}"
+      aria-pressed="${chart===value}" data-action="report-chart" data-value="${value}">${label}</button>`).join('')}
+   </div>
+  </div>
+  ${items.length?(chart==='pie'?circle:chart==='table'?table:bars):
+   '<p class="df-pie-empty">No recorded focus for this selection.</p>'}
+  <p class="tiny">Smaller categories are grouped as Other. Detailed workspace plans and historical estimates remain below.</p>
+ </section>`;
+}
 function signedInReportsPage(){
  const period=state.reportPeriod,report=state.periodReport;
  const controls=`<div class="filters" style="display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:17px">
@@ -944,14 +1011,7 @@ function signedInReportsPage(){
     <div class="metric-note">Separate from recorded time; session-start attribution</div></div>
   </div>
   ${report.accountLegacyEstimatedMs?'<div class="info-banner">Older sessions lack detailed segment timestamps. Their remaining duration is estimated into the period of the session start and is not included in exact recorded totals.</div>':''}
-  <div class="df-pie-section" aria-label="Time distribution charts">
-   ${renderWorkspacePie('Recorded focus by workspace',
-     report.workspaces.map(w=>({label:(w.name||'Deleted workspace')+(w.archived?' (archived)':''),
-      value:w.recordedMs})), 'focus')}
-   ${renderWorkspacePie('Planned minutes by workspace',
-     report.workspaces.map(w=>({label:(w.name||'Deleted workspace')+(w.archived?' (archived)':''),
-      value:w.plannedMinutes})), 'planned')}
-  </div>
+  ${reportDistribution(report)}
   <div class="section card"><div class="card-title"><h2>By workspace</h2></div>
    <div class="report-table-scroll"><table class="report-table"><thead><tr>
     <th>Workspace</th><th>Recorded</th><th>Fixed plan</th><th>Legacy estimate</th>
@@ -1931,7 +1991,12 @@ case'unschedule':{
   persist();
  }
  render();break;
-}case'report-period':if(['day','week','month'].includes(b.dataset.value)){
+}case'report-scope':if(['workspace','workflow','task'].includes(b.dataset.value)){
+ state.reportScope=b.dataset.value;render();
+}break;
+case'report-chart':if(['bar','pie','table'].includes(b.dataset.value)){
+ state.reportChart=b.dataset.value;render();
+}break;case'report-period':if(['day','week','month'].includes(b.dataset.value)){
   state.reportPeriod=b.dataset.value;render();if(isCloudTime)void loadCloudPeriod();
  }break;case'theme':state.theme=id;persist();render();break;case'accent':state.accent=id;persist();render();break;case'edit-image':state.mediaTarget={kind:b.dataset.kind,id,slot:b.dataset.slot};state.modal='media';render();break;case'remove-image':{
  const m=state.mediaTarget;if(!m)break;
