@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
  cloudApi,type CloudDocument,type CloudDocumentInput,type CloudDocumentMeta
 } from '../auth/api';
-import { assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON } from '../domain/documentBlocks';
+import { assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON,documentTitleFromBlocks } from '../domain/documentBlocks';
 import { BlockDocumentEditor } from './BlockDocumentEditor';
 
 type Workspace={id:string;name:string};
@@ -32,6 +32,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  // A network response must not clear edits made after its request began.
  const draftVersion=useRef(0);
  const savingRef=useRef(false);
+ // Notion-like: first sentence names the page until the user edits the title.
+ const autoTitleRef=useRef(false);
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
  const [showTrash,setShowTrash]=useState(false);
@@ -74,6 +76,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const resetDraft=(value:CloudDocument|null)=>{
   draftVersion.current++;
   setActive(value);
+  autoTitleRef.current=!value||!value.title.trim()||value.title==='Untitled document';
   setTitle(value?.title??'');
   setBlocks(value?.blocks??emptyDocumentBlocks());
   setValidation('');
@@ -101,10 +104,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  };
  const save=async()=>{
   if(!active||busy||savingRef.current||conflict)return;
-  const safeTitle=title.trim();
-  if(!safeTitle||safeTitle.length>160){
-   setValidation('Document title must contain 1–160 characters.');return;
-  }
+  // Saving never requires a separate naming step.
+  const safeTitle=(title.trim()||documentTitleFromBlocks(blocks)||'Untitled document').slice(0,160);
   try{assertDocumentBlocks(blocks);}catch(e){
    setValidation(e instanceof Error?e.message:'Unsupported blocks');return;
   }
@@ -196,10 +197,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   // its previous request is still in flight.
   if(busy&&!savingRef.current)return;
   draftVersion.current++;setBlocks(newBlocks);
+  if(autoTitleRef.current){
+   const inferred=documentTitleFromBlocks(newBlocks);
+   if(inferred)setTitle(inferred);
+  }
   setValidation(message||'');setDirty(true);
  };
  const changeTitle=(newTitle:string)=>{
   if(busy&&!savingRef.current)return;
+  autoTitleRef.current=false;
   draftVersion.current++;setTitle(newTitle);setDirty(true);
   setValidation(''); // New input gets a fresh validation pass.
  };
@@ -454,9 +460,11 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         </div>
        </details>
       </div>
-      <label className="field-wrap df-doc-title-field"><span className="form-label">Document title</span>
-       <input className="field" aria-label="Document title" maxLength={160}
-        value={title} disabled={busy&&!savingRef.current} onChange={e=>changeTitle(e.target.value)}/>
+      <label className="field-wrap df-doc-title-field">
+       <span className="form-label">Page title (optional; filled from first sentence)</span>
+       <input className="field" aria-label="Page title (optional)" placeholder="Untitled"
+        maxLength={160} value={title} disabled={busy&&!savingRef.current}
+        onChange={e=>changeTitle(e.target.value)}/>
       </label>
       {active.parentId&&<p className="tiny">Nested below another document. Delete children first.</p>}
      </div>
