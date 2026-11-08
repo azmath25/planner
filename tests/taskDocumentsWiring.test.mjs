@@ -24,3 +24,15 @@ test('task and notes screens no longer claim that autosave is a future feature',
  assert.match(taskUi,/autosave while you write/);
  assert.match(taskUi,/autosave as you write/);
 });
+
+test('existing unassigned documents can be linked safely without moving unrelated pages',()=>{
+ assert.match(docs,/Add an existing document to this task/);
+ assert.match(docs,/d\.taskId===null&&/);
+ assert.match(docs,/d\.parentId===null/);
+ assert.match(docs,/!documents\.some\(child=>child\.parentId===d\.id\)/);
+ assert.match(docs,/const full=await cloudApi\.getDocument\(candidate\.id\)/);
+ assert.match(docs,/full\.workspace!==initialWorkspaceId\|\|full\.taskId!==null/);
+ assert.match(docs,/await cloudApi\.updateDocument\(full\.id,full\.revision,\{/);
+ assert.match(docs,/workspace:full\.workspace,taskId:filterTask,parentId:null/);
+ assert.match(docs,/Attach to task/);
+});
