@@ -23,7 +23,16 @@ def main():
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        raise RuntimeError("Python Playwright is not installed; no packages were installed automatically.")
+        # Existing system Chromium can be driven through Node 24's native
+        # WebSocket/CDP without downloading Python Playwright or a browser.
+        print("Python Playwright unavailable; using built-in Node Chromium fallback.", flush=True)
+        fallback = ROOT / "scripts" / "h4-browser-cdp-smoke.mjs"
+        if not fallback.is_file():
+            raise RuntimeError("Chromium fallback script missing; pull latest feature branch.")
+        code = subprocess.run(["node", str(fallback)], cwd=ROOT, check=False).returncode
+        if code:
+            raise RuntimeError("Node Chromium fallback did not pass (see preceding output).")
+        return
     active = subprocess.check_output(["git", "branch", "--show-current"], cwd=ROOT, text=True).strip()
     if active != BRANCH:
         raise RuntimeError(f"Refusing non-feature checkout: {active}")
