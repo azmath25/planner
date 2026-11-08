@@ -443,7 +443,7 @@ export const PUSH_SUB_SAVE_SQL="INSERT INTO dayframe.push_subscriptions(endpoint
 "ON CONFLICT(endpoint) DO UPDATE SET updated_at=now() WHERE dayframe.push_subscriptions.owner_user_id=EXCLUDED.owner_user_id RETURNING endpoint";
 export const PUSH_SUB_STATUS_SQL="SELECT 1 AS registered FROM dayframe.push_subscriptions WHERE owner_user_id=$1 AND endpoint=$2";
 export const PUSH_SUB_DELETE_SQL="DELETE FROM dayframe.push_subscriptions WHERE endpoint=$2 AND owner_user_id=$1 RETURNING endpoint";
-export const PUSH_PUBLIC_KEY='BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8';
+export const PUSH_PUBLIC_KEY='BLlPMS4PlpRMQueeUgy-yWQuDAzlW-L_2Tn6qO2765AKRmI3bXnBkMPEPrJ1n744y8_S-Ul1uK88slqgaPjwGn8';
 function pushEndpoint(value){
  if(typeof value!=='string'||value.length<30||value.length>1200)throw fail(400,'Invalid push endpoint');
  let url;
