@@ -69,7 +69,7 @@ test('M6.2a create uses JWT owner and caller UUID; update/delete are revision-fe
  assert.equal(del.status,200);
  assert.deepEqual(calls[2],{sql:DOCUMENT_DELETE_SQL,args:['alice',ID,2]});
 });
-test('M6.2a unsupported embeds, links, HTML props and huge blocks are rejected',async()=>{
+test('M6.2a unsafe embedded URLs, HTML props and huge blocks are rejected',async()=>{
  const {request,calls}=setup();
  for(const bad of [
   [{type:'image',id:'p1',props:{url:'https://example.com/anything'},content:[],children:[]}],
@@ -168,4 +168,31 @@ test('M6.3c document media endpoints remain disabled even with authentication',a
   name:'malware.svg'
  })).status,401);
  assert.equal(calls.length,0,'Do not touch the DB for unsupported binary uploads');
+});
+
+test('Document API accepts safe hyperlinks, LaTeX, code and older heading levels',async()=>{
+ const rich=[
+  {id:'rich1',type:'paragraph',props:{},children:[],content:[
+   {type:'link',href:'https://example.org/math?q=1',content:[{type:'text',text:'Example',styles:{}}]},
+   {type:'math',props:{},content:'x^2+y^2=z^2'}
+  ]},
+  {id:'eqn',type:'mathBlock',props:{},content:'\\\\int_0^1 x\\\\,dx',children:[]},
+  {id:'code',type:'codeBlock',props:{language:'javascript'},content:'console.log(1)',children:[]},
+  {id:'oldHeading',type:'heading',props:{level:6},content:[],children:[]}
+ ];
+ assert.deepEqual(validateDocumentBlocks(rich),rich);
+ const {request,calls}=setup();
+ const result=await request('/v1/documents','POST','alice',{...input,blocks:rich});
+ assert.equal(result.status,201);
+ assert.equal(calls[0].args[6],JSON.stringify(rich));
+ for(const bad of [
+  [{...rich[0],content:[{type:'link',href:'javascript:alert(1)',content:[]}]}],
+  [{...rich[0],content:[{type:'link',href:'https://user:pass@example.org',content:[]}]}],
+  [{...rich[1],props:{evil:'x'}}],
+  [{...rich[1],content:'x'.repeat(6001)}]
+ ]){
+  assert.throws(()=>validateDocumentBlocks(bad),/Unsupported document blocks/);
+  assert.equal((await request('/v1/documents','POST','alice',{...input,blocks:bad})).status,400);
+ }
+ assert.equal(calls.length,1);
 });
