@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
- assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON
+ assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON,documentTitleFromBlocks,safeDocumentLink
 } from '../web/src/domain/documentBlocks.ts';
 const good=(text='Text')=>[{
  id:'block_1',type:'paragraph',
@@ -39,4 +39,40 @@ test('M6.3a canonical equality ignores postgres JSONB key reordering',()=>{
   props:{textAlignment:'left',textColor:'default'},type:'paragraph',id:'one'};
  assert.equal(canonicalDocumentJSON(a),canonicalDocumentJSON(b));
  assert.notEqual(canonicalDocumentJSON(a),canonicalDocumentJSON({...b,content:[]}));
+});
+
+test('Document editor saves safe links, LaTeX, code and existing long headings',()=>{
+ const contents=[
+  {id:'b-link',type:'paragraph',props:{},children:[],content:[
+   {type:'text',text:'Read ',styles:{}},
+   {type:'link',href:'https://example.org/a?x=1',content:[
+    {type:'text',text:'our notes',styles:{underline:true}}]},
+   {type:'math',props:{},content:'x^2+\\\\frac{1}{2}'}
+  ]},
+  {id:'b-math',type:'mathBlock',props:{},content:'\\\\int_0^1 x\\\\,dx',children:[]},
+  {id:'b-code',type:'codeBlock',props:{language:'javascript'},content:'console.log(1)',children:[]},
+  {id:'b-heading',type:'heading',props:{level:6},content:[],children:[]}
+ ];
+ assert.doesNotThrow(()=>assertDocumentBlocks(contents));
+ assert.equal(safeDocumentLink('https://example.org'),true);
+ for(const unsafe of ['javascript:alert(1)','data:text/html,foo','https://user:pw@example.org',
+  'file:///etc/passwd','https://example.org/\\nhello'])assert.equal(safeDocumentLink(unsafe),false);
+});
+test('LaTeX and links cannot bypass bounded, text-only persistence',()=>{
+ const base=good()[0];
+ for(const bad of [
+  {...base,content:[{type:'link',href:'javascript:alert(1)',content:[]}]},
+  {...base,content:[{type:'math',props:{html:'<script>'},content:'x'}]},
+  {...base,content:[{type:'math',props:{},content:'x'.repeat(6001)}]},
+  {...base,content:[{type:'link',href:'https://example.org',content:[{type:'image'}]}]},
+  {id:'bad',type:'mathBlock',props:{html:'evil'},content:'x',children:[]}
+ ])assert.throws(()=>assertDocumentBlocks([bad]));
+});
+test('New page title defaults to the first sentence without requiring naming',()=>{
+ const first=[{id:'b',type:'paragraph',props:{},content:[
+  {type:'text',text:'My research plan. Next steps follow.',styles:{}}],
+  children:[]}];
+ assert.equal(documentTitleFromBlocks(first),'My research plan.');
+ assert.equal(documentTitleFromBlocks(good('A short heading')),'A short heading');
+ assert.equal(documentTitleFromBlocks([]),'');
 });
