@@ -797,3 +797,83 @@
 [data-theme="monochrome"] .df-pie-disc,
 [data-theme="monochrome"] .df-report-large-pie,
 [data-theme="monochrome"] .df-home-pie{border-radius:50%!important}
+
+
+/* M11: consistent, symmetric interactive controls at desktop, tablet and phone widths.
+   Constrain controls to their own sections so long task titles never stretch a toolbar. */
+.df-home-dashboard .df-home-shortcuts,
+.df-home-dashboard .df-home-metrics,
+.df-home-dashboard .df-home-notes,
+.df-report-distribution,
+.df-settings,
+.df-doc-content{min-width:0;max-width:100%}
+.df-home-shortcuts>.btn{width:100%;box-sizing:border-box;min-width:0;
+ display:inline-flex;align-items:center;justify-content:center;text-align:center;
+ gap:8px;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+.df-home-metrics{align-items:stretch}
+.df-home-metric{justify-content:center;min-height:110px}
+.df-home-metric .tiny,.df-home-metric small{line-height:1.35}
+.df-home-today .card-title,.df-home-notes .section-head,
+.df-report-distribution .card-title,.df-settings-group-head{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px
+}
+.df-home-today .card-title>.text-link,
+.df-home-notes .section-head .text-link{min-height:38px;
+ display:inline-flex;align-items:center;justify-content:center}
+.df-home-focus>.btn{min-width:115px;flex:none}
+.df-home-focus>.df-home-focus-select{min-width:0}
+.df-home-focus>.df-home-focus-select>.field{max-width:100%}
+.df-home-note-grid>.df-home-note,.note-grid>.df-quick-note-card{height:100%}
+.df-quick-note-actions .mini-btn{display:inline-flex;justify-content:center;
+ align-items:center;gap:6px;min-height:36px;padding:8px 12px;white-space:nowrap}
+.df-report-options .actions{display:flex;align-items:stretch;justify-content:center;
+ flex-wrap:wrap;gap:7px}
+.df-report-options .filter{display:inline-flex;align-items:center;justify-content:center;
+ min-width:64px;min-height:38px;box-sizing:border-box}
+.df-settings-row>.btn,.df-settings-row>button{min-width:120px;min-height:40px;
+ display:inline-flex;align-items:center;justify-content:center}
+.df-doc-writing-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+ max-width:100%;min-width:0}
+.df-doc-writing-bar>.btn{min-height:36px;min-width:0;text-align:center;justify-content:center}
+.df-doc-writing-bar>.df-doc-save-status{min-width:130px;flex:1 1 170px;
+ margin:0;text-align:center;line-height:1.35}
+.df-doc-writing-bar .df-doc-zoom-control{display:inline-flex;align-items:center;
+ justify-content:center;flex:0 0 auto}
+.df-doc-writing-bar .df-doc-zoom-control>.btn{min-width:36px;min-height:36px;
+ display:inline-flex;align-items:center;justify-content:center;padding:6px}
+.df-doc-writing-bar>.df-doc-options{flex:0 0 auto}
+.df-doc-writing-bar>.df-doc-options summary{min-height:36px;display:inline-flex;
+ justify-content:center;align-items:center}
+.df-doc-photo-heading{justify-content:space-between}
+.df-doc-photo figcaption>.btn{min-height:36px}
+@media(max-width:700px){
+ .df-home-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .df-home-metric{min-height:104px;padding:12px}
+ .df-home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+ .df-report-options{justify-content:center}
+ .df-report-options .actions{flex:1 1 250px}
+ .df-report-options .filter{flex:1 1 72px}
+ .df-home-focus>.btn{flex:1 1 110px;min-width:0}
+ .df-doc-writing-bar>.df-doc-save-status{order:6;flex-basis:100%;min-height:18px}
+ .df-doc-writing-bar>.df-doc-back{flex:1 1 110px}
+ .df-doc-writing-bar>.df-doc-download{flex:1 1 110px}
+ .df-doc-writing-bar>.df-doc-zoom-control{flex:1 1 auto}
+ .df-doc-writing-bar>.df-doc-options{flex:1 1 75px}
+ .df-doc-writing-bar>.df-doc-options summary{width:100%}
+}
+@media(max-width:390px){
+ .df-home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .df-home-shortcuts>.btn{padding:9px 6px;font-size:12px;min-height:48px}
+ .df-home-metrics{gap:7px}
+ .df-home-metric{padding:10px;min-height:100px}
+ .df-home-metric>strong{font-size:clamp(18px,6vw,24px)}
+ .df-doc-writing-bar>.df-doc-back,
+ .df-doc-writing-bar>.df-doc-download{flex-basis:calc(50% - 8px)}
+ .df-doc-writing-bar>.df-doc-zoom-control{flex-basis:58%}
+ .df-doc-writing-bar>.df-doc-options{flex-basis:32%}
+ .df-settings-row button{width:100%}
+}
+/* Square theme is deliberately orthogonal to chart geometry. */
+[data-theme="monochrome"] .df-home-pie,
+[data-theme="monochrome"] .df-pie-disc,
+[data-theme="monochrome"] .df-report-large-pie{border-radius:50%!important}
