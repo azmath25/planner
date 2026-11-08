@@ -6,6 +6,7 @@ import {
 import { emptyDocumentBlocks,canonicalDocumentJSON,documentTitleFromBlocks } from '../domain/documentBlocks';
 import { saveUnsyncedDraft,readUnsyncedDraft,clearUnsyncedDraft } from '../domain/documentDraftBackup';
 import { BlockDocumentEditor } from './BlockDocumentEditor';
+import { documentDownloadHtml,documentDownloadFilename,type DocumentPhoto } from '../domain/documentExport';
 
 type Workspace={id:string;name:string};
 type Props={
@@ -26,6 +27,9 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [active,setActive]=useState<CloudDocument|null>(null);
  const [title,setTitle]=useState('');
  const [blocks,setBlocks]=useState<unknown[]>(emptyDocumentBlocks());
+ const [photos,setPhotos]=useState<DocumentPhoto[]>([]);
+ const [photoBusy,setPhotoBusy]=useState(false);
+ const [photoError,setPhotoError]=useState('');
  const [dirty,setDirty]=useState(false);
  const [backupError,setBackupError]=useState(false);
  const [conflict,setConflict]=useState(false);
@@ -85,6 +89,76 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   window.addEventListener('beforeunload',unload);
   return ()=>window.removeEventListener('beforeunload',unload);
  },[dirty,busy,pendingCreate,onDirtyChange]);
+ useEffect(()=>{
+  const docId=active?.id;
+  setPhotos([]);setPhotoError('');
+  if(!docId||showTrash)return;
+  let cancelled=false;
+  void cloudApi.getDocumentPhotos(docId).then(rows=>{
+   if(!cancelled&&alive.current)setPhotos(rows);
+  }).catch(e=>{
+   if(!cancelled&&alive.current)setPhotoError(
+    e instanceof Error?e.message:'Could not load document photos');
+  });
+  return ()=>{cancelled=true;};
+ },[active?.id,showTrash]);
+ const uploadPhoto=async(file:File|null)=>{
+  if(!active||!file||photoBusy)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){
+   setPhotoError('Select a JPEG, PNG or WebP photo smaller than 5 MB.');return;
+  }
+  const slot=[0,1,2,3].find(n=>!photos.some(p=>p.slot===n));
+  if(slot===undefined){setPhotoError('Maximum four photos. Remove one before adding another.');return;}
+  setPhotoBusy(true);setPhotoError('');
+  const docId=active.id;
+  try{
+   const bitmap=await createImageBitmap(file);
+   const canvas=document.createElement('canvas');
+   let scale=Math.min(1,960/bitmap.width,960/bitmap.height),data='';
+   try{
+    for(let attempt=0;attempt<12;attempt++){
+     canvas.width=Math.max(1,Math.floor(bitmap.width*scale));
+     canvas.height=Math.max(1,Math.floor(bitmap.height*scale));
+     const ctx=canvas.getContext('2d');
+     if(!ctx)throw Error('Image compression is unavailable');
+     ctx.clearRect(0,0,canvas.width,canvas.height);
+     ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+     data=canvas.toDataURL('image/webp',Math.max(.28,.79-.043*attempt));
+     if(data.split(',')[1].length*.75<=175000)break;
+     scale*=.78;
+    }
+   }finally{bitmap.close?.();}
+   if(!/^data:image\/(?:webp|png|jpeg);base64,/.test(data)||
+     data.split(',')[1].length*.75>180000)
+     throw Error('Could not compress this photo to the private 180 KB limit');
+   await cloudApi.putDocumentPhoto(docId,slot,data);
+   if(alive.current&&active.id===docId)
+    setPhotos(old=>[...old,{slot,data}].sort((a,b)=>a.slot-b.slot));
+  }catch(e){
+   if(alive.current)setPhotoError(e instanceof Error?e.message:'Could not attach photo');
+  }finally{if(alive.current)setPhotoBusy(false);}
+ };
+ const removePhoto=async(slot:number)=>{
+  if(!active||photoBusy)return;
+  setPhotoBusy(true);setPhotoError('');
+  const docId=active.id;
+  try{
+   await cloudApi.deleteDocumentPhoto(docId,slot);
+   if(alive.current&&active.id===docId)setPhotos(old=>old.filter(p=>p.slot!==slot));
+  }catch(e){if(alive.current)setPhotoError(e instanceof Error?e.message:'Could not remove photo');}
+  finally{if(alive.current)setPhotoBusy(false);}
+ };
+ const downloadReadable=()=>{
+  if(!active)return;
+  const html=documentDownloadHtml(title.trim()||documentTitleFromBlocks(blocks)||'Untitled document',
+    blocks,photos);
+  const url=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
+  try{
+   const a=document.createElement('a');a.href=url;
+   a.download=documentDownloadFilename(title.trim()||'Untitled document');
+   document.body.appendChild(a);a.click();a.remove();
+  }finally{window.setTimeout(()=>URL.revokeObjectURL(url),1500);}
+ };
  const canDiscard=()=>{
   if(busy||savingRef.current){setError('An account request is still finishing. Try again when it completes.');return false;}
   if(pendingCreate){setError('A document creation result is uncertain. Retry creation first.');return false;}
@@ -588,6 +662,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
        <button type="button" className="btn small" disabled={busy||!dirty||conflict}
         onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>
         {autoSavePaused?'Retry sync':'Save now'}</button>
+       <button type="button" className="btn small secondary df-doc-download"
+        onClick={downloadReadable} disabled={photoBusy}>Download HTML</button>
        <div className="df-doc-zoom-control" role="group" aria-label="Document zoom">
         <button type="button" className="btn small secondary" aria-label="Zoom out 10 percent"
          disabled={editorZoom<=60} onClick={()=>setEditorZoom(z=>Math.max(60,z-10))}>−</button>
@@ -625,6 +701,34 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
       </div>
      </div>
+     <section className="df-doc-photo-section" aria-label="Document photos">
+      <div className="df-doc-photo-heading">
+       <strong>Photos</strong>
+       <span className="tiny">{photos.length}/4 private attachments</span>
+      </div>
+      {photos.length>0&&<div className="df-doc-photo-grid">
+       {photos.map(p=><figure key={p.slot} className="df-doc-photo">
+        <img src={p.data} alt={'Document photo '+(p.slot+1)}/>
+        <figcaption>Photo {p.slot+1}
+         <button type="button" className="btn small secondary" disabled={photoBusy}
+          onClick={()=>void removePhoto(p.slot)}>Remove</button>
+        </figcaption>
+       </figure>)}
+      </div>}
+      <label className="btn small secondary df-doc-photo-add">
+       {photoBusy?'Saving photo…':'Add photo'}
+       <input type="file" accept="image/png,image/jpeg,image/webp"
+        disabled={photoBusy||photos.length>=4} hidden
+        onChange={event=>{
+         const file=event.target.files?.[0]??null;
+         event.target.value='';
+         void uploadPhoto(file);
+        }}/>
+      </label>
+      <p className="tiny">Images are stored privately with this document.
+       They are included in the readable HTML download.</p>
+      {photoError&&<p className="tiny" role="alert">{photoError}</p>}
+     </section>
     </>:<div className="df-doc-empty">
       <h2>{showTrash?'Restore a document':'Choose a document'}</h2>
       <p className="subtitle">{showTrash?'Restore a deleted page to edit it.':
