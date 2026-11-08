@@ -1150,7 +1150,8 @@ function render(){
     workspaces:workspaces.map(w=>({id:serverWorkspaceId(w.id),name:w.name})),
     initialWorkspaceId:state.documentWorkspaceId,
     initialTaskId:state.documentTaskId,
-    initialTaskName:findTask(state.documentTaskId)?.title||null
+    initialTaskName:findTask(state.documentTaskId)?.title||null,
+    draftScope:storageKey
    },dirty=>{
     documentPageDirty=dirty;
     window.dispatchEvent(new CustomEvent('dayframe:draft-state',{detail:{dirty}}));
