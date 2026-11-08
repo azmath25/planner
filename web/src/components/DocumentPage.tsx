@@ -30,6 +30,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [photos,setPhotos]=useState<DocumentPhoto[]>([]);
  const [photoBusy,setPhotoBusy]=useState(false);
  const [photoError,setPhotoError]=useState('');
+ const activePhotoId=useRef<string|null>(null);
+ useEffect(()=>{activePhotoId.current=active?.id??null;},[active?.id]);
  const [dirty,setDirty]=useState(false);
  const [backupError,setBackupError]=useState(false);
  const [conflict,setConflict]=useState(false);
@@ -132,7 +134,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
      (data.split(',')[1]||'').length*.75>180000)
      throw Error('Could not compress this photo to the private 180 KB limit');
    await cloudApi.putDocumentPhoto(docId,slot,data);
-   if(alive.current&&active.id===docId)
+   if(alive.current&&activePhotoId.current===docId)
     setPhotos(old=>[...old,{slot,data}].sort((a,b)=>a.slot-b.slot));
   }catch(e){
    if(alive.current)setPhotoError(e instanceof Error?e.message:'Could not attach photo');
@@ -144,7 +146,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   const docId=active.id;
   try{
    await cloudApi.deleteDocumentPhoto(docId,slot);
-   if(alive.current&&active.id===docId)setPhotos(old=>old.filter(p=>p.slot!==slot));
+   if(alive.current&&activePhotoId.current===docId)setPhotos(old=>old.filter(p=>p.slot!==slot));
   }catch(e){if(alive.current)setPhotoError(e instanceof Error?e.message:'Could not remove photo');}
   finally{if(alive.current)setPhotoBusy(false);}
  };
