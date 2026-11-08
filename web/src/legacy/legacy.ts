@@ -953,7 +953,7 @@ else if(state.modal==='note'||state.modal==='note-edit'){
  const n=state.modal==='note-edit'?state.notes.find(x=>x.id===state.modalTask):null;
  const selected=n?.workspace||(workspaces.some(w=>w.id===state.modalTask)?state.modalTask:'general');
  title=n?'Edit quick note':'Capture a quick note';
- body=`<form id="note-form">
+ body=`<form id="note-form" data-note-context="${escapeHTML(state.modal)}:${escapeHTML(state.modalTask||'')}">
   <div class="field-wrap"><label class="form-label" for="ntitle">Title *</label>
    <input class="field" name="title" id="ntitle" required maxlength="120"
     value="${escapeHTML(n?.title||'')}" placeholder="Something worth remembering" autofocus/></div>
@@ -1069,7 +1069,7 @@ else if(state.modal==='permanent-task'){
 }
 else if(state.modal==='delete-note'){title='Delete this note?';body=`<p class="subtitle">${isCloud?'The note will be removed from your account list (recoverable later).':'The selected note will be removed from this browser\'s demo data.'} This action requires confirmation.</p>${state.noteError?`<p role="alert" class="tiny">${escapeHTML(state.noteError)}</p>`:''}<div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-delete-note">Delete note</button></div>`}
 else if(state.modal==='reset'){title='Reset the design preview?';body=`<p class="subtitle">${isCloud?'This clears browser-local preferences, workspace photos and older device-only timer history. It does NOT delete your saved Neon tasks, schedules, reminders or time sessions.':'This clears local demo changes and restores sample data. No online data is involved.'}</p><div class="modal-footer"><button class="btn secondary" data-action="close">Cancel</button><button class="btn danger" data-action="confirm-reset">Reset sample data</button></div>`}
-return `<div class="modal-backdrop" data-backdrop="true"><section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
+return `<div class="modal-backdrop" data-backdrop="true"><section class="modal ${['note','note-edit'].includes(state.modal)?'modal-note-editor':''}" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-head"><h2>${escapeHTML(title)}</h2><button class="icon-btn" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${body}</section></div>`}
 function parseClock(s){const [h,m]=s.split(':').map(Number);return h*60+m}
 function profilePage(){
  const subtitle=isCloud?'Your Dayframe account':'This is a local, unsynchronized preview.';
@@ -1089,7 +1089,24 @@ let documentPageCleanup=null;
 let documentPageMounted=false;
 let documentPageSerial=0;
 let documentPageDirty=false;
+let noteFormDirty=false;
 function render(){
+ // Legacy background refreshes must not erase an in-progress Quick Note.
+ // Snapshot input values, focus and caret before layout() replaces its HTML.
+ const noteContext=String(state.modal||'')+':'+String(state.modalTask||'');
+ const oldForm=document.querySelector('#note-form');
+ const savedNoteFields=oldForm?.dataset.noteContext===noteContext ?
+  Array.from(oldForm.elements).filter(el=>
+   el instanceof HTMLInputElement||el instanceof HTMLTextAreaElement||
+   el instanceof HTMLSelectElement).map(el=>({
+    name:el.name,value:el.value,
+    checked:el instanceof HTMLInputElement?el.checked:null,
+    focused:document.activeElement===el,
+    start:el instanceof HTMLInputElement||el instanceof HTMLTextAreaElement?
+     (()=>{try{return el.selectionStart}catch{return null}})():null,
+    end:el instanceof HTMLInputElement||el instanceof HTMLTextAreaElement?
+     (()=>{try{return el.selectionEnd}catch{return null}})():null
+   })) : null;
  // Preserve the editor root on unrelated legacy render calls.
  if(state.page==='documents'&&documentPageMounted)return;
  if(documentPageCleanup){
@@ -1106,6 +1123,25 @@ function render(){
   `<div class="info-banner" role="alert">Server timer unavailable: ${escapeHTML(state.timeError)} <button type="button" class="btn small secondary" data-action="time-retry">Retry timer</button></div>`
   :isCloudTime&&!state.timeLoaded?'<div class="info-banner" role="status">Restoring your saved timer from Neon…</div>':'';
  layout(timeWarning+view);
+ if(savedNoteFields){
+  const currentForm=document.querySelector('#note-form');
+  if(currentForm?.dataset.noteContext===noteContext){
+   for(const saved of savedNoteFields){
+    const current=Array.from(currentForm.elements).find(el=>el.name===saved.name);
+    if(!current)continue;
+    current.value=saved.value;
+    if(saved.checked!==null&&current instanceof HTMLInputElement)
+     current.checked=saved.checked;
+    if(saved.focused){
+     current.focus({preventScroll:true});
+     if(saved.start!==null&&saved.end!==null&&
+      (current instanceof HTMLInputElement||current instanceof HTMLTextAreaElement)){
+      try{current.setSelectionRange(saved.start,saved.end)}catch{/* non-text inputs */}
+     }
+    }
+   }
+  }
+ }
  if(isCloud&&state.page==='documents'){
   const root=$('#dayframe-document-root');
   void import('../components/DocumentPage').then(({mountDayframeDocuments})=>{
@@ -1154,7 +1190,11 @@ function navigate(page){
   .catch(saveError).finally(()=>{state.trashBusy=false;render();});
  }
 }
-function closeModal(){state.modal=null;state.modalTask=null;render()}
+function closeModal(){
+ if(['note','note-edit'].includes(state.modal)&&noteFormDirty&&
+  !window.confirm('Discard your unsaved note?'))return;
+ state.modal=null;state.modalTask=null;noteFormDirty=false;render();
+}
 
 function applyCloudTimeSnapshot(session){
  if(!isCloudTime||disposed)return;
@@ -1361,7 +1401,11 @@ function updateTimer(action,id){
   else if(action==='stop'&&state.timer){recordAndStop('stopped');}
   persist();render();
 }
-trackListener('click',async e=>{if(e.target.dataset.backdrop){closeModal();return}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':
+trackListener('click',async e=>{if(e.target.dataset.backdrop){
+ // Accidental outside clicks during note writing must never close the draft.
+ if(!['note','note-edit'].includes(state.modal))closeModal();
+ return;
+}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;switch(a){case'nav':
  if(b.dataset.page==='documents'){state.documentWorkspaceId=null;state.documentTaskId=null;}
  navigate(b.dataset.page);break;
 case'pin-workspace':{
@@ -1447,10 +1491,10 @@ case'archive-workspace':{
  state.modal='archive-workspace';state.modalTask=id;render();break;
 }case'modal-task':state.modal='task';state.modalTask=id||null;state.subtaskParent=null;render();break;
 case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':
- state.noteError='';state.notePendingCreate=null;state.modal='note';state.modalTask=id||null;render();break;
+ noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note';state.modalTask=id||null;render();break;
 case'edit-note':{
  if(!state.notes.some(n=>n.id===id)||state.noteBusy)break;
- state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;render();break;
+ noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;render();break;
 }
 case'convert-note':{
  const n=state.notes.find(x=>x.id===id);
@@ -2033,7 +2077,14 @@ if(e.target.id==='calendar-anchor'){
  state.calendarAnchor=e.target.value;render();
  if(isCloud){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
 }if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
-trackListener('keydown',e=>{if(e.key==='Escape'&&state.modal)closeModal()});
+trackListener('input',e=>{if(e.target?.closest?.('#note-form'))noteFormDirty=true;});
+trackListener('change',e=>{if(e.target?.closest?.('#note-form'))noteFormDirty=true;});
+trackListener('keydown',e=>{
+ // Slash/formatting commands may use Escape. Explicit Close is required
+ // while writing, so a stray key never discards a quick-note draft.
+ if(e.key==='Escape'&&state.modal&&
+  !['note','note-edit'].includes(state.modal))closeModal();
+});
 const timerHandle = setInterval(()=>{
   document.querySelectorAll('[data-timer-display]').forEach(el=>el.textContent=formatTimer());
   const detailMetric=document.querySelector('.page-detail .metric-value[data-current-task-time]');
