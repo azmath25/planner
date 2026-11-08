@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import pg from 'pg';
 import { secureDatabaseConnectionUrl } from './db-url.mjs';
 
-export const VAPID_PUBLIC_KEY='BGuoNReCOFbRqVYRkKY9u-sVDCE-f6JvrbxRZnsksM3cDze3lsS8Y6tkzDs6-mLUFBQXZK2uhBUISW21wEfWZl8';
+export const VAPID_PUBLIC_KEY='BLlPMS4PlpRMQueeUgy-yWQuDAzlW-L_2Tn6qO2765AKRmI3bXnBkMPEPrJ1n744y8_S-Ul1uK88slqgaPjwGn8';
 const BATCH=40;
 let pool;
 const b64=buf=>Buffer.from(buf).toString('base64url');
@@ -29,7 +29,7 @@ export function makeVapidAuthorization(endpoint,privateKey,nowSeconds=Math.floor
  },format:'jwk'});
  const header=b64(JSON.stringify({typ:'JWT',alg:'ES256'}));
  const payload=b64(JSON.stringify({
-  aud:new URL(endpoint).origin,exp:nowSeconds+3600,sub:'https://azmath25.github.io/planner/'
+  aud:new URL(endpoint).origin,exp:nowSeconds+3600,sub:'https://dayframe-azmath25s-projects.vercel.app/'
  }));
  const input=header+'.'+payload;
  const signature=crypto.sign('sha256',Buffer.from(input),{key,dsaEncoding:'ieee-p1363'});
