@@ -101,6 +101,25 @@ def run(browser,width):
  assert p.evaluate('(id)=>window.__docMock.creations.at(-1).id===id',attempt)
  assert p.evaluate('(id)=>window.__docMock.items.filter(x=>x.id===id).length',attempt)==1
  assert p.get_by_label('Document title').input_value()=='Untitled document'
+
+ # A definite rejection must not permanently trap the document library.
+ # Abandonment explicitly warns that an uncertain request might have committed.
+ p.evaluate('window.__docMock.failNextCreateBeforeCommit=true')
+ before=p.evaluate('window.__docMock.creations.length')
+ p.get_by_role('button',name='New document').click()
+ p.get_by_role('button',name='Abandon retry').wait_for(timeout=8500)
+ rejected=p.evaluate('window.__docMock.creations.at(-1).id')
+ assert p.evaluate('(id)=>window.__docMock.items.some(x=>x.id===id)',rejected) is False
+ p.once('dialog',lambda dialog:dialog.dismiss())
+ p.get_by_role('button',name='Abandon retry').click()
+ assert p.get_by_role('button',name='Retry creation').count()==1
+ p.once('dialog',lambda dialog:dialog.accept())
+ p.get_by_role('button',name='Abandon retry').click()
+ p.get_by_role('button',name='Retry creation').wait_for(state='detached')
+ p.get_by_role('button',name='New document').click()
+ p.wait_for_function('(count)=>window.__docMock.creations.length===count+2',before)
+ assert p.evaluate('(id)=>window.__docMock.creations.at(-1).id!==id',rejected)
+ assert p.evaluate('window.__docMock.items.filter(x=>x.id===window.__docMock.creations.at(-1).id).length')==1
  assert not errors,errors
  assert p.evaluate('document.documentElement.scrollWidth<=window.innerWidth+4'),f'Horizontal overflow at {width}px'
  p.evaluate('window.stopDayframeDocuments()')
