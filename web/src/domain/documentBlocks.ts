@@ -54,6 +54,22 @@ export function assertDocumentBlocks(value:unknown):asserts value is unknown[]{
    throw Error('Unsupported inline content');
   }
  };
+ // BlockNote encodes plain math/code block source as an array of text runs.
+ // Treat the real editor JSON as valid; keep bounded checks and safe styles.
+ const plainSource=(source:unknown,maxChars:number,kind:string):void=>{
+  if(typeof source==='string'){
+   if(source.length>maxChars)throw Error('Unsupported '+kind+' block');
+   return;
+  }
+  if(!Array.isArray(source)||source.length>300)
+   throw Error('Unsupported '+kind+' block');
+  let total=0;
+  for(const run of source){
+   styledText(run);
+   total+=(run as {text:string}).text.length;
+   if(total>maxChars)throw Error('Unsupported '+kind+' block');
+  }
+ };
  const visit=(entries:unknown[],depth:number):void=>{
   if(depth>6)throw Error('Maximum document nesting is six levels');
   for(const value of entries){
@@ -77,11 +93,10 @@ export function assertDocumentBlocks(value:unknown):asserts value is unknown[]{
      throw Error('Unsupported block property');
    }
    if(value.type==='mathBlock'){
-    if(typeof value.content!=='string'||value.content.length>6000||
-     Object.keys(value.props).length)throw Error('Unsupported LaTeX block');
+    if(Object.keys(value.props).length)throw Error('Unsupported LaTeX block');
+    plainSource(value.content,6000,'LaTeX');
    }else if(value.type==='codeBlock'){
-    if(typeof value.content!=='string'||value.content.length>20000)
-     throw Error('Unsupported code block');
+    plainSource(value.content,20000,'code');
    }else{
     if(!Array.isArray(value.content))throw Error('Unsupported block text');
     inline(value.content);
