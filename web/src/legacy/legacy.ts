@@ -1035,7 +1035,7 @@ else if(state.modal==='note'||state.modal==='note-edit'){
   <small class="form-hint">${isCloud?'Your note reminder will appear in the account inbox when due. Browser push is optional and requires permission.':'Local demo notes do not send notifications.'}</small>
   ${state.noteError?`<p class="tiny" role="alert">${escapeHTML(state.noteError)}</p>`:''}
   <p class="tiny df-note-autosave-status" id="note-autosave-status" role="status" aria-live="polite">
-   ${escapeHTML(noteAutoStatusMessage)}
+   ${escapeHTML(isCloud?noteAutoStatusMessage:'Local preview — use Save now to keep this note in this browser.')}
   </p>
   <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Close</button>
    <button type="submit" class="btn" ${state.noteBusy?'disabled':''}>Save now</button></div>
