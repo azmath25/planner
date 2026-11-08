@@ -1053,7 +1053,7 @@ return {async fetch(req){
     const notePhotoPath=/^\/v1\/notes\/([a-f0-9-]{36})\/photo$/i.exec(path);
     if(notePhotoPath){
       const id=uuid(notePhotoPath[1],'note ID');
-      const note=await query(NOTE_BY_ID,[uid,id]);
+      const note=await query(NOTE_BY_ID_SQL,[uid,id]);
       if(!note.rows.length)throw fail(404,'Note unavailable');
       if(req.method==='GET'){
         const {rows}=await query(
