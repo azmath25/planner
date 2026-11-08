@@ -909,11 +909,60 @@ return {async fetch(req){
       }
       return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,OPTIONS'});
     }
-    // No unreviewed binary upload or public attachment transport is available.
-    // Reject before reading request bodies; account auth already ran above.
+    // Bounded private document photos: no public object URLs, arbitrary files,
+    // executable media or hidden HTML. All requests first check note ownership.
     const documentAttachment=/^\/v1\/documents\/([a-f0-9-]{36})\/attachments$/i.exec(path);
-    if(documentAttachment)
-      return json({error:'Document file uploads are unavailable until private storage and scanning are approved'},415,hdr);
+    if(documentAttachment){
+      const documentId=uuid(documentAttachment[1],'document ID');
+      const doc=await query(DOCUMENT_DETAIL_SQL,[uid,documentId]);
+      if(!doc.rows.length)throw fail(404,'Document unavailable');
+      if(req.method==='GET'){
+        const {rows}=await query(
+          "SELECT slot,mime,encode(image_bytes,'base64') AS base64 "+
+          "FROM dayframe.document_photos WHERE owner_user_id=$1 AND document_id=$2 ORDER BY slot",
+          [uid,documentId]);
+        return json({photos:rows.map(p=>({
+          slot:Number(p.slot),data:'data:'+p.mime+';base64,'+p.base64
+        }))},200,hdr);
+      }
+      if(req.method==='PUT'){
+        const body=await readBody(req,250000);
+        if(!Number.isInteger(body.slot)||body.slot<0||body.slot>3)
+          throw fail(400,'Photo slot must be 0–3');
+        const m=typeof body.data==='string'?
+         /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.data):null;
+        if(!m)throw fail(400,'Only JPEG, PNG and WebP photos are accepted');
+        const bytes=Buffer.from(m[2],'base64');
+        if(bytes.length<16||bytes.length>180000||bytes.toString('base64')!==m[2])
+          throw fail(413,'Photo must be 180 KB or smaller');
+        const valid={
+          'image/png':bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71,
+          'image/jpeg':bytes[0]===255&&bytes[1]===216,
+          'image/webp':bytes.subarray(0,4).toString()==='RIFF'&&
+           bytes.subarray(8,12).toString()==='WEBP'
+        };
+        if(!valid[m[1]])throw fail(400,'Photo content does not match its MIME type');
+        await query(
+          "INSERT INTO dayframe.document_photos(document_id,owner_user_id,slot,mime,image_bytes) "+
+          "VALUES($2,$1,$3,$4,decode($5,'base64')) "+
+          "ON CONFLICT(document_id,slot) DO UPDATE SET "+
+          "mime=EXCLUDED.mime,image_bytes=EXCLUDED.image_bytes,updated_at=now() "+
+          "WHERE dayframe.document_photos.owner_user_id=EXCLUDED.owner_user_id",
+          [uid,documentId,body.slot,m[1],m[2]]);
+        return json({saved:true,slot:body.slot},200,hdr);
+      }
+      if(req.method==='DELETE'){
+        const slot=Number(new URL(req.url).searchParams.get('slot'));
+        if(!Number.isInteger(slot)||slot<0||slot>3)
+          throw fail(400,'Photo slot must be 0–3');
+        await query(
+          "DELETE FROM dayframe.document_photos "+
+          "WHERE owner_user_id=$1 AND document_id=$2 AND slot=$3",
+          [uid,documentId,slot]);
+        return json({deleted:true},200,hdr);
+      }
+      return json({error:'Method not allowed'},405,{...hdr,allow:'GET,PUT,DELETE,OPTIONS'});
+    }
     // M6.3: search is authenticated, bounded and returns metadata only.
     // Document content may match, but must not leak into the result snippet.
     if(path==='/v1/documents/search'){
