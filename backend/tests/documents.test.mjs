@@ -170,6 +170,22 @@ test('M6.3c document media endpoints remain disabled even with authentication',a
  assert.equal(calls.length,0,'Do not touch the DB for unsupported binary uploads');
 });
 
+test('BlockNote real plain math and code arrays persist through the authenticated API',async()=>{
+ const rich=[
+  {id:'formula',type:'mathBlock',props:{},content:[
+   {type:'text',text:'e=mc^2',styles:{}}],children:[]},
+  {id:'code',type:'codeBlock',props:{language:'javascript'},content:[
+   {type:'text',text:'const x=1;',styles:{}}],children:[]}
+ ];
+ const {request,calls}=setup();
+ assert.deepEqual(validateDocumentBlocks(rich),rich);
+ const created=await request('/v1/documents','POST','alice',{...input,blocks:rich});
+ assert.equal(created.status,201);
+ assert.equal(calls[0].args[6],JSON.stringify(rich));
+ const invalid=[{...rich[0],content:[{type:'link',href:'https://example.org',content:[]}]}];
+ assert.throws(()=>validateDocumentBlocks(invalid),/Unsupported document blocks/);
+ assert.equal((await request('/v1/documents','POST','alice',{...input,blocks:invalid})).status,400);
+});
 test('Document API accepts safe hyperlinks, LaTeX, code and older heading levels',async()=>{
  const rich=[
   {id:'rich1',type:'paragraph',props:{},children:[],content:[
