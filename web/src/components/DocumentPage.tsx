@@ -22,7 +22,6 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [active,setActive]=useState<CloudDocument|null>(null);
- const writing=Boolean(active&&!showTrash);
  const [title,setTitle]=useState('');
  const [blocks,setBlocks]=useState<unknown[]>(emptyDocumentBlocks());
  const [dirty,setDirty]=useState(false);
@@ -36,6 +35,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
  const [showTrash,setShowTrash]=useState(false);
+ const writing=Boolean(active&&!showTrash);
  useEffect(()=>{
   // Give the active document the viewport, not the narrow dashboard column.
   // Remove the class on unmount, including a task-navigation exit.
