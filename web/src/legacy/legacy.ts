@@ -1987,68 +1987,32 @@ if(form.id==='quiet-hours-form'){
  return;
 }
 if(form.id==='note-form'){
- if(state.noteBusy)return;
- const title=String(data.get('title')||'').trim();
- const reminder=String(data.get('reminder')||'')||null;
- const reminderTime=String(data.get('reminderTime')||'')||null;
- const entry={
-  workspace:String(data.get('workspace')||'general'),title,
-  content:String(data.get('content')||''),
-  color:String(data.get('color')||'cream'),pinned:data.has('pinned'),
-  reminder,reminderTime
- };
- const showNoteError=message=>{
-  state.noteError=message;
-  let element=form.querySelector('[role="alert"]');
-  if(!element){
-   element=document.createElement('p');element.className='tiny';
-   element.setAttribute('role','alert');
-   form.insertBefore(element,form.querySelector('.modal-footer'));
-  }
-  element.textContent=message;
- };
- if(!title||title.length>120||entry.content.length>8000||
-  reminderTime&&!reminder){
-  showNoteError('Provide a title and, if using a reminder time, select its date.');
-  return;
- }
- const existing=state.modal==='note-edit'?state.notes.find(x=>x.id===state.modalTask):null;
  if(isCloud){
-  state.noteBusy=true;state.noteError='';
-  const submit=form.querySelector('button[type="submit"]');
-  if(submit)submit.disabled=true;
-  try{
-   const remote={...entry,workspace:serverWorkspaceId(entry.workspace)};
-   // Preserve one UUID for retries after an uncertain POST response. A changed
-   // draft must not silently start a second create before reconciliation.
-   const fingerprint=JSON.stringify(remote);
-   let pending=state.notePendingCreate;
-   if(!existing){
-    if(pending&&pending.fingerprint!==fingerprint){
-     showNoteError('The previous save may have succeeded. Restore the original fields and retry, or close this editor and refresh My notes before creating a different note.');
-     return;
-    }
-    if(!pending){
-     pending={id:crypto.randomUUID(),fingerprint};
-     state.notePendingCreate=pending;
-    }
-   }
-   const result=existing
-    ?await cloudApi.updateQuickNote(existing.id,{...remote,revision:existing.revision})
-    :await cloudApi.createQuickNote({...remote,id:pending.id});
-   if(disposed)return;
-   upsertQuickNote(result);state.notePendingCreate=null;state.modal=null;state.modalTask=null;
-   render();
-  }catch(err){
-   if(!disposed)showNoteError(err instanceof Error?err.message:'Could not save note');
-  }finally{
-   state.noteBusy=false;if(submit)submit.disabled=false;
+  if(!noteAutoController)beginNoteAutosave();
+  const controller=noteAutoController;
+  if(!controller)return;
+  const synced=await controller.flush(true);
+  if(synced&&controller.isSaved()&&!disposed){
+   controller.dispose();
+   if(noteAutoController===controller)noteAutoController=null;
+   noteFormDirty=false;state.noteBusy=false;state.noteError='';
+   state.modal=null;state.modalTask=null;render();
   }
  }else{
+  const raw={
+   workspace:String(data.get('workspace')||'general'),
+   title:String(data.get('title')||''),
+   content:String(data.get('content')||''),
+   color:String(data.get('color')||'cream'),
+   pinned:data.has('pinned'),
+   reminder:String(data.get('reminder')||'')||null,
+   reminderTime:String(data.get('reminderTime')||'')||null
+  };
+  const entry={...raw,title:effectiveNoteTitle(raw)};
+  const existing=state.modal==='note-edit'?state.notes.find(n=>n.id===state.modalTask):null;
   if(existing)Object.assign(existing,entry);
-  else state.notes.unshift({id:newId(),...entry,
-   color:entry.color,pinned:entry.pinned});
-  state.modal=null;state.modalTask=null;persist();render();
+  else state.notes.unshift({id:newId(),...entry});
+  noteFormDirty=false;state.modal=null;state.modalTask=null;persist();render();
  }
  return;
 }
