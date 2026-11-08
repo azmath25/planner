@@ -31,6 +31,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [conflict,setConflict]=useState(false);
  const [autoSavePaused,setAutoSavePaused]=useState(false);
  const [editorEpoch,setEditorEpoch]=useState(0);
+ // View-only scale; it never changes the document JSON or autosave revision.
+ const [editorZoom,setEditorZoom]=useState(100);
  // A network response must not clear edits made after its request began.
  const draftVersion=useRef(0);
  const savingRef=useRef(false);
@@ -501,6 +503,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
        <button type="button" className="btn small" disabled={busy||!dirty||conflict}
         onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>
         {autoSavePaused?'Retry sync':'Save now'}</button>
+       <div className="df-doc-zoom-control" role="group" aria-label="Document zoom">
+        <button type="button" className="btn small secondary" aria-label="Zoom out 10 percent"
+         disabled={editorZoom<=60} onClick={()=>setEditorZoom(z=>Math.max(60,z-10))}>−</button>
+        <button type="button" className="btn small secondary df-doc-zoom-value"
+         aria-label={'Reset document zoom, currently '+editorZoom+' percent'}
+         title="Reset to 100%" onClick={()=>setEditorZoom(100)}>{editorZoom}%</button>
+        <button type="button" className="btn small secondary" aria-label="Zoom in 10 percent"
+         disabled={editorZoom>=150} onClick={()=>setEditorZoom(z=>Math.min(150,z+10))}>+</button>
+       </div>
        <details className="df-doc-options">
         <summary className="btn small secondary">More</summary>
         <div className="actions">
@@ -521,8 +532,10 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       {active.parentId&&<p className="tiny">Nested below another document. Delete children first.</p>}
      </div>
      <div className="df-document-editor" aria-label="Rich text editor">
-      <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks}
-       readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
+      <div className="df-doc-zoom-surface" style={{zoom:editorZoom/100}}>
+       <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks}
+        readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
+      </div>
      </div>
     </>:<div className="df-doc-empty">
       <h2>{showTrash?'Restore a document':'Choose a document'}</h2>
