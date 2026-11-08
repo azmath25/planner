@@ -13,7 +13,9 @@ export { TIME_PERIOD_REPORT_SQL } from './time-period-report.mjs';
 // Production retains its original origin and ignores staging settings.
 const stage=process.env.DAYFRAME_ENV==='staging';
 const stageAuth='https://ep-wispy-surf-b94f834t.neonauth.c-7.eu-central-1.aws.neon.tech/dayframe/auth';
-// The literal 'blocked' is only for the initial staging API bootstrap: no real\n// browser Origin can equal it, so CORS stays denied pending a verified preview URL.\nconst stageOrigin=process.env.DAYFRAME_STAGING_ORIGIN;
+// The literal 'blocked' is only for initial staging bootstrap: no browser
+// Origin can equal it, so CORS stays denied until the preview URL is verified.
+const stageOrigin=process.env.DAYFRAME_STAGING_ORIGIN;
 if(stage && (
   process.env.NEON_AUTH_BASE_URL!==stageAuth ||
   !stageOrigin ||
