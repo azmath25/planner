@@ -10,6 +10,7 @@ import { timeInsightsCsv } from '../domain/timeInsights';
 import {pieSegments,pieGradient} from '../domain/reportPie';
 import {createQuickNoteAutosaver} from '../domain/quickNoteAutosave';
 import {effectiveNoteTitle} from '../domain/quickNoteDraft';
+import {noteLinksHtml,noteDownloadHtml,noteFilename} from '../domain/notePresentation';
 
 export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cloud: any = null, account: any = {}) {
  const accountName=String(account?.name|| (cloud?'Account':'Local demo')).trim()||'Account';
@@ -702,12 +703,14 @@ function notesPage(){
      class="mini-btn" ${disabled} aria-pressed="${Boolean(n.pinned)}"
      aria-label="${n.pinned?'Unpin':'Pin'} ${escapeHTML(n.title)}">${icon('pin')} ${n.pinned?'Pinned':'Pin'}</button>`:''}
    </div>
-   <p style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHTML(n.content)}</p>
+   <p style="white-space:pre-wrap;overflow-wrap:anywhere">${noteLinksHtml(n.content)}</p>
    ${reminder}<div>${converted}</div>
    <div class="note-foot" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <span style="margin-right:auto">${escapeHTML(workspace(n.workspace).name)}</span>
 ${trashed?`<button type="button" class="mini-btn" data-action="restore-note"
       data-id="${escapeHTML(n.id)}" ${disabled} aria-label="Restore ${escapeHTML(n.title)}">Restore note</button>`:`
+    <button type="button" class="mini-btn" data-action="download-note" data-id="${escapeHTML(n.id)}"
+     ${disabled} aria-label="Download ${escapeHTML(n.title)}">Download</button>
     <button type="button" class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}"
      ${disabled} aria-label="Edit ${escapeHTML(n.title)}">${icon('edit')} Edit</button>
     ${canView?`<button type="button" class="mini-btn" data-action="detail" data-id="${escapeHTML(n.convertedTaskId)}">Open task</button>`:''}
@@ -1243,6 +1246,16 @@ else if(state.modal==='note'||state.modal==='note-edit'){
   <div class="field-wrap"><label class="form-label" for="ncontent">Your note</label>
    <textarea class="field" id="ncontent" name="content" maxlength="8000" rows="6"
     placeholder="A quick thought, idea or reminder…">${escapeHTML(n?.content||'')}</textarea></div>
+  <p class="tiny">Paste a link (https://…) into a note to make it clickable in previews and downloads.</p>
+  <div class="df-note-photo-area">
+   <div class="df-note-photo-heading"><strong>Photo</strong><span class="tiny">One private image per note, up to 180 KB after compression</span></div>
+   <div id="note-photo-preview" class="df-note-photo-preview">${n&&notePhotos.has(n.id)&&notePhotos.get(n.id)?
+     '<img class="df-note-photo" alt="Attached note photo" src="'+notePhotos.get(n.id)+'"/>':
+     '<span class="tiny">No photo attached.</span>'}</div>
+   <label class="btn small secondary df-note-photo-picker" for="note-photo-file">Add / replace photo</label>
+   <input type="file" id="note-photo-file" accept="image/jpeg,image/png,image/webp" hidden/>
+   <button type="button" class="btn small secondary" data-action="remove-note-photo" ${!n?'disabled':''}>Remove photo</button>
+  </div>
   <div class="form-grid">
    <div class="field-wrap"><label class="form-label" for="nworkspace">Workspace</label>
     <select class="field" name="workspace" id="nworkspace">
@@ -1271,7 +1284,9 @@ else if(state.modal==='note'||state.modal==='note-edit'){
   <p class="tiny df-note-autosave-status" id="note-autosave-status" role="status" aria-live="polite">
    ${escapeHTML(isCloud?noteAutoStatusMessage:'Local preview — use Save now to keep this note in this browser.')}
   </p>
-  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Close</button>
+  <div class="modal-footer">
+   <button type="button" class="btn secondary" data-action="download-current-note">Download</button>
+   <button type="button" class="btn secondary" data-action="close">Close</button>
    <button type="submit" class="btn" ${state.noteBusy?'disabled':''}>Save now</button></div>
  </form>`;
 }
@@ -1419,6 +1434,8 @@ let documentPageMounted=false;
 let documentPageSerial=0;
 let documentPageDirty=false;
 let noteFormDirty=false;
+const notePhotos=new Map();
+let notePhotoBusy=false;
 let noteAutoController=null;
 let noteAutoStatusKind='saved';
 let noteAutoStatusMessage='Changes save automatically while you write.';
@@ -1439,6 +1456,44 @@ function updateNoteStatus(kind,message){
  if(kind==='saved')noteFormDirty=false;
  const node=document.querySelector('#note-autosave-status');
  if(node){node.textContent=message;node.dataset.sync=kind;}
+}
+async function loadNotePhoto(id){
+ if(!isCloud||!id||notePhotos.has(id))return;
+ try{
+  const data=await cloudApi.getQuickNotePhoto(id);
+  if(disposed)return;
+  notePhotos.set(id,data);
+  const node=document.getElementById('note-photo-preview');
+  if(node&&state.modalTask===id){
+   node.innerHTML=data?'<img class="df-note-photo" alt="Attached note photo" src="'+data+'"/>':
+    '<span class="tiny">No photo attached.</span>';
+  }
+ }catch(error){
+  const node=document.getElementById('note-photo-preview');
+  if(node&&state.modalTask===id)node.textContent='Photo unavailable: '+(error instanceof Error?error.message:'connection failed');
+ }
+}
+function exportNoteFile(note,format='html'){
+ const id=note.id;
+ const render=async()=>{
+  let photo=notePhotos.get(id)??null;
+  if(isCloud&&id&&!notePhotos.has(id)){
+   photo=await cloudApi.getQuickNotePhoto(id);
+   notePhotos.set(id,photo);
+  }
+  const title=note.title||effectiveNoteTitle(note);
+  const contents=format==='html'?noteDownloadHtml({...note,title,photo}):
+   '# '+title+'\n\n'+note.content+'\n';
+  const url=URL.createObjectURL(new Blob([contents],{
+   type:format==='html'?'text/html;charset=utf-8':'text/markdown;charset=utf-8'
+  }));
+  try{
+   const a=document.createElement('a');
+   a.href=url;a.download=noteFilename(title,format==='html'?'html':'md');
+   document.body.appendChild(a);a.click();a.remove();
+  }finally{setTimeout(()=>URL.revokeObjectURL(url),1500);}
+ };
+ return render();
 }
 function beginNoteAutosave(){
  if(!isCloud||!['note','note-edit'].includes(state.modal))return;
