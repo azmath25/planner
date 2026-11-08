@@ -496,10 +496,11 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         disabled={busy&&!savingRef.current}
         onClick={()=>{if(canDiscard())resetDraft(null);}}>← Documents</button>
        <p className="tiny df-doc-save-status" role="status" aria-live="polite">
-        {busy?'Saving…':conflict?'Conflict — draft preserved':autoSavePaused?'Autosave paused':backupError?'Local backup unavailable':dirty?'Unsaved — autosave scheduled':'Saved'}
+        {busy?'Saving to cloud…':conflict?'Cloud save needs attention — draft kept':autoSavePaused?'Local draft saved — retrying cloud':backupError?'Local recovery unavailable':dirty?'Draft backed up — cloud save soon':'Saved to cloud'}
        </p>
-       <button type="button" className="btn small" disabled={busy||!dirty||conflict||autoSavePaused}
-        onClick={()=>void save()}>Save</button>
+       <button type="button" className="btn small" disabled={busy||!dirty||conflict}
+        onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>
+        {autoSavePaused?'Retry sync':'Save now'}</button>
        <details className="df-doc-options">
         <summary className="btn small secondary">More</summary>
         <div className="actions">
