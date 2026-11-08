@@ -160,6 +160,9 @@ export function createQuickNoteAutosaver(opts:Options){
   isDirty:()=>version!==cleanVersion,
   isSaved:()=>!!id&&version===cleanVersion&&!unknown,
   getId:()=>id,
+  resume(){
+   if(saved&&!conflict)schedule(800);
+  },
   change(next:QuickNoteFields){
    if(disposed)return;
    fields=next;version++;
