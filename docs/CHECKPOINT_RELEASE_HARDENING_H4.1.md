@@ -64,3 +64,17 @@ The sole failure was `23505 notification_preferences_pkey`: M7.3 audit-event tes
 Fixed `tests/deep-postgres-regression.mjs` by giving the M7.3 audit-event test distinct `m73-events-owner` and `m73-events-other` identities, in addition to its already-isolated `c9...` UUIDs. Verified through source inspection that the two M7.3 blocks now share neither owners nor record UUIDs. Git commit `5a7ab56` on the feature branch.
 
 The disposable test container was removed after failure; no Neon main writes occurred. **33/33 passing is not yet demonstrated**. Run the same isolated command again after pulling the branch. Keep H4.1 pending until the rerun passes. The subsequent Neon production migration and browser/Auth gates remain separate.
+
+## Third PostgreSQL 18 run — 32/33; actual calendar-day fixture defect (2026-11-08)
+
+The operator's latest `scripts/h4-postgres18-disposable.sh` run again applied all 20 migration files without errors and passed **32 of 33 tests**. M7.3 audit-event assertions failed at `tests/deep-postgres-regression.mjs:767`: `deadline.completedEvents` was 1 instead of the fixture's expected 2. This is *not* another UUID or preference collision; the SQL ran successfully.
+
+Root cause confirmed against `backend/src/time-insights.mjs`: the daily report filters completion events by **Asia/Baku local day**, with bounds from `start_day AT TIME ZONE zone` through exclusive `end_day AT TIME ZONE zone`. The test assigned the second completion `2026-11-07T20:00:00Z`, which is **November 8 at 00:00 Asia/Baku** and therefore correctly excluded from the November 7 report. The SQL behavior is correct; changing the production query to count that event would introduce a timezone bug.
+
+Fix committed:
+- `d59e585`: M7.3 second task's date-only deadline changed to **November 6**, and its completion set to **2026-11-07T19:00:00Z** (November 7 23:00 in Baku), making it legitimately late *within the selected November 7 local day*. The first task completes November 7 at 19:00 local and is on time. Both events now belong in the daily report; the separate midnight-boundary regression remains unchanged.
+- `f190ac8`: added a direct PostgreSQL date check that both generated completion audit events map to `2026-11-07` using `(created_at AT TIME ZONE 'Asia/Baku')::date`. This guards against future fixture mistakes.
+
+Only **test files** changed in this latest correction. Production time-insights SQL and migrations were not modified. The disposable PostgreSQL container was removed, and no production/Neon writes were made.
+
+**H4.1 stays pending until a rerun confirms 33/33.** Do not proceed to production migrations or deployment based only on the source patch.
