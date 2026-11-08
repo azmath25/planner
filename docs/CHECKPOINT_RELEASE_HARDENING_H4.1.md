@@ -54,3 +54,13 @@ bash scripts/h4-postgres18-disposable.sh
 ```
 
 Do not run migration scripts 0013–0020 on Neon main or deploy functions based on this patch alone. Real auth, browser/mobile/PWA/Safari signoff, and schema drift are later release gates.
+
+## PostgreSQL 18 rerun: 32/33, last fixture collision corrected (2026-11-08)
+
+The operator reran `scripts/h4-postgres18-disposable.sh` after the SQL alias and M7.3 UUID fixes. All **20 migrations passed**; **32 of 33** integration tests passed. Both M6.2a documents tests now passed, confirming the source SQL correction.
+
+The sole failure was `23505 notification_preferences_pkey`: M7.3 audit-event test inserted `owner_user_id=m73-insights-owner`, which an earlier M7.3 source-backed test had already inserted. The prior UUID fix only isolated row IDs, not **owner-scoped records**; it did not fully isolate the fixtures.
+
+Fixed `tests/deep-postgres-regression.mjs` by giving the M7.3 audit-event test distinct `m73-events-owner` and `m73-events-other` identities, in addition to its already-isolated `c9...` UUIDs. Verified through source inspection that the two M7.3 blocks now share neither owners nor record UUIDs. Git commit `5a7ab56` on the feature branch.
+
+The disposable test container was removed after failure; no Neon main writes occurred. **33/33 passing is not yet demonstrated**. Run the same isolated command again after pulling the branch. Keep H4.1 pending until the rerun passes. The subsequent Neon production migration and browser/Auth gates remain separate.
