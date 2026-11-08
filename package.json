@@ -33,5 +33,11 @@
     "typescript": "^5.9.3",
     "vite": "^8.3.6",
     "esbuild": "^0.28.0"
+  },
+  "overrides": {
+    "better-auth": "1.7.7",
+    "@better-auth/drizzle-adapter": "1.7.7",
+    "@better-auth/oauth-provider": "1.7.7",
+    "zod": "4.6.6"
   }
 }
