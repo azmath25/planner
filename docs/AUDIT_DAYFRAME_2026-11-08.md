@@ -75,3 +75,9 @@ Feature source now:
 ## Safety / release boundaries
 
 No production schema migration, data deletion, branch merge, GitHub Actions, Quizer or Mimo work was performed. Do not delete the older Neon project until migration/retention is explicitly decided. Current verification is read-only except for approved feature-branch source changes, the browser-preview-disable project setting, and the attempted Vercel release request that was rejected by quota.
+
+## User scope update — 2026-11-08
+
+**Supersedes any suggestion above to migrate the old Dayframe database:** the user explicitly declined migration. Keep the current public Dayframe data where it is; preserve the older Neon project without deleting or importing it. Do not treat migration as a required milestone. Android Play Store publication is also postponed.
+
+New active-web priorities are responsive layout across phones, tablets and desktop (including overflow-proof floating timers), improved actual-data pie reports, document zoom, autosave-first reliability, and scheduled reminders. Implementation, test results, coordinated-release dependency and outstanding real-device checks are captured in [CHECKPOINT_COMPLETION_WITHOUT_ANDROID_2026-11-08.md](./CHECKPOINT_COMPLETION_WITHOUT_ANDROID_2026-11-08.md). Vercel production publication is blocked by the Hobby daily deployment quota; do not label unshipped source as live.
