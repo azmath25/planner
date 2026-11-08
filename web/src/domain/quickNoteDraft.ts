@@ -5,7 +5,7 @@ export type QuickNoteFields={
  reminder:string|null;reminderTime:string|null;
 };
 export type QuickNoteDraft={
- schema:'dayframe.quick-note-draft.v1';noteId:string;revision:number;
+ schema:'dayframe.quick-note-draft.v1';noteId:string;revision:number;clientId?:string;
  fields:QuickNoteFields;updatedAt:number;
 };
 const PREFIX='dayframe.quick-note-draft.v1.';
@@ -31,13 +31,14 @@ export function noteFieldsMatch(a:QuickNoteFields,b:QuickNoteFields):boolean{
 }
 export function saveQuickNoteDraft(
  scope:string,noteId:string,revision:number,fields:QuickNoteFields,
- storage:Pick<Storage,'setItem'>=localStorage
+ storage:Pick<Storage,'setItem'>=localStorage,clientId?:string
 ):boolean{
  try{
   if(!Number.isSafeInteger(revision)||revision<0||fields.content.length>8000||
    fields.title.length>120)return false;
   const record:QuickNoteDraft={
-   schema:'dayframe.quick-note-draft.v1',noteId,revision,fields,updatedAt:Date.now()
+   schema:'dayframe.quick-note-draft.v1',noteId,revision,fields,updatedAt:Date.now(),
+   ...(clientId?{clientId}:{})
   };
   const data=JSON.stringify(record);
   if(new TextEncoder().encode(data).byteLength>24000)return false;
@@ -56,7 +57,9 @@ export function readQuickNoteDraft(
   const d=row as Record<string,unknown>;
   if(d.schema!=='dayframe.quick-note-draft.v1'||d.noteId!==noteId||
    !Number.isSafeInteger(d.revision)||Number(d.revision)<0||
-   !Number.isFinite(d.updatedAt)||!d.fields||typeof d.fields!=='object'||
+   !Number.isFinite(d.updatedAt)||
+   (d.clientId!==undefined&&(typeof d.clientId!=='string'||
+    !/^[0-9a-f-]{36}$/i.test(d.clientId)))||!d.fields||typeof d.fields!=='object'||
    Array.isArray(d.fields))return null;
   const f=d.fields as Record<string,unknown>;
   if(typeof f.workspace!=='string'||typeof f.title!=='string'||f.title.length>120||
