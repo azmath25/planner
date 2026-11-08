@@ -194,6 +194,16 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   draftVersion.current++;setTitle(newTitle);setDirty(true);
   setValidation(''); // New input gets a fresh validation pass.
  };
+ // A failed POST may have committed. Abandoning a retry never deletes data
+ // or reuses the ID, and requires deliberate acknowledgment of that risk.
+ const abandonPendingCreate=()=>{
+  if(!pendingCreate||busy||savingRef.current)return;
+  if(!window.confirm(
+   'Stop retrying this document creation? The earlier request may already have saved a document. Check My documents before creating a replacement.'
+  ))return;
+  setPendingCreate(null);
+  setError('Retry abandoned. The previous document may exist; use Refresh to check My documents.');
+ };
  const create=async(child:boolean,retry=false)=>{
   if(busy||(!retry&&!canDiscard())||(retry&&!pendingCreate))return;
   const parent=child?active:null;
@@ -357,9 +367,13 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       type="button" onClick={()=>void reloadLatest()}>Reload server version</button>
   </div>}
   {pendingCreate&&<div className="info-banner" role="alert">
-    A document creation response is uncertain.
-    <button type="button" className="btn small secondary" disabled={busy}
+    A document creation response is uncertain. Retrying uses its original ID.
+    <div className="actions" role="group" aria-label="Document creation recovery">
+     <button type="button" className="btn small secondary" disabled={busy}
       onClick={()=>void create(false,true)}>Retry creation</button>
+     <button type="button" className="btn small secondary" disabled={busy}
+      onClick={abandonPendingCreate}>Abandon retry</button>
+    </div>
    </div>}
   <div className="df-doc-grid">
    <aside className="card df-doc-library" aria-label="Document folders">
