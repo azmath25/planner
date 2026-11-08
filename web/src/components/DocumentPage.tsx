@@ -124,12 +124,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
      ctx.clearRect(0,0,canvas.width,canvas.height);
      ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
      data=canvas.toDataURL('image/webp',Math.max(.28,.79-.043*attempt));
-     if(data.split(',')[1].length*.75<=175000)break;
+     if((data.split(',')[1]||'').length*.75<=175000)break;
      scale*=.78;
     }
    }finally{bitmap.close?.();}
    if(!/^data:image\/(?:webp|png|jpeg);base64,/.test(data)||
-     data.split(',')[1].length*.75>180000)
+     (data.split(',')[1]||'').length*.75>180000)
      throw Error('Could not compress this photo to the private 180 KB limit');
    await cloudApi.putDocumentPhoto(docId,slot,data);
    if(alive.current&&active.id===docId)
