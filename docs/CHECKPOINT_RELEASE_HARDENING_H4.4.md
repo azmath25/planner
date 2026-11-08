@@ -113,3 +113,11 @@ python3 scripts/h44-package-staging-api.py --build
 ```
 
 This command reruns source and API tests, then packages the ZIP under `/tmp` only on success. No GitHub Actions, production deployment, Neon migrations, merge, or Vercel publication occurs.
+
+## H4.4 local package retest reported passing; staging Vercel environment pinned
+
+The operator subsequently stated that all checks passed on the corrected `scripts/h44-package-staging-api.py --build` run. **This is operator-reported acceptance**, not direct inspection of the full rerun log, archive filename, or SHA-256 value. The tool should have produced `/tmp/dayframe-h44-staging-api-<12-character-feature-commit>.zip` after both test commands and its ZIP checks succeeded. Do not assert a specific ZIP hash without seeing its actual output.
+
+The existing separate Vercel Hobby project `dayframe-h44-staging` was checked: it has **no deployment** and no project domains. Added preview-only public build setting `VITE_DAYFRAME_TARGET=staging`; no staging API URL is set yet, and no Vercel build/publish was triggered. Verified isolated Neon project `wispy-meadow-90135924` still has **no Functions deployed**. No production changes, GitHub Actions, merges, or production migrations took place.
+
+**Immediate dependency:** obtain the freshly built, exact feature ZIP artifact from the operator's Cloud Shell `/tmp` (file uploaded to this conversation is sufficient) or use an explicitly staging-pinned Neon CLI deployment in Cloud Shell. Do not substitute `backend/packaged/dayframeapi.b64`, which predates M6–M8. After a successful isolated Neon API deployment provides the exact service URL, configure `VITE_DAYFRAME_STAGING_API_URL` in the Vercel *preview* environment. Vercel preview must not be published before the backend is pinned to staging and the exact preview origin can be registered with staging-only Auth and API CORS.
