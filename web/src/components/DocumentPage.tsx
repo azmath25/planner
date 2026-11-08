@@ -373,7 +373,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    </div>
   </div>
   {error&&<p role="alert" className="info-banner">{error}</p>}
-  {active&&(conflict||autoSavePaused)&&<div className="actions" role="group" aria-label="Document recovery actions">
+  {active&&(conflict||autoSavePaused||!!validation)&&<div className="actions" role="group" aria-label="Document recovery actions">
     <button className="btn small secondary" disabled={busy||conflict||!!validation}
       type="button" onClick={()=>void reconcileUncertainSave()}>Check server and retry</button>
     <button className="btn small secondary" disabled={busy}
