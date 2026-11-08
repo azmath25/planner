@@ -1,29 +1,35 @@
 import {
- BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, defaultStyleSpecs
+ BlockNoteSchema, combineByGroup, createHeadingBlockSpec,
+ defaultBlockSpecs, defaultInlineContentSpecs, defaultStyleSpecs
 } from '@blocknote/core';
-import { useCreateBlockNote } from '@blocknote/react';
+import { filterSuggestionItems } from '@blocknote/core/extensions';
+import { getDefaultReactSlashMenuItems, SuggestionMenuController, useCreateBlockNote } from '@blocknote/react';
+import {
+ createReactMathBlockSpec,createReactInlineMathSpec,getMathSlashMenuItems
+} from '@blocknote/math-block';
 import { BlockNoteView } from '@blocknote/mantine';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
+import '@blocknote/math-block/style.css';
 import { assertDocumentBlocks } from '../domain/documentBlocks';
 
-// Restrict editor controls to what the M6.2a backend accepts. Media, tables,
-// embedded URLs and links have no server-side upload/storage policy yet.
+// Notion-like editing: a simple pair of heading levels, text and code, safe
+// hyperlinks and editable LaTeX math (inline or display). No image uploads or
+// arbitrary embedded HTML. The server validates this exact content model.
 const schema=BlockNoteSchema.create({
  blockSpecs:{
   paragraph:defaultBlockSpecs.paragraph,
-  heading:defaultBlockSpecs.heading,
+  heading:createHeadingBlockSpec({levels:[1,2],allowToggleHeadings:false}),
   bulletListItem:defaultBlockSpecs.bulletListItem,
   numberedListItem:defaultBlockSpecs.numberedListItem,
   checkListItem:defaultBlockSpecs.checkListItem,
-  codeBlock:defaultBlockSpecs.codeBlock
+  codeBlock:defaultBlockSpecs.codeBlock,
+  mathBlock:createReactMathBlockSpec()
  },
- // BlockNote 0.57's required base inline schema includes link for its
- // internal type contract. This is NOT permission to persist links: the
- // onChange validator and API reject link content, and the link toolbar is off.
  inlineContentSpecs:{
   text:defaultInlineContentSpecs.text,
-  link:defaultInlineContentSpecs.link
+  link:defaultInlineContentSpecs.link,
+  math:createReactInlineMathSpec()
  },
  styleSpecs:{
   bold:defaultStyleSpecs.bold,
@@ -35,25 +41,38 @@ const schema=BlockNoteSchema.create({
   backgroundColor:defaultStyleSpecs.backgroundColor
  }
 });
+// Existing documents may contain H3-H6 produced before the two-heading UI.
+// Show them as H2 instead of refusing to open an otherwise valid draft.
+function editorCompatibleBlocks(blocks:unknown[]):unknown[]{
+ return blocks.map(item=>{
+  if(!item||typeof item!=='object'||Array.isArray(item))return item;
+  const row=item as Record<string,unknown>;
+  const props=row.props&&typeof row.props==='object'&&!Array.isArray(row.props)?
+   row.props as Record<string,unknown>:null;
+  const children=Array.isArray(row.children)?editorCompatibleBlocks(row.children):row.children;
+  if(row.type==='heading'&&props&&typeof props.level==='number'&&props.level>2)
+   return {...row,props:{...props,level:2},children};
+  return {...row,children};
+ });
+}
 type EditorProps={
  blocks:unknown[];
  readOnly?:boolean;
  onEdit:(blocks:unknown[],error:string|null)=>void;
 };
 export function BlockDocumentEditor({blocks,onEdit,readOnly=false}:EditorProps){
- // Types are rechecked at the browser boundary and again by the server.
- // The cast is limited to the BlockNote JSON interchange boundary.
  const editor=useCreateBlockNote({
   schema,
-  initialContent:(blocks.length?blocks:undefined) as any
+  initialContent:(blocks.length?editorCompatibleBlocks(blocks):undefined) as any
  });
  return <BlockNoteView
   editor={editor}
   editable={!readOnly}
   theme="light"
-  linkToolbar={false}
+  linkToolbar={true}
   filePanel={false}
   emojiPicker={false}
+  slashMenu={false}
   onChange={()=>{
    const current:unknown[]=JSON.parse(JSON.stringify(editor.document));
    try{assertDocumentBlocks(current);onEdit(current,null);}
@@ -61,5 +80,13 @@ export function BlockDocumentEditor({blocks,onEdit,readOnly=false}:EditorProps){
     onEdit(current,error instanceof Error?error.message:'Unsupported document content');
    }
   }}
- />;
+ >
+  <SuggestionMenuController
+   triggerCharacter="/"
+   getItems={async(query)=>filterSuggestionItems(
+    combineByGroup(getDefaultReactSlashMenuItems(editor),getMathSlashMenuItems(editor)),
+    query
+   )}
+  />
+ </BlockNoteView>;
 }
