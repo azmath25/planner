@@ -53,3 +53,19 @@ Feature-branch source repairs, each minimal and without backend/database changes
 - `web/src/components/BlockDocumentEditor.tsx`: added BlockNote 0.57's required `link` inline spec alongside `text`. This corrects TS2322; links are **not accepted for saving**: existing client/server document-block validators prohibit link nodes, and the editor disables the link toolbar. A user trying to insert a link may see the validation warning; do not claim insertion is fully disabled.
 
 Targeted source readback passed and the narrowed response/list pattern passed an isolated strict TypeScript typecheck with the available local compiler version 5.8.3. **The actual Node 24/TypeScript 5.9.3 application typecheck, Vite build, distribution assertions and npm audit have not been rerun after these repairs.** Operators should pull the feature branch and rerun `bash scripts/h2-bootstrap-local.sh`. The generated `package-lock.json` is still **only in Cloud Shell** and must be reviewed/committed after a successful run. All production actions remain blocked.
+
+## H2.4 — Vite build now passes; security dependency rehearsal required
+
+Operator run on 2026-11-08 passed all 82 backend API tests, TypeScript, Vite build, production dist/PWA assertions, and existing source/domain tests. The `DocumentPage` chunk is about 1.0 MB minified and the main entry about 554 KB: performance follow-up is warranted, but these build warnings did not stop compilation. Vite/Rolldown also emitted third-party `use client` directive warnings; their runtime impact has not been assessed in browsers.
+
+`npm audit --omit=dev --audit-level=high` **failed** with 10 advisories (6 low, 3 high, 1 critical), mainly from `@neondatabase/auth@0.7.0-beta` transitive dependencies. The critical Better Auth advisory GHSA-965c-763c-88jm affects `better-auth <1.7.7`, under specific Magic Link/social/OAuth-state prerequisites. A distinct OAuth Proxy high severity advisory also fixes in 1.7.7. Zod advisory GHSA-mrhx-c7xc-m3w5 fixes in 4.6.6. The low deepmerge GHSA-gcqx-w48m-w2h4 had no upstream patch listed as of this audit. Vulnerability presence in dependency metadata does not prove a specific production auth configuration is exploitable, but security audit failure remains a release blocker. External source references: GitHub Advisory Database GHSA-965c-763c-88jm, GHSA-r4xp-prcw-77qf, GHSA-mrhx-c7xc-m3w5 and GHSA-gcqx-w48m-w2h4.
+
+Created `scripts/h2-security-trial.sh`, a **separate, nondeploying, noncommitting rehearsal**. It verifies that the generated local lockfile exists, snapshots the tracked branch source and local lockfile into a fresh home folder, and experiments there with explicit Better Auth core/Drizzle/OAuth 1.7.7 and Zod 4.6.6 overrides. It runs `npm ci`, source/domain/API tests, TypeScript/Vite and dist checks, and the high-severity dependency audit. The original checkout, lockfile, production Neon/Cloud, protected branches and GitHub remain untouched. Even a passing trial would not establish live Neon Auth compatibility or that all vulnerable Better Auth server services are updated; browser sign-in/session validation and dependent package alignment must be separately tested before adopting overrides. **Do not run `npm audit fix --force`**, suppress audit failure, or copy trial manifests blindly.
+
+Run trial in existing Cloud Shell checkout with:
+```bash
+cd ~/dayframe-h2
+git pull --ff-only origin feature/dayframe-m53-release-20261107
+bash scripts/h2-security-trial.sh
+```
+If new Shell account/home, clone the feature branch and generate its own legitimate lockfile first. The successful build lockfile is currently still local and uncommitted; do not declare H2 complete.
