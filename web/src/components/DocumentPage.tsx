@@ -36,6 +36,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const savingRef=useRef(false);
  const uncertainSave=useRef<{docId:string;baseRevision:number;version:number;title:string;blocks:unknown[]}|null>(null);
  const retryDelay=useRef(3500);
+ const latestDraft=useRef<{title:string;blocks:unknown[]}|null>(null);
  // Notion-like: first sentence names the page until the user edits the title.
  const autoTitleRef=useRef(false);
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
@@ -83,6 +84,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   autoTitleRef.current=!value||!value.title.trim()||value.title==='Untitled document';
   setTitle(value?.title??'');
   setBlocks(value?.blocks??emptyDocumentBlocks());
+  latestDraft.current={title:value?.title??'',blocks:value?.blocks??emptyDocumentBlocks()};
   setBackupError(false);
   setDirty(false);setConflict(false);setAutoSavePaused(false);setEditorEpoch(x=>x+1);
  };
@@ -110,6 +112,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
      else if(window.confirm('Unsynced edits were found on this device. Restore them?')){
       draftVersion.current++;
       setTitle(saved.title);setBlocks(saved.blocks);setDirty(true);autoTitleRef.current=false;
+      latestDraft.current={title:saved.title,blocks:saved.blocks};
       if(saved.revision!==details.revision){
        setConflict(true);
        setError('The server also changed this document. Your local draft is restored, but review the versions before overwriting.');
@@ -148,6 +151,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     // A later edit arrived while the request was pending. Advance the
     // observed server revision without replacing the newer local draft.
     setActive(updated);setDirty(true);
+    if(latestDraft.current)saveUnsyncedDraft(draftScope,docId,updated.revision,
+     latestDraft.current.title,latestDraft.current.blocks);
     uncertainSave.current=null;retryDelay.current=3500;
    }
   }catch(e){
@@ -196,7 +201,11 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     uncertainSave.current=null;retryDelay.current=3500;
     if(exactlyLocal&&(!pending||draftVersion.current===pending.version)){
      setDirty(false);clearUnsyncedDraft(draftScope,remote.id);
-    }else setDirty(true);
+    }else{
+     setDirty(true);
+     if(latestDraft.current)saveUnsyncedDraft(draftScope,remote.id,remote.revision,
+      latestDraft.current.title,latestDraft.current.blocks);
+    }
     setError('');
    }else if(remote.revision===active.revision){
     // The last write did not commit. Revision fencing makes a retry safe.
@@ -242,6 +251,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    if(inferred)setTitle(inferred);
   }
   const nextTitle=autoTitleRef.current?(documentTitleFromBlocks(newBlocks)||title):title;
+  latestDraft.current={title:nextTitle,blocks:newBlocks};
   setBackupError(!saveUnsyncedDraft(draftScope,active?.id||'',active?.revision||1,nextTitle,newBlocks));
   setDirty(true);
  };
@@ -249,6 +259,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   if(busy&&!savingRef.current)return;
   autoTitleRef.current=false;
   draftVersion.current++;setTitle(newTitle);setDirty(true);
+  latestDraft.current={title:newTitle,blocks};
   setBackupError(!saveUnsyncedDraft(draftScope,active?.id||'',active?.revision||1,newTitle,blocks));
  };
  // A failed POST may have committed. Abandoning a retry never deletes data
