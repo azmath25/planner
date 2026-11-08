@@ -466,6 +466,25 @@ export const cloudApi={
    throw new Error('Invalid restored note response');
   return result.note;
  },
+ async getQuickNotePhoto(id:string):Promise<string|null>{
+  if(!isUuid(id))throw new Error('Invalid note ID');
+  const result=await call<{photo:{data:string}|null}>('/v1/notes/'+id+'/photo');
+  if(result.photo===null)return null;
+  const data=result.photo?.data;
+  if(typeof data!=='string'||
+   !/^data:image\/(?:jpeg|png|webp);base64,[a-zA-Z0-9+/]+={0,2}$/.test(data)||
+   data.length>250000)throw new Error('Invalid private note photo response');
+  return data;
+ },
+ async saveQuickNotePhoto(id:string,data:string):Promise<void>{
+  if(!isUuid(id)||!/^data:image\/(?:jpeg|png|webp);base64,[a-zA-Z0-9+/]+={0,2}$/.test(data)||
+   data.length>250000)throw new Error('Invalid note photo');
+  await call('/v1/notes/'+id+'/photo',{method:'PUT',body:{data}});
+ },
+ async deleteQuickNotePhoto(id:string):Promise<void>{
+  if(!isUuid(id))throw new Error('Invalid note ID');
+  await call('/v1/notes/'+id+'/photo',{method:'DELETE'});
+ },
  async createQuickNote(body:QuickNoteInput&{id:string}):Promise<CloudQuickNote>{
   const data=await call<{note:unknown}>('/v1/notes',{method:'POST',body});
   if(!verifyQuickNote(data.note))throw new Error('Invalid created note response');
