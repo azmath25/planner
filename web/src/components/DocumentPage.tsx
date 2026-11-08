@@ -22,6 +22,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [active,setActive]=useState<CloudDocument|null>(null);
+ const writing=Boolean(active&&!showTrash);
  const [title,setTitle]=useState('');
  const [blocks,setBlocks]=useState<unknown[]>(emptyDocumentBlocks());
  const [dirty,setDirty]=useState(false);
@@ -35,6 +36,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
  const [showTrash,setShowTrash]=useState(false);
+ useEffect(()=>{
+  // Give the active document the viewport, not the narrow dashboard column.
+  // Remove the class on unmount, including a task-navigation exit.
+  document.documentElement.classList.toggle('df-writing-open',Boolean(active&&!showTrash));
+  return ()=>document.documentElement.classList.remove('df-writing-open');
+ },[active?.id,showTrash]);
  const [searchTerm,setSearchTerm]=useState('');
  const [searchResults,setSearchResults]=useState<CloudDocumentMeta[]|null>(null);
  const [searchBusy,setSearchBusy]=useState(false);
@@ -185,12 +192,14 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   finally{if(alive.current)setBusy(false);}
  };
  const changeDraft=(newBlocks:unknown[],message:string|null)=>{
-  if(busy||savingRef.current)return;
+  // Autosave must not disable typing or discard keystrokes that arrive while
+  // its previous request is still in flight.
+  if(busy&&!savingRef.current)return;
   draftVersion.current++;setBlocks(newBlocks);
   setValidation(message||'');setDirty(true);
  };
  const changeTitle=(newTitle:string)=>{
-  if(busy||savingRef.current)return;
+  if(busy&&!savingRef.current)return;
   draftVersion.current++;setTitle(newTitle);setDirty(true);
   setValidation(''); // New input gets a fresh validation pass.
  };
@@ -347,7 +356,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   for(const doc of filtered.sort(byTitle))if(!seen.has(doc.id))result.push({doc,depth:0});
   return result;
  },[filtered,ids]);
- return <section className="df-documents" aria-label="Private document library">
+ return <section className={'df-documents'+(writing?' df-documents-writing':'')} aria-label="Private document library">
   <div className="page-head">
    <div><div className="eyebrow">PRIVATE LIBRARY</div><h1>Documents</h1>
     <p className="subtitle">Private rich-text documents autosave after 1.4 seconds of inactivity. Saves pause on errors; no offline sync is promised.</p>
@@ -425,31 +434,35 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    <div className="card df-doc-content">
     {active&&!showTrash?<>
      <div className="df-doc-controls">
-      <label className="field-wrap"><span className="form-label">Document title</span>
-       <input className="field" aria-label="Document title" maxLength={160}
-        value={title} disabled={busy} onChange={e=>changeTitle(e.target.value)}/>
-      </label>
-      <div className="actions">
-       <button type="button" className="btn small secondary" disabled={busy}
-        onClick={()=>void create(true)}>New child page</button>
-       <button type="button" className="btn small secondary" disabled={busy||!dirty}
-        onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
-       <button type="button" className="btn small secondary" disabled={busy}
-        onClick={()=>void exportSaved()}>Download saved JSON</button>
-       <button type="button" className="btn small secondary" disabled={busy||dirty}
-        onClick={()=>void remove()}>Delete</button>
-       <button type="button" className="btn small"
-        disabled={busy||!dirty||!!validation||conflict||autoSavePaused}
-        onClick={()=>void save()}>Save changes</button>
+      <div className="df-doc-writing-bar">
+       <button type="button" className="btn small secondary df-doc-back"
+        disabled={busy&&!savingRef.current}
+        onClick={()=>{if(canDiscard())resetDraft(null);}}>← Documents</button>
+       <p className="tiny df-doc-save-status" role="status" aria-live="polite">
+        {busy?'Saving…':conflict?'Conflict — draft preserved':autoSavePaused?'Autosave paused':validation?'Cannot autosave: '+validation:dirty?'Unsaved — autosave scheduled':'Saved'}
+       </p>
+       <button type="button" className="btn small" disabled={busy||!dirty||!!validation||conflict||autoSavePaused}
+        onClick={()=>void save()}>Save</button>
+       <details className="df-doc-options">
+        <summary className="btn small secondary">More</summary>
+        <div className="actions">
+         <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void create(true)}>New child page</button>
+         <button type="button" className="btn small secondary" disabled={busy||!dirty}
+          onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
+         <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void exportSaved()}>Download saved JSON</button>
+         <button type="button" className="btn small secondary" disabled={busy||dirty} onClick={()=>void remove()}>Delete</button>
+        </div>
+       </details>
       </div>
-      <p className="tiny" role="status" aria-live="polite">
-       {busy?'Saving…':conflict?'Conflict — local draft preserved':autoSavePaused?'Autosave paused — use Retry save':validation?'Cannot autosave: '+validation:dirty?'Unsaved — autosave scheduled':'Saved'}
-      </p>
+      <label className="field-wrap df-doc-title-field"><span className="form-label">Document title</span>
+       <input className="field" aria-label="Document title" maxLength={160}
+        value={title} disabled={busy&&!savingRef.current} onChange={e=>changeTitle(e.target.value)}/>
+      </label>
       {active.parentId&&<p className="tiny">Nested below another document. Delete children first.</p>}
      </div>
      <div className="df-document-editor" aria-label="Rich text editor">
-      <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks} readOnly={busy}
-       onEdit={changeDraft}/>
+      <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks}
+       readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
      </div>
     </>:<div className="df-doc-empty">
       <h2>{showTrash?'Restore a document':'Choose a document'}</h2>
