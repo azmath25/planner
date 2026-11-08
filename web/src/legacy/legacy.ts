@@ -73,7 +73,7 @@ const initialTasks=()=>[
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
-const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',homeFocusTask:'',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
+const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',reportContext:null,homeFocusTask:'',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
@@ -503,34 +503,6 @@ function homePins(){
    ${pinnedTasks.length>8?'<p class="tiny">Open Tasks to see more pinned items.</p>':''}
   </div></section>`;
 }
-function homeWeeklyReport(){
- const report=isCloudTime?state.homeReport:null;
- if(!report)return `<section class="card df-home-report">
-  <div class="card-title"><h2>Weekly activity</h2><button class="text-link" data-action="nav" data-page="reports">Full reports</button></div>
-  <p class="tiny" role="status">${escapeHTML(state.homeReportError||(
-   isCloudTime?(state.homeReportLoading?'Loading saved weekly activity…':'Weekly report not loaded yet.'):
-   'Sign in to see your recorded activity across workspaces.'))}</p>
- </section>`;
- const pie=pieSegments(report.workspaces.map(w=>({label:w.name||'Archived workspace',value:w.recordedMs})));
- const legend=pie.segments.slice(0,5).map(row=>`<li><span class="df-home-swatch"
-  aria-hidden="true" style="background:${row.color}"></span><span>${escapeHTML(row.label)}</span>
-  <strong>${row.percentage.toFixed(1)}%</strong></li>`).join('');
- return `<section class="card df-home-report">
-  <div class="card-title"><h2>Weekly activity</h2>
-   <button class="text-link" data-action="nav" data-page="reports">Explore reports ${icon('arrow')}</button></div>
-  <div class="df-home-report-totals">
-   <div><span class="tiny">Recorded focus</span><strong>${formatElapsed(report.accountRecordedMs)}</strong></div>
-   <div><span class="tiny">Fixed plan</span><strong>${minsText(report.accountPlannedMinutes)}</strong></div>
-  </div>
-  <div class="df-home-chart">
-   ${pie.total?`<div class="df-home-pie" role="img" style="background:${pieGradient(pie)}"
-    aria-label="${escapeHTML('Focus by workspace: '+pie.segments.map(x=>x.label+' '+x.percentage.toFixed(1)+'%').join(', '))}"></div>
-    <ul class="df-home-pie-legend">${legend}</ul>`:
-    '<p class="tiny">No recorded focus sessions yet this week. Start a task timer to see activity here.</p>'}
-  </div>
-  <p class="tiny">Actual saved focus time. Historical estimates remain separate in Reports.</p>
- </section>`;
-}
 function home(){
  const due=openTasks().filter(t=>t.deadline&&t.deadline<=dayOffset(2));
  const assigned=[...state.scheduled.filter(x=>x.day===today()).map(x=>findTask(x.taskId)),
@@ -569,7 +541,6 @@ function home(){
    <div class="card df-home-metric"><span class="tiny">Due / overdue</span><strong>${due.length}</strong>
     <small>Through next 48h</small></div>
   </div>
-  ${homeWeeklyReport()}
   <section class="card df-home-today" aria-label="Today's tasks">
    <div class="card-title"><h2>Today's tasks</h2>
     <button class="text-link" data-action="nav" data-page="plan">Open plan ${icon('arrow')}</button></div>
@@ -690,7 +661,11 @@ function archivedWorkspacesPage(){
   '</section>';
 }
 function workspacesPage(){return `${titleHead('All your worlds','Workspaces','General is always here. Build dedicated spaces for everything else.')}<div class="info-banner">${icon('layers')} Home and the day planner always combine tasks from every workspace.</div>${workspaceCards()}<div class="section"><div class="card"><h2>Why separate workspaces?</h2><p class="subtitle">Each workspace has its own tasks, quick notes, documents, time reports and eventual profile or cover images. Long-term tasks live inside workspaces and have their own scoped reports too.</p><div style="margin-top:15px"><button class="btn secondary small" data-action="modal-workspace">${icon('plus')} Create workspace</button>${isCloud?`<button class="btn secondary small" data-action="nav" data-page="workspace-archive">${icon('folder')} Archived workspaces</button>`:''}</div></div></div>`}
-function workspacePage(){const w=workspace(state.viewWorkspace);return `<div style="margin-bottom:13px"><button class="btn ghost small" data-action="nav" data-page="workspaces">${icon('back')} All workspaces</button></div>${coverFrame('workspace',w.id,w.cover,'folder')}<div class="detail-options media-toolbar">${photoButton('workspace',w.id,'cover','Edit cover')}${photoButton('workspace',w.id,'avatar','Edit avatar')}${isCloud?`<button type="button" class="btn secondary small" data-action="pin-workspace" data-id="${escapeHTML(w.id)}" ${state.cloudBusy?'disabled':''} aria-pressed="${Boolean(w.pinned)}">${icon('pin')} ${w.pinned?'Unpin':'Pin'} workspace</button>`:''}${w.kind==='custom'?`<button class="btn secondary small" data-action="modal-workspace-edit" data-id="${escapeHTML(w.id)}">${icon('edit')} Edit workspace</button>`:''}${isCloud&&w.kind==='custom'?`<button type="button" class="btn secondary small" data-action="archive-workspace" data-id="${escapeHTML(w.id)}">${icon('folder')} Archive</button>`:''}</div>${titleHead('Workspace',escapeHTML(w.name),escapeHTML(w.subtitle),`<button type="button" class="btn" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button>`)}<div class="metrics" style="margin:0 0 19px"><div class="card metric"><div class="metric-label">Open tasks</div><div class="metric-value">${state.tasks.filter(t=>t.workspace===w.id&&t.status==='open').length}</div></div><div class="card metric"><div class="metric-label">Notes</div><div class="metric-value">${state.notes.filter(n=>n.workspace===w.id).length}</div></div><div class="card metric"><div class="metric-label">Recorded time</div><div class="metric-value" data-current-workspace-time>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(workspaceTimeMs(w))}</div><div class="metric-note">${isCloudTime?'Historical sessions originally recorded here':'Direct time spent on tasks here'}</div></div></div>${weekWorkspaceBlock(w)}<div class="dash-grid"><div class="card"><div class="card-title"><h2>Workspace tasks</h2><button type="button" class="btn small secondary" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button></div>${state.tasks.filter(t=>t.workspace===w.id).map(t=>taskRow(t)).join('')||'<p class="tiny">No tasks in this workspace yet. Use Add task to create the first one.</p>'}</div><div class="card"><div class="card-title"><h2>Workspace notes</h2><button class="text-link" data-action="modal-note" data-id="${w.id}">Quick note</button></div>${state.notes.filter(n=>n.workspace===w.id).map(n=>`<div class="alert-row"><div class="document-icon">${icon('note')}</div><div><strong>${escapeHTML(n.title)}</strong><p>${escapeHTML(n.content.slice(0,90))}</p></div></div>`).join('')||'<p class="tiny">No notes yet.</p>'}<p class="banner-note">${isCloud?'<button type="button" class="btn small secondary" data-action="documents-workspace" data-id="'+escapeHTML(w.id)+'">Workspace documents</button>':'Private documents require sign-in.'} Cover uploads remain separate.</p></div></div>`}
+function workspacePage(){const w=workspace(state.viewWorkspace);return `<div style="margin-bottom:13px"><button class="btn ghost small" data-action="nav" data-page="workspaces">${icon('back')} All workspaces</button></div>${coverFrame('workspace',w.id,w.cover,'folder')}<div class="detail-options media-toolbar">${photoButton('workspace',w.id,'cover','Edit cover')}${photoButton('workspace',w.id,'avatar','Edit avatar')}${isCloud?`<button type="button" class="btn secondary small" data-action="pin-workspace" data-id="${escapeHTML(w.id)}" ${state.cloudBusy?'disabled':''} aria-pressed="${Boolean(w.pinned)}">${icon('pin')} ${w.pinned?'Unpin':'Pin'} workspace</button>`:''}${w.kind==='custom'?`<button class="btn secondary small" data-action="modal-workspace-edit" data-id="${escapeHTML(w.id)}">${icon('edit')} Edit workspace</button>`:''}${isCloud&&w.kind==='custom'?`<button type="button" class="btn secondary small" data-action="archive-workspace" data-id="${escapeHTML(w.id)}">${icon('folder')} Archive</button>`:''}</div>${titleHead('Workspace',escapeHTML(w.name),escapeHTML(w.subtitle),`<button type="button" class="btn" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button>`)}<div class="metrics" style="margin:0 0 19px"><div class="card metric"><div class="metric-label">Open tasks</div><div class="metric-value">${state.tasks.filter(t=>t.workspace===w.id&&t.status==='open').length}</div></div><div class="card metric"><div class="metric-label">Notes</div><div class="metric-value">${state.notes.filter(n=>n.workspace===w.id).length}</div></div><div class="card metric"><div class="metric-label">Recorded time</div><div class="metric-value" data-current-workspace-time>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(workspaceTimeMs(w))}</div><div class="metric-note">${isCloudTime?'Historical sessions originally recorded here':'Direct time spent on tasks here'}</div></div><div class="card metric df-report-tile">
+  <div class="metric-label">Reports</div><button type="button" class="btn secondary small df-metric-report" data-action="report-context"
+ data-scope="workspace" data-id="${escapeHTML(w.id)}" aria-label="Open reports for ${escapeHTML(w.name)}">
+ ${icon('chart')} Workspace reports</button>
+ </div></div>${weekWorkspaceBlock(w)}<div class="dash-grid"><div class="card"><div class="card-title"><h2>Workspace tasks</h2><button type="button" class="btn small secondary" data-action="modal-task" data-id="${escapeHTML(w.id)}" aria-label="Add task to ${escapeHTML(w.name)}">${icon('plus')} Add task</button></div>${state.tasks.filter(t=>t.workspace===w.id).map(t=>taskRow(t)).join('')||'<p class="tiny">No tasks in this workspace yet. Use Add task to create the first one.</p>'}</div><div class="card"><div class="card-title"><h2>Workspace notes</h2><button class="text-link" data-action="modal-note" data-id="${w.id}">Quick note</button></div>${state.notes.filter(n=>n.workspace===w.id).map(n=>`<div class="alert-row"><div class="document-icon">${icon('note')}</div><div><strong>${escapeHTML(n.title)}</strong><p>${escapeHTML(n.content.slice(0,90))}</p></div></div>`).join('')||'<p class="tiny">No notes yet.</p>'}<p class="banner-note">${isCloud?'<button type="button" class="btn small secondary" data-action="documents-workspace" data-id="'+escapeHTML(w.id)+'">Workspace documents</button>':'Private documents require sign-in.'} Cover uploads remain separate.</p></div></div>`}
 function notesPage(){
  const trashed=isCloud&&state.noteMode==='trash';
  const workspaceNotes=(trashed?state.noteTrash:state.notes).filter(n=>workspaces.some(w=>w.id===n.workspace));
@@ -1102,7 +1077,13 @@ function taskDetail(){
  const history=sessions.length?`<div class="session-history">${sessions.map(entry=>`<div class="session-item"><div><strong>${new Date(entry.startedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</strong><small>${new Date(entry.startedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}–${new Date(entry.endedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})} · ${escapeHTML(entry.reason)}</small></div><time>${formatElapsed(entry.durationMs)}</time></div>`).join('')}</div>`:'<p class="subtitle">No completed time sessions for this task yet.</p>';
  return `<div style="margin-bottom:15px"><button class="btn ghost small" data-action="nav" data-page="tasks">${icon('back')} All tasks</button></div>${coverFrame('task',t.id,workspace(t.workspace).cover,t.long?'target':'list')}<div class="detail-options media-toolbar">${photoButton('task',t.id,'cover','Edit cover')}${photoButton('task',t.id,'avatar','Edit avatar')}</div>${titleHead(escapeHTML(workspace(t.workspace).name)+(t.long?' · Long-term task':' · Task'),escapeHTML(t.title),t.deadline?`Hard deadline: ${niceDate(t.deadline,{dateStyle:'medium'})}`:'No hard deadline',`<button class="btn secondary" data-action="modal-edit" data-id="${t.id}">${icon('edit')} Edit</button>${timeControls(t,true)}`)}<div class="metrics" style="margin-bottom:20px"><div class="card metric"><div class="metric-label">Estimated own work</div><div class="metric-value">${minsText(t.estimate)}</div><div class="metric-note">Estimates are independent for each task</div></div>
 <div class="card metric"><div class="metric-label">Own remaining</div><div class="metric-value" data-own-remaining>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(taskRemainingMs(t))}</div></div>
-<div class="card metric"><div class="metric-label">Remaining incl. subtasks</div><div class="metric-value" data-subtree-remaining>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(subtreeRemainingMs(t))}</div><div class="metric-note">Only unfinished tasks count; each subtask once</div></div><div class="card metric"><div class="metric-label">Recorded time</div><div class="metric-value" data-current-task-time>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(totalTime)}</div><div class="metric-note" data-task-time-breakdown>Own ${formatElapsed(ownTime)} · Subtasks ${formatElapsed(Math.max(0,totalTime-ownTime))}</div></div><div class="card metric"><div class="metric-label">Subtasks</div><div class="metric-value">${state.tasks.filter(child=>child.id!==t.id&&isDescendantOf(child.id,t.id)).length}</div><div class="metric-note">All visible nested levels · ${children.length} direct</div></div></div><div class="card"><div class="tab-line"><button class="${state.taskTab==='overview'?'selected':''}" data-action="task-tab" data-value="overview">Overview</button><button class="${state.taskTab==='notes'?'selected':''}" data-action="task-tab" data-value="notes">Notes</button><button class="${state.taskTab==='history'?'selected':''}" data-action="task-tab" data-value="history">Activity${isCloudTime?'':` (${sessions.length})`}</button></div>${state.taskTab==='overview'?`<div class="actions"><span class="pill">${t.status==='done'?'Completed':'Open'}</span>${t.reminder?`<span class="pill gray">${icon('bell')} Reminder ${niceDate(t.reminder)} ${t.reminderTime||''}</span>`:''}</div><p style="margin:18px 0 20px">${escapeHTML(t.notes||'No description has been added yet.')}</p><h3>Subtasks</h3><div style="margin-top:15px">${children.length?children.map(c=>taskRow(c)).join(''):'<p class="tiny">No subtasks yet.</p>'}</div>`:state.taskTab==='notes'?`<h3>Quick task note</h3><p style="margin:8px 0 18px">${escapeHTML(t.notes||'No notes yet.')}</p><div class="info-banner">${icon('file')} ${isCloud?'<button type="button" class="btn small secondary" data-action="documents-task" data-id="'+escapeHTML(t.id)+'">Add or open documents</button> <span class="tiny">Documents are linked to this task and autosave while you write.</span>':'Sign in to create private task documents.'}</div>`:`<h3>Recorded sessions</h3><p class="subtitle">${isCloudTime?'Time is stored in Neon across signed-in devices. Recorded time above includes all nested subtasks, with each session counted once. A session-by-session timeline is scheduled for a later milestone.':'Preview sessions are local to this device. Pauses do not count.'}</p>${isCloudTime?`<p class="tiny">Own time: ${formatElapsed(ownTime)} · Subtasks: ${formatElapsed(Math.max(0,totalTime-ownTime))}</p>`:history}${auditHistory}`}</div><div class="detail-options">${t.status!=='open'?`<button class="btn small secondary" data-action="reopen-task" data-id="${t.id}">${icon('refresh')} Reopen</button>`:`
+<div class="card metric"><div class="metric-label">Remaining incl. subtasks</div><div class="metric-value" data-subtree-remaining>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(subtreeRemainingMs(t))}</div><div class="metric-note">Only unfinished tasks count; each subtask once</div></div><div class="card metric"><div class="metric-label">Recorded time</div><div class="metric-value" data-current-task-time>${isCloudTime&&!state.timeLoaded?'—':formatElapsed(totalTime)}</div><div class="metric-note" data-task-time-breakdown>Own ${formatElapsed(ownTime)} · Subtasks ${formatElapsed(Math.max(0,totalTime-ownTime))}</div></div><div class="card metric"><div class="metric-label">Subtasks</div><div class="metric-value">${state.tasks.filter(child=>child.id!==t.id&&isDescendantOf(child.id,t.id)).length}</div><div class="metric-note">All visible nested levels · ${children.length} direct</div></div>
+ <div class="card metric df-report-tile"><div class="metric-label">Reports</div>
+  <button type="button" class="btn secondary small df-metric-report" data-action="report-context"
+   data-scope="${t.long?'workflow':'task'}" data-id="${escapeHTML(t.id)}"
+   aria-label="Reports for ${escapeHTML(t.title)}">${icon('chart')} View report</button>
+  <div class="metric-note">Focus, plans and task history</div>
+ </div></div><div class="card"><div class="tab-line"><button class="${state.taskTab==='overview'?'selected':''}" data-action="task-tab" data-value="overview">Overview</button><button class="${state.taskTab==='notes'?'selected':''}" data-action="task-tab" data-value="notes">Notes</button><button class="${state.taskTab==='history'?'selected':''}" data-action="task-tab" data-value="history">Activity${isCloudTime?'':` (${sessions.length})`}</button></div>${state.taskTab==='overview'?`<div class="actions"><span class="pill">${t.status==='done'?'Completed':'Open'}</span>${t.reminder?`<span class="pill gray">${icon('bell')} Reminder ${niceDate(t.reminder)} ${t.reminderTime||''}</span>`:''}</div><p style="margin:18px 0 20px">${escapeHTML(t.notes||'No description has been added yet.')}</p><h3>Subtasks</h3><div style="margin-top:15px">${children.length?children.map(c=>taskRow(c)).join(''):'<p class="tiny">No subtasks yet.</p>'}</div>`:state.taskTab==='notes'?`<h3>Quick task note</h3><p style="margin:8px 0 18px">${escapeHTML(t.notes||'No notes yet.')}</p><div class="info-banner">${icon('file')} ${isCloud?'<button type="button" class="btn small secondary" data-action="documents-task" data-id="'+escapeHTML(t.id)+'">Add or open documents</button> <span class="tiny">Documents are linked to this task and autosave while you write.</span>':'Sign in to create private task documents.'}</div>`:`<h3>Recorded sessions</h3><p class="subtitle">${isCloudTime?'Time is stored in Neon across signed-in devices. Recorded time above includes all nested subtasks, with each session counted once. A session-by-session timeline is scheduled for a later milestone.':'Preview sessions are local to this device. Pauses do not count.'}</p>${isCloudTime?`<p class="tiny">Own time: ${formatElapsed(ownTime)} · Subtasks: ${formatElapsed(Math.max(0,totalTime-ownTime))}</p>`:history}${auditHistory}`}</div><div class="detail-options">${t.status!=='open'?`<button class="btn small secondary" data-action="reopen-task" data-id="${t.id}">${icon('refresh')} Reopen</button>`:`
  <button class="btn small" data-action="finish-task" data-id="${t.id}">${icon('check')} Finish</button>
  <button class="btn small secondary" data-action="cancel-task" data-id="${t.id}">Cancel task</button>
  <button class="btn small secondary" data-action="add-subtask" data-id="${t.id}">${icon('plus')} Subtask</button>`}
@@ -1493,6 +1474,9 @@ function render(){
  }
 }
 function navigate(page){
+ // Tapping the selected navigation destination toggles back to Home.
+ // Do not trigger a document warning when already on Home.
+ if(page===state.page&&page!=='home')page='home';
  if(state.page==='documents'&&page!=='documents'&&documentPageDirty&&
    !window.confirm('Discard unsaved document edits?'))return;
  state.modal=null;state.page=page;state.search='';
@@ -1779,9 +1763,29 @@ case'home-start-focus':{
  break;
 }
 case'home-report-refresh':if(isCloudTime)void loadCloudHomeReport(true);break;
-case'nav':
- if(b.dataset.page==='documents'){state.documentWorkspaceId=null;state.documentTaskId=null;}
- navigate(b.dataset.page);break;
+case'nav':{
+ const destination=b.dataset.page===state.page&&state.page!=='home'?'home':b.dataset.page;
+ if(destination==='documents'){state.documentWorkspaceId=null;state.documentTaskId=null;}
+ if(destination==='reports'&&state.page!=='reports')state.reportContext=null;
+ navigate(destination);break;
+}
+case'report-context':{
+ const scope=b.dataset.scope;
+ const itemId=id;
+ if(scope==='workspace'){
+  const w=workspaces.find(w=>w.id===itemId);
+  if(!w)break;
+  state.reportScope='workspace';
+  state.reportContext={scope:'workspace',id:w.id,label:w.name};
+ }else if(scope==='workflow'||scope==='task'){
+  const task=findTask(itemId);
+  if(!task)break;
+  state.reportScope=scope;
+  state.reportContext={scope,id:task.id,label:task.title};
+ }else break;
+ navigate('reports');
+ break;
+}
 case'pin-workspace':{
  if(!isCloud||state.cloudBusy)break;
  const w=workspaces.find(x=>x.id===id);
