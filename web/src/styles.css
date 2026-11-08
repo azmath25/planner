@@ -424,3 +424,17 @@
  .df-doc-writing-bar .df-doc-save-status{order:5}
  .df-doc-zoom-control .btn{min-height:38px;min-width:34px}
 }
+
+
+/* Task-linked documents: attaching an existing page stays usable on phones. */
+.df-doc-attach-existing{
+ display:flex;flex-direction:column;gap:8px;min-width:0;
+ border-top:1px solid var(--line);padding:12px 0;margin-top:8px
+}
+.df-doc-attach-existing>.field-wrap{min-width:0;max-width:100%}
+.df-doc-attach-existing select{width:100%;min-width:0}
+.df-doc-attach-existing>.btn{align-self:flex-start;min-height:38px}
+.df-doc-attach-existing>.tiny{margin:0;overflow-wrap:anywhere}
+@media(max-width:520px){
+ .df-doc-attach-existing>.btn{align-self:stretch}
+}
