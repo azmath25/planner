@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-08  
 **Feature branch:** `feature/dayframe-m53-release-20261107`  
-**Status:** script implemented, pending execution in an environment with Docker; do not merge or deploy.
+**Status:** H4.1 disposable PostgreSQL 18 gate **passed (33/33, operator-reported)**; no live Neon migration or deployment.
 
 ## Verified context
 
@@ -78,3 +78,9 @@ Fix committed:
 Only **test files** changed in this latest correction. Production time-insights SQL and migrations were not modified. The disposable PostgreSQL container was removed, and no production/Neon writes were made.
 
 **H4.1 stays pending until a rerun confirms 33/33.** Do not proceed to production migrations or deployment based only on the source patch.
+
+## H4.1 acceptance — all 33 PostgreSQL regressions passed (reported 2026-11-08)
+
+After `d59e585` and `f190ac8` corrected the Asia/Baku calendar-day fixture, the operator reported **“all pass”** for the same disposable `postgres:18-alpine` test script. Record this as **33/33 passing, user-confirmed**; a complete terminal log for this successful run was not attached to the conversation. Do not falsely label the latest successful output independently inspected. Earlier PostgreSQL 18 runs demonstrably applied migrations 0001–0020, and prior test failures were documented and fixed on the feature branch.
+
+**H4.1 is accepted.** The actual Neon main database remains at migration 0012. H4.2 browser/Managed Neon Auth and H5 controlled schema migration + deployment remain pending. No live Neon SQL writes, branch merge, or production release occurred as part of H4.1.
