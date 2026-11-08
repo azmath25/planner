@@ -765,6 +765,13 @@ test('M7.3 audit-event deadlines and estimates stay owner-scoped and classify mi
  // task. The second task must be excluded from estimate comparisons.
  await pool.query("INSERT INTO dayframe.time_sessions(id,owner_user_id,task_id,task_title_snapshot,workspace_id_snapshot,started_at,accumulated_ms,state,ended_at,end_reason) VALUES($1,$2,$3,'Tracked task',$4,'2026-11-07T12:00:00Z',3600000,'stopped','2026-11-07T13:00:00Z','stopped'),($5,$2,$6,'Unsegmented task',$4,'2026-11-07T12:00:00Z',300000,'stopped','2026-11-07T12:05:00Z','stopped')",[sa,owner,ta,wa,sb,tb]);
  await pool.query("INSERT INTO dayframe.time_session_segments(session_id,started_at,ended_at,duration_ms) VALUES($1,'2026-11-07T12:00:00Z','2026-11-07T13:00:00Z',3600000)",[sa]);
+ // Prove fixture events are in the requested IANA-calendar day, not merely
+ // on the same UTC date (Baku's Nov 8 starts at Nov 7 20:00Z).
+ const {rows:localEvents}=await pool.query(
+  "SELECT (created_at AT TIME ZONE 'Asia/Baku')::date::text AS day FROM dayframe.task_events "+
+  "WHERE owner_user_id=$1 AND event_type='completed' ORDER BY created_at",
+  [owner]);
+ assert.deepEqual(localEvents.map(row=>row.day),['2026-11-07','2026-11-07']);
  const {rows:[insights]}=await pool.query(TIME_INSIGHTS_SQL,[owner,'day','2026-11-07']);
  assert.equal(insights.timeZone,'Asia/Baku');
  assert.equal(insights.deadline.completedEvents,2);
