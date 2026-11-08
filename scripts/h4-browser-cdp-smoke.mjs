@@ -148,7 +148,7 @@ async function main(){
  chromeProfile=mkdtempSync(join(tmpdir(),'dayframe-h43-cdp-'));
  const processChrome=launch(chrome,[
   '--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu',
-  '--no-first-run','--no-default-browser-check','--disable-background-networking',
+  '--no-first-run','--no-default-browser-check','--no-proxy-server','--disable-background-networking',
   '--disable-sync','--disable-extensions','--disable-component-update',
   '--disable-features=Translate,MediaRouter,OptimizationHints',
   '--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',
@@ -190,5 +190,14 @@ async function main(){
   console.log('NOT TESTED: live login/JWT, Safari, Neon migrations or deployment.');
  }finally{cdp.close();}
 }
+// Interrupts should never orphan a test-owned preview or Chromium process.
+let interrupted=false;
+for(const signal of ['SIGINT','SIGTERM']){
+ process.once(signal,()=>{
+  if(interrupted)return;
+  interrupted=true;
+  void cleanup().finally(()=>process.exit(signal==='SIGINT'?130:143));
+ });
+}
 try{await main();}catch(error){console.error('FAIL H4.3: '+(error.stack||error.message));process.exitCode=1;}
-finally{await cleanup();}
+finally{if(!interrupted)await cleanup();}
