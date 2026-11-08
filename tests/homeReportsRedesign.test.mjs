@@ -31,11 +31,14 @@ test('Home shortcuts are functional rather than decorative Android placeholders'
  assert.match(ui,/case'home-focus-jump'/);
  assert.match(ui,/querySelector\('select'\)\?\.focus/);
 });
-test('Home charts contain saved week data and avoid fake local period totals',()=>{
- assert.match(ui,/cloudApi\.getTimePeriod\('week',day\)/);
+test('Home shows exact daily metrics without fake or weekly totals',()=>{
+ assert.match(ui,/cloudApi\.getTimePeriod\('day',day\)/);
  assert.match(ui,/state\.homeReport=report/);
  assert.match(ui,/accountRecordedMs/);
- assert.match(ui,/accountPlannedMinutes/);
+ assert.match(home,/Focus today/);
+ assert.match(home,/Completed today/);
+ assert.match(home,/Due today/);
+ assert.doesNotMatch(home,/Focus this week|next 48h|Current tasks, all-time/);
  assert.doesNotMatch(home,/16h|64h|Illustrative|sample sessions/i);
 });
 test('Profile contains notification preferences and full reminder inbox, not Home',()=>{
