@@ -7,7 +7,10 @@ branch='feature/dayframe-m53-release-20261107'
 test "$(git branch --show-current)" = "$branch" || { echo "Wrong branch" >&2;exit 4; }
 test -s package-lock.json || { echo "Missing genuine local package-lock.json" >&2;exit 3; }
 git diff --quiet || { echo 'Local tracked changes must be reviewed first.' >&2;exit 3; }
-git diff --cached --quiet || { echo 'Existing staged changes must be reviewed first.' >&2;exit 3; }
+staged=$(git diff --cached --name-only)
+if [[ -n "$staged" && "$staged" != package-lock.json ]]; then
+ echo 'Unrelated staged changes detected; refusing to commit.' >&2;exit 3
+fi
 node --input-type=module <<'NODE'
 import {readFileSync} from 'node:fs';
 const pkg=JSON.parse(readFileSync('package.json','utf8'));
@@ -28,11 +31,6 @@ NODE
 git fetch origin "$branch"
 if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch")" ]]; then
  echo "Local feature branch is not the latest origin/$branch; review and fast-forward first" >&2; exit 3
-fi
-if git ls-files --error-unmatch -- package-lock.json >/dev/null 2>&1; then
- echo 'Lockfile is already tracked. If unchanged, nothing to commit.'
- git diff --quiet -- package-lock.json || exit 3
- exit 0
 fi
 if [[ -L package-lock.json ]]; then echo 'Refusing symlinked lockfile' >&2;exit 3;fi
 git add -- package-lock.json
