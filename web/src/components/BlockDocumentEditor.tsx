@@ -18,7 +18,13 @@ const schema=BlockNoteSchema.create({
   checkListItem:defaultBlockSpecs.checkListItem,
   codeBlock:defaultBlockSpecs.codeBlock
  },
- inlineContentSpecs:{text:defaultInlineContentSpecs.text},
+ // BlockNote 0.57's required base inline schema includes link for its
+ // internal type contract. This is NOT permission to persist links: the
+ // onChange validator and API reject link content, and the link toolbar is off.
+ inlineContentSpecs:{
+  text:defaultInlineContentSpecs.text,
+  link:defaultInlineContentSpecs.link
+ },
  styleSpecs:{
   bold:defaultStyleSpecs.bold,
   italic:defaultStyleSpecs.italic,
