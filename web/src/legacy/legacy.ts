@@ -293,7 +293,7 @@ async function loadCloudAlerts(){
   state.alerts=await cloudApi.listAlerts(zone);
   state.alertError='';
  }catch(error){state.alertError=error instanceof Error?error.message:'Alerts unavailable';}
- finally{state.alertLoading=false;if(!disposed&&state.page==='home')render();}
+ finally{state.alertLoading=false;if(!disposed&&['home','profile'].includes(state.page))render();}
 }
 async function changeCloudAlert(index,action){
  if(!isCloud||state.alertBusy)return;
@@ -558,17 +558,16 @@ function home(){
   </nav>
   <div class="df-home-metrics" aria-label="Daily overview">
    <div class="card df-home-metric"><span class="tiny">Focus this week</span>
-    <strong>${isCloudTime?(state.homeReport?formatElapsed(state.homeReport.accountRecordedMs):'—'):
-     formatElapsed(state.sessions.reduce((sum,x)=>sum+(x.durationMs||0),0))}</strong>
-    <small>${isCloudTime?'Saved sessions':'Local preview sessions'}</small></div>
+    <strong>${isCloudTime?(state.homeReport?formatElapsed(state.homeReport.accountRecordedMs):'—'):'—'}</strong>
+    <small>${isCloudTime?'Saved sessions':'Sign in for weekly focus'}</small></div>
    <div class="card df-home-metric"><span class="tiny">Today's plan</span>
     <strong>${isCloud&&(!poolLoaded.has(today())||!scheduleLoadedDates.has(today()))?'—':dayTasks.length}</strong>
     <small>Selected tasks</small></div>
    <div class="card df-home-metric"><span class="tiny">Completed</span>
     <strong>${state.tasks.filter(t=>t.status==='done').length}</strong>
     <small>Current tasks, all-time</small></div>
-   <div class="card df-home-metric"><span class="tiny">Due soon</span><strong>${due.length}</strong>
-    <small>Next 48 hours</small></div>
+   <div class="card df-home-metric"><span class="tiny">Due / overdue</span><strong>${due.length}</strong>
+    <small>Through next 48h</small></div>
   </div>
   ${homeWeeklyReport()}
   <section class="card df-home-today" aria-label="Today's tasks">
@@ -1500,7 +1499,7 @@ function navigate(page){
    !window.confirm('Discard unsaved document edits?'))return;
  state.modal=null;state.page=page;state.search='';
  window.scrollTo({top:0,behavior:'instant'});render();
- if(isCloud&&page==='home')void loadCloudAlerts();
+ if(isCloud&&['home','profile'].includes(page))void loadCloudAlerts();
  if(isCloudTime&&page==='home')void loadCloudHomeReport();
  if(isCloud&&['notes','workspace'].includes(page))void loadCloudNotes();
  if(isCloudTime&&page==='workspace')void loadCloudWeek();
@@ -1680,7 +1679,8 @@ async function updateCloudTimer(action,id){
  }finally{
   state.timeBusy=false;
   if(!disposed){await loadCloudTime();
-   if(state.page==='workspace'||state.page==='reports')void loadCloudWeek();}
+   if(state.page==='workspace'||state.page==='reports')void loadCloudWeek();
+   if(state.page==='home')void loadCloudHomeReport(true);}
  }
 }
 function recordAndStop(reason='stopped'){
