@@ -68,6 +68,17 @@ test('LaTeX and links cannot bypass bounded, text-only persistence',()=>{
   {id:'bad',type:'mathBlock',props:{html:'evil'},content:'x',children:[]}
  ])assert.throws(()=>assertDocumentBlocks([bad]));
 });
+test('BlockNote actual plain math/code JSON round-trips through browser validation',()=>{
+ const formula=[{type:'text',text:'e=mc^2',styles:{}}];
+ const block={id:'eq-1',type:'mathBlock',props:{},content:formula,children:[]};
+ const code={id:'code-1',type:'codeBlock',props:{language:'javascript'},
+  content:[{type:'text',text:'const a=2;',styles:{}}],children:[]};
+ assert.doesNotThrow(()=>assertDocumentBlocks([block,code]));
+ assert.doesNotThrow(()=>assertDocumentBlocks([{...block,content:[]}]));
+ assert.throws(()=>assertDocumentBlocks([{...block,content:[{type:'link',href:'https://example.org',content:[]}]}]));
+ assert.throws(()=>assertDocumentBlocks([{...block,content:[{type:'text',text:'x'.repeat(6001),styles:{}}]}]));
+ assert.throws(()=>assertDocumentBlocks([{...code,content:[{type:'text',text:'y'.repeat(10000),styles:{}},{type:'text',text:'y'.repeat(10001),styles:{}}]}]));
+});
 test('New page title defaults to the first sentence without requiring naming',()=>{
  const first=[{id:'b',type:'paragraph',props:{},content:[
   {type:'text',text:'My research plan. Next steps follow.',styles:{}}],
