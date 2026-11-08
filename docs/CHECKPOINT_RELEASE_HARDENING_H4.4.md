@@ -77,3 +77,23 @@ npm run check:dist
 The default build checks GitHub Pages output and never deploys. Do not set `VITE_DAYFRAME_TARGET=staging` for Vercel until a separate staging API HTTPS URL exists and `VITE_DAYFRAME_STAGING_API_URL` is pinned. After that, rerun the build and `check:dist` with both variables set, and verify no production hostname was compiled into the staging bundle before releasing the preview.
 
 **Still pending:** stage-compatible full Neon API deployment, staging CORS origin pin, Vercel preview launch, two-account browser sign-in/ownership tests, Safari session persistence and PWA install review. An unlinked Vercel project and a staged database are **not** a running or accepted Dayframe release.
+
+## Cloud Shell source/build result and staged API package tool
+
+On 2026-11-08 the operator submitted a Cloud Shell output showing:
+- `npm run typecheck` completed, and Vite 8.3.6 compiled 1,235 modules and reported `built in 1.59s`.
+- `scripts/finalize-site.mjs` printed `Dayframe PWA manifest scope: /planner/`, the correct **default** GitHub Pages build; this is not a staging build.
+- `npm run check:dist` printed PASS for the PWA assets, and PASS for React assets with Pages subpath.
+- Vite warned about entry and BlockNote editor chunks larger than 500 kB, plus `MODULE_LEVEL_DIRECTIVE` warnings from Mantine/Rolldown. They were **non-fatal**; they merit future bundle/performance review but do not establish an app failure.
+- The attached output **did not include `npm run test:source` or `npm run test:api` results**. They remain unverified from this operator log; do not silently mark them passed.
+
+Added `scripts/h44-package-staging-api.py` (feature branch only), to prepare the next isolated API deployment **without deploying it**. It checks branch, Node 24+, staging issuer guard, and installed esbuild. `--plan` performs only preflight; `--build` runs targeted `test:source` and `test:api`, bundles the full current `backend/src/index.mjs` with esbuild, checks Node syntax/ZIP integrity, and writes an untracked ZIP under `/tmp`. This avoids using the stale M5.3 artifact, GitHub Actions and production Neon credentials. Its operator execution is **pending**.
+
+Cloud Shell commands (no release):
+```bash
+cd ~/dayframe-h2
+git pull --ff-only origin feature/dayframe-m53-release-20261107
+python3 scripts/h44-package-staging-api.py --plan
+python3 scripts/h44-package-staging-api.py --build
+```
+Do not run a Neon deploy or enable Vercel preview publishing without verifying the exact target, staging origin and build; no app-hosted user/session acceptance has been performed.
