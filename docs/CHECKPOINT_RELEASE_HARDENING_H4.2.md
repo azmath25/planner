@@ -44,4 +44,16 @@ This script is safe against the currently deployed environment and does not requ
 
 Local mocked browser harnesses for Dayframe features do not establish real Neon Auth functionality. The actual GitHub Pages `main` branch is still the older M5.3 published tree; do not infer the new feature branch's runtime behavior from that published site. Complete a controlled migration and release readiness gate before publishing the new feature code.
 
-**H4.2 status: configuration checked; public service smoke and real browser sign-in outstanding.**
+**H4.2 public service gate: PASSED from Cloud Shell (operator log, 2026-11-08). Real browser sign-in remains outstanding and is tracked separately as H4.3.**
+
+## H4.2 operator execution — passed (2026-11-08)
+
+After pulling feature commit `50bc88f`, the operator ran `node scripts/h4-auth-public-smoke.mjs` in the existing Cloud Shell checkout. The complete terminal excerpt showed:
+
+- `PASS Neon Auth public EdDSA JWKS is reachable`;
+- `PASS Unauthenticated account endpoint rejects access with 401`;
+- `PASS Dayframe API health is 200 and identifies the service`;
+- `PASS Only the production Pages origin is allowed by CORS`;
+- final `PASS: H4.2 public service readiness (read-only).`
+
+This **closes the public service readiness gate**. It does **not** establish real sign-up/login, Safari cross-site cookie compatibility, JWT-protected API access, account isolation, the latest backend feature deployment, or migration readiness. Maintain the no-production-writes and no-deploy boundaries while those separate gates remain open.
