@@ -73,7 +73,7 @@ const initialTasks=()=>[
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
-const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',reportContext:null,homeFocusTask:'',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
+const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',reportContext:null,homeFocusTask:'',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',showActivity:!!saved.showActivity,density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
@@ -81,7 +81,7 @@ state.timer=restoreTimer(state.timer,new Set(state.tasks.filter(t=>t.status!=='d
 Object.defineProperty(state,'pool',{get(){return state.pools[state.planDay]||(state.pools[state.planDay]=[])},set(v){state.pools[state.planDay]=v}});
 const poolForDay=day=>state.pools[day]||[];
 const remainingUnscheduled=(task,day)=>Math.max(0,task.estimate-(isCloudTime?taskTimeMs(task)/60000:task.spent)-state.scheduled.filter(s=>s.taskId===task.id&&s.day===day).reduce((sum,s)=>sum+parseClock(s.end)-parseClock(s.start),0));
-const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:isCloud?undefined:state.notes,pools:isCloud?undefined:state.pools,scheduled:isCloud?undefined:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:isCloudTime?(saved.timer??undefined):state.timer,sessions:isCloudTime?(Array.isArray(saved.sessions)?saved.sessions:[]):state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
+const persist=()=>{try{localStorage.setItem(STORAGE,JSON.stringify({theme:state.theme,accent:state.accent,showActivity:state.showActivity,density:state.density,coverStyle:state.coverStyle,media:isCloud?Object.fromEntries(Object.entries(state.media).filter(([key])=>!key.startsWith('task:'))):state.media,mediaPos:isCloud?Object.fromEntries(Object.entries(state.mediaPos).filter(([key])=>!key.startsWith('task:'))):state.mediaPos,tasks:isCloud?undefined:state.tasks,notes:isCloud?undefined:state.notes,pools:isCloud?undefined:state.pools,scheduled:isCloud?undefined:state.scheduled,capacity:state.capacity,taskSort:state.taskSort,timer:isCloudTime?(saved.timer??undefined):state.timer,sessions:isCloudTime?(Array.isArray(saved.sessions)?saved.sessions:[]):state.sessions}));return true}catch(err){console.warn('Dayframe demo local storage is full',err);return false}};
 const localQuickNote=note=>({...note,workspace:localWorkspaceId(note.workspace)});
 const remoteQuickNote=note=>({
  workspace:serverWorkspaceId(note.workspace),title:note.title,
@@ -1055,14 +1055,94 @@ function calendarPage(){
  <p class="banner-note">${isCloud?'Timed blocks are saved in Neon. Edit a block by selecting it; capacity is a device-local warning, not a hard limit.':'This calendar is a local demo. Real cloud blocks require account login.'}</p>`;
 }
 function settingsPage(){
- const choices=[['minimal','Minimal','#e8eee9'],['midnight','Midnight','#303f40'],['nature','Nature','#a2bd95'],['pastel','Pastel','#d9c4df'],['editorial','Editorial','#e0c3a7'],['professional','Professional','#abc2db']];
- const accentChoices=[['default','Original','#438b76'],['ocean','Ocean','#437faa'],['lavender','Lavender','#8e74b9'],['rose','Rose','#b77684'],['amber','Amber','#a87b43'],['graphite','Graphite','#5b7280']];
- return `${titleHead('Make it yours','Appearance','Choose your mood. Keep the daily experience simple.')}
- <div class="card"><div class="card-title"><h2>Theme gallery</h2><span class="pill">${escapeHTML(state.theme)}</span></div>
- <div class="theme-grid">${choices.map(([name,label,bg])=>`<button class="theme-choice ${state.theme===name?'selected':''}" data-action="theme" data-id="${name}" aria-pressed="${state.theme===name}"><div class="theme-swatches" style="background:${bg}"><b></b><b style="height:37px"></b><b style="height:19px"></b></div><strong>${label}</strong></button>`).join('')}</div></div>
- <div class="card section"><div class="card-title"><h2>Accent colors</h2><span class="tiny">Optional · independent of theme</span></div><div class="accent-palette">${accentChoices.map(([id,label,color])=>`<button class="accent-option ${state.accent===id?'selected':''}" data-action="accent" data-id="${id}" aria-label="Accent ${label}" aria-pressed="${state.accent===id}" title="${label}"><span style="background:${color}">${state.accent===id?icon('check'):''}</span><small>${label}</small></button>`).join('')}</div></div>
- <div class="card section"><div class="card-title"><h2>Display preferences</h2></div><div class="field-wrap"><label class="form-label" for="density-select">Information density</label><select class="field" id="density-select"><option value="comfortable" ${state.density==='comfortable'?'selected':''}>Comfortable · more breathing room</option><option value="compact" ${state.density==='compact'?'selected':''}>Compact · more information</option></select></div><div class="field-wrap"><label class="form-label" for="cover-style-select">Cover presentation</label><select class="field" id="cover-style-select"><option value="standard" ${state.coverStyle==='standard'?'selected':''}>Standard · balanced</option><option value="immersive" ${state.coverStyle==='immersive'?'selected':''}>Immersive · larger imagery</option><option value="minimal" ${state.coverStyle==='minimal'?'selected':''}>Minimal · subtle header</option></select></div><p class="banner-note">Cover and avatar controls are available inside each task or workspace. Images stay on this device in the prototype; Neon uploads are a later milestone.</p></div>
- <div class="section card"><div class="card-title"><h2>Design demo</h2></div><p class="subtitle" style="margin:0 0 14px">${isCloud?'Workspaces, tasks, daily plans, reminders and new time sessions are saved in Neon. Older device-only timer records, quick notes, capacity and workspace photos remain local and are not imported automatically.':'This preview uses local sample data and has no account sync.'}</p><button class="btn secondary" data-action="reset">${icon('refresh')} Reset local previews</button></div>`
+ const themes=[
+  ['minimal','Light','#e8eee9'],
+  ['monochrome','Monochrome','#ffffff'],
+  ['midnight','Dark','#303f40'],
+  ['nature','Nature','#a2bd95'],
+  ['pastel','Pastel','#d9c4df'],
+  ['editorial','Editorial','#e0c3a7'],
+  ['professional','Professional','#abc2db']
+ ];
+ const accents=[['default','Original','#438b76'],['ocean','Ocean','#437faa'],
+  ['lavender','Lavender','#8e74b9'],['rose','Rose','#b77684'],
+  ['amber','Amber','#a87b43'],['graphite','Graphite','#5b7280']];
+ return `<main class="df-settings" aria-label="Dayframe settings">
+  ${titleHead('PREFERENCES','Appearance & settings',
+   'One place for display, privacy and the account. Changes apply immediately.')}
+  <div class="df-settings-group">
+   <div class="df-settings-group-head"><h2>Appearance</h2>
+    <span class="tiny">Choose a style; no setup required</span></div>
+   <div class="df-settings-themes" role="group" aria-label="Color theme">
+    ${themes.map(([id,label,bg])=>`<button type="button"
+      class="df-settings-theme ${state.theme===id?'selected':''}"
+      aria-pressed="${state.theme===id}" data-action="theme" data-id="${id}">
+     <span class="df-settings-theme-preview" style="background:${bg}">
+      <i></i><i></i><i></i></span><strong>${label}</strong>
+      ${state.theme===id?`<span class="tiny">${icon('check')} Active</span>`:''}
+    </button>`).join('')}
+   </div>
+   ${state.theme==='monochrome'?
+     '<p class="tiny">Monochrome always uses black, white, straight borders and no colored accents.</p>':
+     `<details class="df-settings-advanced"><summary>Accent color</summary>
+       <div class="accent-palette">${accents.map(([id,label,color])=>`<button
+        type="button" class="accent-option ${state.accent===id?'selected':''}"
+        data-action="accent" data-id="${id}" aria-label="Accent ${label}"
+        aria-pressed="${state.accent===id}" title="${label}">
+        <span style="background:${color}">${state.accent===id?icon('check'):''}</span>
+        <small>${label}</small></button>`).join('')}</div>
+      </details>`}
+  </div>
+  <div class="df-settings-group">
+   <div class="df-settings-group-head"><h2>Layout</h2></div>
+   <div class="df-settings-row">
+    <label for="density-select">Information density
+     <span class="tiny">Choose comfortable or compact spacing</span></label>
+    <select class="field" id="density-select">
+     <option value="comfortable" ${state.density==='comfortable'?'selected':''}>Comfortable</option>
+     <option value="compact" ${state.density==='compact'?'selected':''}>Compact</option>
+    </select>
+   </div>
+   <div class="df-settings-row"><label for="cover-style-select">Cover images
+    <span class="tiny">How large task and workspace covers appear</span></label>
+    <select class="field" id="cover-style-select">
+     <option value="standard" ${state.coverStyle==='standard'?'selected':''}>Standard</option>
+     <option value="immersive" ${state.coverStyle==='immersive'?'selected':''}>Large</option>
+     <option value="minimal" ${state.coverStyle==='minimal'?'selected':''}>Compact</option>
+    </select>
+   </div>
+  </div>
+  <div class="df-settings-group">
+   <div class="df-settings-group-head"><h2>Privacy & activity</h2></div>
+   <div class="df-settings-row">
+    <label for="activity-visibility">Task activity history
+     <span class="tiny">Keep detailed changes in the background until you want to inspect them</span></label>
+    <select class="field" id="activity-visibility">
+     <option value="hide" ${!state.showActivity?'selected':''}>Hidden in task pages</option>
+     <option value="show" ${state.showActivity?'selected':''}>Show Activity tab</option>
+    </select>
+   </div>
+   <div class="df-settings-row">
+    <div><strong>Notifications & reminders</strong>
+     <p class="tiny">Permission, time zone, quiet hours and the reminder inbox</p></div>
+    <button class="btn small secondary" type="button" data-action="nav"
+     data-page="profile">Open Profile</button>
+   </div>
+  </div>
+  <div class="df-settings-group">
+   <div class="df-settings-group-head"><h2>Account & data</h2></div>
+   <div class="df-settings-row">
+    <div><strong>Your account</strong><p class="tiny">Personal data and notification preferences</p></div>
+    <button type="button" class="btn small secondary" data-action="nav"
+     data-page="profile">Profile</button>
+   </div>
+   <div class="df-settings-row">
+    <div><strong>Reset local preview</strong>
+     <p class="tiny">Does not remove signed-in Neon tasks or documents</p></div>
+    <button class="btn small secondary" data-action="reset">Reset preview</button>
+   </div>
+  </div>
+ </main>`;
 }
 function taskDetail(){
  const t=findTask(state.taskId);if(!t){state.page='tasks';return tasksPage()}
@@ -1083,7 +1163,7 @@ function taskDetail(){
    data-scope="${t.long?'workflow':'task'}" data-id="${escapeHTML(t.id)}"
    aria-label="Reports for ${escapeHTML(t.title)}">${icon('chart')} View report</button>
   <div class="metric-note">Focus, plans and task history</div>
- </div></div><div class="card"><div class="tab-line"><button class="${state.taskTab==='overview'?'selected':''}" data-action="task-tab" data-value="overview">Overview</button><button class="${state.taskTab==='notes'?'selected':''}" data-action="task-tab" data-value="notes">Notes</button><button class="${state.taskTab==='history'?'selected':''}" data-action="task-tab" data-value="history">Activity${isCloudTime?'':` (${sessions.length})`}</button></div>${state.taskTab==='overview'?`<div class="actions"><span class="pill">${t.status==='done'?'Completed':'Open'}</span>${t.reminder?`<span class="pill gray">${icon('bell')} Reminder ${niceDate(t.reminder)} ${t.reminderTime||''}</span>`:''}</div><p style="margin:18px 0 20px">${escapeHTML(t.notes||'No description has been added yet.')}</p><h3>Subtasks</h3><div style="margin-top:15px">${children.length?children.map(c=>taskRow(c)).join(''):'<p class="tiny">No subtasks yet.</p>'}</div>`:state.taskTab==='notes'?`<h3>Quick task note</h3><p style="margin:8px 0 18px">${escapeHTML(t.notes||'No notes yet.')}</p><div class="info-banner">${icon('file')} ${isCloud?'<button type="button" class="btn small secondary" data-action="documents-task" data-id="'+escapeHTML(t.id)+'">Add or open documents</button> <span class="tiny">Documents are linked to this task and autosave while you write.</span>':'Sign in to create private task documents.'}</div>`:`<h3>Recorded sessions</h3><p class="subtitle">${isCloudTime?'Time is stored in Neon across signed-in devices. Recorded time above includes all nested subtasks, with each session counted once. A session-by-session timeline is scheduled for a later milestone.':'Preview sessions are local to this device. Pauses do not count.'}</p>${isCloudTime?`<p class="tiny">Own time: ${formatElapsed(ownTime)} · Subtasks: ${formatElapsed(Math.max(0,totalTime-ownTime))}</p>`:history}${auditHistory}`}</div><div class="detail-options">${t.status!=='open'?`<button class="btn small secondary" data-action="reopen-task" data-id="${t.id}">${icon('refresh')} Reopen</button>`:`
+ </div></div><div class="card"><div class="tab-line"><button class="${state.taskTab==='overview'?'selected':''}" data-action="task-tab" data-value="overview">Overview</button><button class="${state.taskTab==='notes'?'selected':''}" data-action="task-tab" data-value="notes">Notes</button>${state.showActivity?`<button class="${state.taskTab==='history'?'selected':''}" data-action="task-tab" data-value="history">Activity${isCloudTime?'':` (${sessions.length})`}</button>`:''}</div>${state.taskTab==='overview'?`<div class="actions"><span class="pill">${t.status==='done'?'Completed':'Open'}</span>${t.reminder?`<span class="pill gray">${icon('bell')} Reminder ${niceDate(t.reminder)} ${t.reminderTime||''}</span>`:''}</div><p style="margin:18px 0 20px">${escapeHTML(t.notes||'No description has been added yet.')}</p><h3>Subtasks</h3><div style="margin-top:15px">${children.length?children.map(c=>taskRow(c)).join(''):'<p class="tiny">No subtasks yet.</p>'}</div>`:state.taskTab==='notes'?`<h3>Quick task note</h3><p style="margin:8px 0 18px">${escapeHTML(t.notes||'No notes yet.')}</p><div class="info-banner">${icon('file')} ${isCloud?'<button type="button" class="btn small secondary" data-action="documents-task" data-id="'+escapeHTML(t.id)+'">Add or open documents</button> <span class="tiny">Documents are linked to this task and autosave while you write.</span>':'Sign in to create private task documents.'}</div>`:`<h3>Recorded sessions</h3><p class="subtitle">${isCloudTime?'Time is stored in Neon across signed-in devices. Recorded time above includes all nested subtasks, with each session counted once. A session-by-session timeline is scheduled for a later milestone.':'Preview sessions are local to this device. Pauses do not count.'}</p>${isCloudTime?`<p class="tiny">Own time: ${formatElapsed(ownTime)} · Subtasks: ${formatElapsed(Math.max(0,totalTime-ownTime))}</p>`:history}${auditHistory}`}</div><div class="detail-options">${t.status!=='open'?`<button class="btn small secondary" data-action="reopen-task" data-id="${t.id}">${icon('refresh')} Reopen</button>`:`
  <button class="btn small" data-action="finish-task" data-id="${t.id}">${icon('check')} Finish</button>
  <button class="btn small secondary" data-action="cancel-task" data-id="${t.id}">Cancel task</button>
  <button class="btn small secondary" data-action="add-subtask" data-id="${t.id}">${icon('plus')} Subtask</button>`}
@@ -2419,6 +2499,7 @@ trackListener('change',async e=>{
  return;
 }if(e.target.id==='note-filter'){state.noteFilter=e.target.value;render();return;}
 if(e.target.id==='df-home-focus-task'){state.homeFocusTask=e.target.value;return;}
+ if(e.target.id==='activity-visibility'){state.showActivity=e.target.value==='show';persist();render();return;}
 if(e.target.id==='workspace-filter'){state.workspaceFilter=e.target.value;render()}if(e.target.id==='plan-day'){
  state.planDay=e.target.value;render();
  if(isCloud){void loadCloudPool(state.planDay);void loadCloudSchedule(state.planDay,state.planDay);}
