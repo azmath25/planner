@@ -106,6 +106,7 @@ def main():
                     page.get_by_role("button", name="Open local demo without signing in").click()
                     page.locator('[data-react-host="local-preview"]').wait_for()
                     page.locator("#app").wait_for()
+                    page.locator('.mobile-nav [data-page="tasks"]').wait_for()
                     print("PASS: local-only Dayframe demo mounts without authentication.", flush=True)
                     for width in (320, 390, 768, 1440):
                         page.set_viewport_size({"width": width, "height": 850})
