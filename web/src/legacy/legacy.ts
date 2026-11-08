@@ -571,7 +571,7 @@ function home(){
      <article class="note df-home-note">
       <div class="df-home-note-head"><h3>${escapeHTML(n.title||'Untitled note')}</h3>
        ${n.pinned?`<span class="tiny">${icon('pin')} Pinned</span>`:''}</div>
-      <p>${escapeHTML(n.content||'No text yet')}</p>
+      <p>${noteLinksHtml(n.content||'No text yet')}</p>
       <div class="note-foot"><small>${escapeHTML(workspace(n.workspace).name)}</small>
        <button class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}">Open ${icon('arrow')}</button>
       </div>
@@ -2016,12 +2016,44 @@ case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')
 case'edit-note':{
  if(!state.notes.some(n=>n.id===id)||state.noteBusy)break;
  noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;
- render();beginNoteAutosave();break;
+ render();beginNoteAutosave();if(isCloud)void loadNotePhoto(id);break;
 }
 case'convert-note':{
  const n=state.notes.find(x=>x.id===id);
  if(!n||n.convertedAt||state.noteBusy)break;
  state.noteError='';state.modal='note-convert';state.modalTask=id;render();break;
+}
+case'download-note':{
+ const note=state.notes.find(n=>n.id===id);
+ if(note){try{await exportNoteFile(note);}catch(error){saveError(error);}}
+ break;
+}
+case'download-current-note':{
+ const form=document.querySelector('#note-form');
+ if(!form)break;
+ const data=new FormData(form);
+ const currentId=noteAutoController?.getId()||state.modalTask||'';
+ const value={id:currentId,title:String(data.get('title')||''),
+  content:String(data.get('content')||'')};
+ try{await exportNoteFile(value);}
+ catch(error){saveError(error);}
+ break;
+}
+case'remove-note-photo':{
+ const id=noteAutoController?.getId()||state.modalTask;
+ if(!id||notePhotoBusy)break;
+ notePhotoBusy=true;
+ try{
+  if(isCloud)await cloudApi.deleteQuickNotePhoto(id);
+  else{
+   delete state.media[mediaKey('note',id,'photo')];persist();
+  }
+  notePhotos.set(id,null);
+  const preview=document.getElementById('note-photo-preview');
+  if(preview)preview.innerHTML='<span class="tiny">No photo attached.</span>';
+ }catch(error){saveError(error);}
+ finally{notePhotoBusy=false;}
+ break;
 }
 case'refresh-notes':if(isCloud)void loadCloudNotes();break;
 case'show-active-notes':state.noteMode='active';state.noteError='';render();
@@ -2503,6 +2535,50 @@ if(e.target.id==='note-search'){
 }
 });
 trackListener('change',async e=>{
+ if(e.target.id==='note-photo-file'){
+  const file=e.target.files?.[0];
+  if(!file||notePhotoBusy)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||
+   file.size>5*1024*1024){
+   alert('Choose a JPEG, PNG or WebP image under 5 MB.');return;
+  }
+  notePhotoBusy=true;
+  const noteContext=String(state.modal)+':'+String(state.modalTask||'');
+  const preview=document.getElementById('note-photo-preview');
+  if(preview)preview.textContent='Compressing and saving photo…';
+  try{
+   let id=noteAutoController?.getId()||state.modalTask;
+   if(isCloud&&!id){
+    const saved=await noteAutoController?.flush(true);
+    id=noteAutoController?.getId();
+    if(!id||!saved)throw Error('Write some text first so the note can be created before attaching a photo.');
+   }
+   if(!id)throw Error('Save the note first to attach a photo.');
+   const bitmap=await createImageBitmap(file);
+   const canvas=document.createElement('canvas');
+   let scale=Math.min(1,960/bitmap.width,960/bitmap.height),encoded='';
+   for(let retry=0;retry<10;retry++){
+    canvas.width=Math.max(1,Math.floor(bitmap.width*scale));
+    canvas.height=Math.max(1,Math.floor(bitmap.height*scale));
+    const ctx=canvas.getContext('2d');if(!ctx)throw Error('Image compression unavailable');
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    encoded=canvas.toDataURL('image/webp',Math.max(.35,.78-retry*.045));
+    if(encoded.split(',')[1].length*.75<=175000)break;
+    scale*=.78;
+   }
+   bitmap.close?.();
+   if(encoded.split(',')[1].length*.75>180000)throw Error('Photo is still too large after compression');
+   if(isCloud)await cloudApi.saveQuickNotePhoto(id,encoded);
+   else{state.media[mediaKey('note',id,'photo')]=encoded;persist();}
+   notePhotos.set(id,encoded);
+   if(String(state.modal)+':'+String(state.modalTask||'')!==noteContext&&state.modalTask!==id)return;
+   const node=document.getElementById('note-photo-preview');
+   if(node)node.innerHTML='<img class="df-note-photo" alt="Attached note photo" src="'+encoded+'"/>';
+  }catch(error){
+   if(preview)preview.textContent=error instanceof Error?error.message:'Could not attach photo';
+  }finally{notePhotoBusy=false;}
+  return;
+ }
  if(e.target.id==='report-anchor'&&isCloudTime){
   const value=e.target.value;
   if(/^\d{4}-\d{2}-\d{2}$/.test(value)&&value>='2000-01-01'&&value<='2100-12-31'){
