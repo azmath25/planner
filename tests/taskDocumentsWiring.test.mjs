@@ -36,3 +36,13 @@ test('existing unassigned documents can be linked safely without moving unrelate
  assert.match(docs,/workspace:full\.workspace,taskId:filterTask,parentId:null/);
  assert.match(docs,/Attach to task/);
 });
+
+test('unlinking a task document keeps its contents and respects revisions',()=>{
+ assert.match(docs,/const unlinkFromTask=async\(\)=>\{/);
+ assert.match(docs,/if\(dirty\|\|savingRef\.current\)/);
+ assert.match(docs,/remote\.revision!==active\.revision/);
+ assert.match(docs,/taskId:null,parentId:null/);
+ assert.match(docs,/title:remote\.title,blocks:remote\.blocks/);
+ assert.match(docs,/Remove from task/);
+ assert.match(docs,/Nested documents must stay with their parent page/);
+});
