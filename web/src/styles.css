@@ -648,9 +648,6 @@
 [data-theme="monochrome"] .df-settings-theme,
 [data-theme="monochrome"] .df-settings-theme-preview,
 [data-theme="monochrome"] .df-note-photo-preview,
-[data-theme="monochrome"] .df-pie-disc,
-[data-theme="monochrome"] .df-home-pie,
-[data-theme="monochrome"] .df-report-large-pie,
 [data-theme="monochrome"] .global-timer,
 [data-theme="monochrome"] .df-home-focus{border-radius:0!important;box-shadow:none!important}
 [data-theme="monochrome"] .note,
@@ -667,3 +664,11 @@
 [data-theme="monochrome"] .filter.active{background:#000!important;color:#fff!important}
 [data-theme="monochrome"] .df-home-bell-count{background:#000;color:#fff;border:1px solid #fff;border-radius:0}
 [data-theme="monochrome"] a{color:#111}
+
+/* Pie/donut charts are always circles, even in square-corner monochrome mode. */
+.df-pie-disc,.df-home-pie,.df-report-large-pie,
+[data-theme="monochrome"] .df-pie-disc,
+[data-theme="monochrome"] .df-home-pie,
+[data-theme="monochrome"] .df-report-large-pie{
+ aspect-ratio:1;border-radius:50%!important;
+}
