@@ -505,7 +505,9 @@ function homePins(){
   </div></section>`;
 }
 function home(){
- const due=openTasks().filter(t=>t.deadline&&t.deadline<=dayOffset(2));
+ const dueToday=openTasks().filter(t=>t.deadline===today());
+ const completedToday=state.tasks.filter(t=>t.status==='done'&&t.completedAt&&
+   new Date(t.completedAt).toLocaleDateString('sv-SE')===today()).length;
  const assigned=[...state.scheduled.filter(x=>x.day===today()).map(x=>findTask(x.taskId)),
   ...poolForDay(today()).map(findTask)].filter(Boolean);
  const dayTasks=[...new Map(assigned.map(t=>[t.id,t])).values()];
@@ -514,7 +516,7 @@ function home(){
  const recent=state.notes.filter(n=>workspaces.some(w=>w.id===n.workspace))
   .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||
    String(b.updatedAt||'').localeCompare(String(a.updatedAt||''))).slice(0,3);
- const notices=isCloud&&alertsBackendEnabled?state.alerts.length:due.length;
+ const notices=isCloud&&alertsBackendEnabled?state.alerts.length:dueToday.length;
  return `<main class="df-home-dashboard" aria-label="Home dashboard">
   ${titleHead('YOUR DASHBOARD','Today',
     new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),
@@ -527,20 +529,19 @@ function home(){
   <nav class="df-home-shortcuts" aria-label="Quick actions">
    <button class="btn secondary" data-action="nav" data-page="plan">${icon('calendar')} Today's plan</button>
    <button class="btn secondary" data-action="home-focus-jump">${icon('play')} Start timer</button>
-   <button class="btn secondary" data-action="nav" data-page="reports">${icon('chart')} Reports</button>
-  </nav>
+   </nav>
   <div class="df-home-metrics" aria-label="Daily overview">
-   <div class="card df-home-metric"><span class="tiny">Focus this week</span>
-    <strong>${isCloudTime?(state.homeReport?formatElapsed(state.homeReport.accountRecordedMs):'—'):'—'}</strong>
-    <small>${isCloudTime?'Saved sessions':'Sign in for weekly focus'}</small></div>
+   <div class="card df-home-metric"><span class="tiny">Focus today</span>
+    <strong>${isCloudTime?(state.homeReport&&state.homeReportDay===today()?
+     formatElapsed(state.homeReport.accountRecordedMs):'—'):'—'}</strong>
+    <small>${isCloudTime?'Saved today':'Sign in for daily focus'}</small></div>
    <div class="card df-home-metric"><span class="tiny">Today's plan</span>
     <strong>${isCloud&&(!poolLoaded.has(today())||!scheduleLoadedDates.has(today()))?'—':dayTasks.length}</strong>
     <small>Selected tasks</small></div>
-   <div class="card df-home-metric"><span class="tiny">Completed</span>
-    <strong>${state.tasks.filter(t=>t.status==='done').length}</strong>
-    <small>Current tasks, all-time</small></div>
-   <div class="card df-home-metric"><span class="tiny">Due / overdue</span><strong>${due.length}</strong>
-    <small>Through next 48h</small></div>
+   <div class="card df-home-metric"><span class="tiny">Completed today</span>
+    <strong>${completedToday}</strong><small>Finished today</small></div>
+   <div class="card df-home-metric"><span class="tiny">Due today</span><strong>${dueToday.length}</strong>
+    <small>Open deadlines today</small></div>
   </div>
   <section class="card df-home-today" aria-label="Today's tasks">
    <div class="card-title"><h2>Today's tasks</h2>
@@ -1714,7 +1715,7 @@ async function loadCloudHomeReport(force=false){
  if(!force&&state.homeReport&&state.homeReportDay===day)return;
  state.homeReportLoading=true;state.homeReportError='';
  try{
-  const report=await cloudApi.getTimePeriod('week',day);
+  const report=await cloudApi.getTimePeriod('day',day);
   if(disposed)return;
   state.homeReport=report;state.homeReportDay=day;
  }catch(err){
