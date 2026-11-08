@@ -1311,8 +1311,14 @@ function navigate(page){
  }
 }
 function closeModal(){
- if(['note','note-edit'].includes(state.modal)&&noteFormDirty&&
-  !window.confirm('Discard your unsaved note?'))return;
+ if(['note','note-edit'].includes(state.modal)){
+  if(isCloud&&noteFormDirty&&noteAutoStatusKind==='error'&&
+   !window.confirm('This note could not be backed up on this device. Copy the text before closing. Close anyway?'))return;
+  if(isCloud&&noteFormDirty)
+   state.noteError='Your unsynced Quick Note draft remains on this device. Reopen the note to continue syncing.';
+  noteAutoController?.dispose();noteAutoController=null;
+  state.noteBusy=false;
+ }
  state.modal=null;state.modalTask=null;noteFormDirty=false;render();
 }
 
@@ -1611,10 +1617,12 @@ case'archive-workspace':{
  state.modal='archive-workspace';state.modalTask=id;render();break;
 }case'modal-task':state.modal='task';state.modalTask=id||null;state.subtaskParent=null;render();break;
 case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')break;state.modal='task';state.modalTask=parent.workspace;state.subtaskParent=parent.id;render();break;}case'modal-edit':state.modal='edit';state.modalTask=id;render();break;case'modal-note':
- noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note';state.modalTask=id||null;render();break;
+ noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note';state.modalTask=id||null;
+ render();beginNoteAutosave();break;
 case'edit-note':{
  if(!state.notes.some(n=>n.id===id)||state.noteBusy)break;
- noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;render();break;
+ noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;
+ render();beginNoteAutosave();break;
 }
 case'convert-note':{
  const n=state.notes.find(x=>x.id===id);
@@ -2197,8 +2205,14 @@ if(e.target.id==='calendar-anchor'){
  state.calendarAnchor=e.target.value;render();
  if(isCloud){const [from,to]=rangeForCalendar();void loadCloudSchedule(from,to);}
 }if(e.target.id==='capacity'){state.capacity=Number(e.target.value);persist();render()}});
-trackListener('input',e=>{if(e.target?.closest?.('#note-form'))noteFormDirty=true;});
-trackListener('change',e=>{if(e.target?.closest?.('#note-form'))noteFormDirty=true;});
+trackListener('input',e=>{
+ const form=e.target?.closest?.('#note-form');
+ if(form){noteFormDirty=true;if(isCloud)noteAutoController?.change(noteFormFields(form));}
+});
+trackListener('change',e=>{
+ const form=e.target?.closest?.('#note-form');
+ if(form){noteFormDirty=true;if(isCloud)noteAutoController?.change(noteFormFields(form));}
+});
 trackListener('keydown',e=>{
  // Slash/formatting commands may use Escape. Explicit Close is required
  // while writing, so a stray key never discards a quick-note draft.
@@ -2288,6 +2302,7 @@ if(isCloud)void loadCloudSchedule(today(),today());
     window.removeEventListener('storage',onStorage);
     for (const [eventName, handler] of listeners) document.removeEventListener(eventName, handler);
     const mount = document.getElementById('app');
+    noteAutoController?.dispose();noteAutoController=null;
     if (mount) mount.replaceChildren();
   };
 }
