@@ -170,6 +170,19 @@ test('M6.3c document media endpoints remain disabled even with authentication',a
  assert.equal(calls.length,0,'Do not touch the DB for unsupported binary uploads');
 });
 
+test('Wrong or unfinished LaTeX is still valid private document draft data',async()=>{
+ const raw=[
+  {id:'unfinished',type:'mathBlock',props:{},children:[],content:[
+   {type:'text',text:'\\\\frac{broken{',styles:{}}]},
+  {id:'scratch',type:'paragraph',props:{},children:[],content:[
+   {type:'text',text:'Wrong answer (to revise later): 2+2=5',styles:{}}]}
+ ];
+ const {request,calls}=setup();
+ assert.deepEqual(validateDocumentBlocks(raw),raw);
+ const response=await request('/v1/documents','POST','alice',{...input,blocks:raw});
+ assert.equal(response.status,201);
+ assert.equal(calls.at(-1).args[6],JSON.stringify(raw));
+});
 test('BlockNote real plain math and code arrays persist through the authenticated API',async()=>{
  const rich=[
   {id:'formula',type:'mathBlock',props:{},content:[
