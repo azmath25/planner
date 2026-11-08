@@ -569,12 +569,17 @@ function home(){
    ${isCloud&&!state.noteLoaded?
     `<div class="card"><p class="tiny" role="status">${escapeHTML(state.noteError||'Loading saved notes…')}</p></div>`:
     recent.length?`<div class="df-home-note-grid">${recent.map(n=>`
-     <article class="note df-home-note">
-      <div class="df-home-note-head"><h3>${escapeHTML(n.title||'Untitled note')}</h3>
-       ${n.pinned?`<span class="tiny">${icon('pin')} Pinned</span>`:''}</div>
-      <p>${noteLinksHtml(n.content||'No text yet')}</p>
-      <div class="note-foot"><small>${escapeHTML(workspace(n.workspace).name)}</small>
-       <button class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}">Open ${icon('arrow')}</button>
+     <article class="note df-home-note df-quick-note-card">
+      <div class="df-quick-note-preview" tabindex="0" role="button"
+       data-action="edit-note" data-id="${escapeHTML(n.id)}"
+       aria-label="Open note ${escapeHTML(n.title||'Untitled note')}">
+       <h3>${escapeHTML(n.title||'Untitled note')}</h3>
+       <p>${escapeHTML(n.content||'')}</p>
+      </div>
+      <div class="df-quick-note-actions">
+       <button type="button" class="mini-btn df-note-delete" data-action="delete-note"
+        data-id="${escapeHTML(n.id)}" aria-label="Delete ${escapeHTML(n.title||'Untitled note')}">
+        ${icon('trash')} Delete</button>
       </div>
      </article>`).join('')}</div>`:
     `<div class="card df-home-empty-note"><p class="tiny">Your notes appear here as you create them.</p>
@@ -694,32 +699,21 @@ function notesPage(){
  const cards=notes.map(n=>{
   const color=['cream','lilac','green','blue'].includes(n.color)?n.color:'cream';
   const disabled=state.noteBusy?'disabled':'';
-  const converted=n.convertedAt?'<span class="pill gray">Converted to task</span>':'';
-  const canView=n.convertedTaskId&&findTask(n.convertedTaskId);
-  const reminder=n.reminder?`<small>Reminder saved: ${escapeHTML(n.reminder)}${n.reminderTime?' '+escapeHTML(n.reminderTime):''} · ${isCloud?'account reminder; browser push requires permission':'local only; no notifications'}</small>`:'';
-  return `<article class="note ${color}">
-   <div style="display:flex;gap:8px;align-items:flex-start;justify-content:space-between">
-    <h3>${escapeHTML(n.title)}</h3>
-    ${!trashed?`<button type="button" data-action="toggle-note-pin" data-id="${escapeHTML(n.id)}"
-     class="mini-btn" ${disabled} aria-pressed="${Boolean(n.pinned)}"
-     aria-label="${n.pinned?'Unpin':'Pin'} ${escapeHTML(n.title)}">${icon('pin')} ${n.pinned?'Pinned':'Pin'}</button>`:''}
-   </div>
-   <p style="white-space:pre-wrap;overflow-wrap:anywhere">${noteLinksHtml(n.content)}</p>
-   ${reminder}<div>${converted}</div>
-   <div class="note-foot" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-    <span style="margin-right:auto">${escapeHTML(workspace(n.workspace).name)}</span>
-${trashed?`<button type="button" class="mini-btn" data-action="restore-note"
-      data-id="${escapeHTML(n.id)}" ${disabled} aria-label="Restore ${escapeHTML(n.title)}">Restore note</button>`:`
-    <button type="button" class="mini-btn" data-action="download-note" data-id="${escapeHTML(n.id)}"
-     ${disabled} aria-label="Download ${escapeHTML(n.title)}">Download</button>
-    <button type="button" class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}"
-     ${disabled} aria-label="Edit ${escapeHTML(n.title)}">${icon('edit')} Edit</button>
-    ${canView?`<button type="button" class="mini-btn" data-action="detail" data-id="${escapeHTML(n.convertedTaskId)}">Open task</button>`:''}
-    ${!n.convertedAt?`<button type="button" class="mini-btn" data-action="convert-note" data-id="${escapeHTML(n.id)}"
-     ${disabled} aria-label="Convert ${escapeHTML(n.title)} to task">To task</button>`:''}
-    <button type="button" data-action="delete-note" data-id="${escapeHTML(n.id)}"
-     class="mini-btn" ${disabled} title="Remove note with confirmation"
-     aria-label="Delete ${escapeHTML(n.title)}">${icon('trash')}</button>`}
+  const label=escapeHTML(n.title||'Untitled note');
+  return `<article class="note ${color} df-quick-note-card">
+   ${trashed?
+    `<div class="df-quick-note-preview"><h3>${label}</h3><p>${escapeHTML(n.content||'')}</p></div>`:
+    `<div class="df-quick-note-preview" tabindex="0" role="button"
+     data-action="edit-note" data-id="${escapeHTML(n.id)}"
+     aria-label="Open note ${label}">
+     <h3>${label}</h3><p>${escapeHTML(n.content||'')}</p></div>`}
+   <div class="df-quick-note-actions">
+    ${trashed?
+     `<button type="button" class="mini-btn" data-action="restore-note"
+       data-id="${escapeHTML(n.id)}" ${disabled}>Restore</button>`:
+     `<button type="button" class="mini-btn df-note-delete" data-action="delete-note"
+       data-id="${escapeHTML(n.id)}" ${disabled}
+       aria-label="Delete ${label}" title="Delete note">${icon('trash')} Delete</button>`}
    </div>
   </article>`;
  }).join('');
@@ -1247,16 +1241,7 @@ else if(state.modal==='note'||state.modal==='note-edit'){
   <div class="field-wrap"><label class="form-label" for="ncontent">Your note</label>
    <textarea class="field" id="ncontent" name="content" maxlength="8000" rows="6"
     placeholder="A quick thought, idea or reminder…">${escapeHTML(n?.content||'')}</textarea></div>
-  <p class="tiny">Paste a link (https://…) into a note to make it clickable in previews and downloads.</p>
-  <div class="df-note-photo-area">
-   <div class="df-note-photo-heading"><strong>Photo</strong><span class="tiny">One private image per note, up to 180 KB after compression</span></div>
-   <div id="note-photo-preview" class="df-note-photo-preview">${n&&(notePhotos.has(n.id)&&notePhotos.get(n.id)||!isCloud&&state.media[mediaKey('note',n.id,'photo')])?
-     '<img class="df-note-photo" alt="Attached note photo" src="'+(notePhotos.get(n.id)||state.media[mediaKey('note',n.id,'photo')])+'"/>':
-     '<span class="tiny">No photo attached.</span>'}</div>
-   <label class="btn small secondary df-note-photo-picker" for="note-photo-file">Add / replace photo</label>
-   <input type="file" id="note-photo-file" accept="image/jpeg,image/png,image/webp" hidden/>
-   <button type="button" class="btn small secondary" data-action="remove-note-photo" ${!n?'disabled':''}>Remove photo</button>
-  </div>
+  <p class="tiny">Links are kept as text. Open the note to edit them.</p>
   <div class="form-grid">
    <div class="field-wrap"><label class="form-label" for="nworkspace">Workspace</label>
     <select class="field" name="workspace" id="nworkspace">
@@ -1286,7 +1271,7 @@ else if(state.modal==='note'||state.modal==='note-edit'){
    ${escapeHTML(isCloud?noteAutoStatusMessage:'Local preview — use Save now to keep this note in this browser.')}
   </p>
   <div class="modal-footer">
-   <button type="button" class="btn secondary" data-action="download-current-note">Download</button>
+   
    <button type="button" class="btn secondary" data-action="close">Close</button>
    <button type="submit" class="btn" ${state.noteBusy?'disabled':''}>Save now</button></div>
  </form>`;
@@ -2017,7 +2002,7 @@ case'add-subtask':{const parent=findTask(id);if(!parent||parent.status!=='open')
 case'edit-note':{
  if(!state.notes.some(n=>n.id===id)||state.noteBusy)break;
  noteFormDirty=false;state.noteError='';state.notePendingCreate=null;state.modal='note-edit';state.modalTask=id;
- render();beginNoteAutosave();if(isCloud)void loadNotePhoto(id);break;
+ render();beginNoteAutosave();break;
 }
 case'convert-note':{
  const n=state.notes.find(x=>x.id===id);
@@ -2660,6 +2645,11 @@ trackListener('change',e=>{
  if(form){noteFormDirty=true;if(isCloud)noteAutoController?.change(noteFormFields(form));}
 });
 trackListener('keydown',e=>{
+ if((e.key==='Enter'||e.key===' ')&&
+  e.target?.matches?.('.df-quick-note-preview[data-action="edit-note"]')){
+  e.preventDefault();e.target.click();return;
+ }
+
  // Slash/formatting commands may use Escape. Explicit Close is required
  // while writing, so a stray key never discards a quick-note draft.
  if(e.key==='Escape'&&state.modal&&
