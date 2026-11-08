@@ -2551,7 +2551,7 @@ trackListener('change',async e=>{
    if(isCloud&&!id){
     const saved=await noteAutoController?.flush(true);
     id=noteAutoController?.getId();
-    if(!id||!saved)throw Error('Write some text first so the note can be created before attaching a photo.');
+    if(!id)throw Error('Write some text first so the note can be created before attaching a photo.');
    }
    if(!id)throw Error('Save the note first to attach a photo.');
    const bitmap=await createImageBitmap(file);
@@ -2574,6 +2574,8 @@ trackListener('change',async e=>{
    if(String(state.modal)+':'+String(state.modalTask||'')!==noteContext&&state.modalTask!==id)return;
    const node=document.getElementById('note-photo-preview');
    if(node)node.innerHTML='<img class="df-note-photo" alt="Attached note photo" src="'+encoded+'"/>';
+   const remove=document.querySelector('[data-action="remove-note-photo"]');
+   if(remove)remove.disabled=false;
   }catch(error){
    if(preview)preview.textContent=error instanceof Error?error.message:'Could not attach photo';
   }finally{notePhotoBusy=false;}
@@ -2652,6 +2654,7 @@ trackListener('input',e=>{
  if(form){noteFormDirty=true;if(isCloud)noteAutoController?.change(noteFormFields(form));}
 });
 trackListener('change',e=>{
+ if(e.target?.id==='note-photo-file')return;
  const form=e.target?.closest?.('#note-form');
  if(form){noteFormDirty=true;if(isCloud)noteAutoController?.change(noteFormFields(form));}
 });
