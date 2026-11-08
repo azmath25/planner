@@ -80,11 +80,14 @@ export function parseTimeInsights(value:unknown):TimeInsights{
   events.add(item.eventId);
   return item as CompletionHistory;
  });
- const weeklyTrend:InsightWeek[]=d.weeklyTrend.map((raw,index)=>{
+ // Hold the validated list in a local variable: TypeScript cannot retain
+ // narrowing of a Record<string, unknown> property across a map callback.
+ const weekRows:unknown[]=d.weeklyTrend;
+ const weeklyTrend:InsightWeek[]=weekRows.map((raw,index)=>{
   const w=record(raw);
   if(!date(w.weekStart)||!date(w.weekEndExclusive)||
    w.weekStart>=w.weekEndExclusive||
-   (index>0&&w.weekStart<=String(record(d.weeklyTrend[index-1]).weekStart)))
+   (index>0&&w.weekStart<=String(record(weekRows[index-1]).weekStart)))
    throw Error('Invalid weekly insight');
   return {
    weekStart:w.weekStart,weekEndExclusive:w.weekEndExclusive,
