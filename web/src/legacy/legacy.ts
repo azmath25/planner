@@ -73,7 +73,7 @@ const initialTasks=()=>[
 const initialNotes=()=>[{id:'n1',title:'Something to remember',content:'Ask about the upcoming schedule before Friday.',color:'cream',workspace:'general',pinned:true},{id:'n2',title:'Paper idea',content:'Try the alternative geometric argument. Compare the two constructions.',color:'lilac',workspace:'research',pinned:true},{id:'n3',title:'Product details',content:'Keep task creation fast. The daily pool should never require exact times.',color:'green',workspace:'dev',pinned:false}];
 const STORAGE=storageKey;
 let saved={};try{saved=JSON.parse(localStorage.getItem(STORAGE)||'{}')}catch{}
-const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
+const state={page:'home',filter:'all',taskSort:saved.taskSort||'deadline',subtaskParent:null,workspaceFilter:'all',archivedTasks:[],taskArchiveBusy:false,taskEvents:[],taskEventsBusy:false,viewWorkspace:'general',taskId:null,taskTab:'overview',search:'',modal:null,modalTask:null,reportPeriod:'week',reportAnchor:today(),periodReport:null,periodLoading:false,periodError:'',reportScope:'workspace',reportChart:'bar',homeReport:null,homeReportDay:'',homeReportLoading:false,homeReportError:'',insights:null,insightsKey:'',insightsLoading:false,insightsError:'',planDay:today(),calendarAnchor:today(),calendarView:'week',scheduleLoading:false,scheduleBusy:false,scheduleError:'',scheduleEditId:null,alerts:[],alertError:'',alertLoading:false,alertBusy:false,pushBusy:false,pushEnabled:false,pushMessage:'',quietBusy:false,quietLoading:false,quietError:'',quietStart:null,quietEnd:null,theme:saved.theme||'minimal',accent:saved.accent||'default',density:saved.density||'comfortable',coverStyle:saved.coverStyle||'standard',media:saved.media||{},mediaPos:saved.mediaPos||{},mediaTarget:null,tasks:isCloud?cloud.tasks.map(localTask):(saved.tasks||initialTasks()),
 notes:isCloud?[]:(saved.notes||initialNotes()),noteLoading:false,noteBusy:false,noteError:'',noteLoaded:!isCloud,noteFilter:'all',noteSearch:'',noteMode:'active',noteTrash:[],noteTrashLoading:false,noteTrashLoaded:false,noteTrashError:'',notePendingConversion:null,notePendingCreate:null,
 pools:isCloud?{}:(saved.pools||{[today()]:['t2','t4','t5']}),poolRevisions:{},poolErrors:{},poolBusy:false,
 scheduled:isCloud?[]:(saved.scheduled||[{id:'s1',taskId:'t1',day:today(),start:'09:00',end:'10:30'},{id:'s2',taskId:'t3',day:today(),start:'14:00',end:'15:30'}]),capacity:saved.capacity||6,timer:isCloudTime?null:(saved.timer||null),sessions:isCloudTime?[]:(Array.isArray(saved.sessions)?saved.sessions:[]),timeSession:null,timeTaskTotals:{},timeRollups:null,timeWeek:null,weekLoading:false,weekSaving:false,weekError:'',timeServerAt:0,timeMonotonicAt:0,timeBusy:false,timeLoading:false,timeLoaded:!isCloud,timeError:'',trashed:[],trashBusy:false,cloudBusy:false,archiveBusy:false,archivedWorkspaces:[]};
@@ -503,7 +503,116 @@ function homePins(){
    ${pinnedTasks.length>8?'<p class="tiny">Open Tasks to see more pinned items.</p>':''}
   </div></section>`;
 }
-function home(){const total=openTasks().length;const due=openTasks().filter(t=>t.deadline&&t.deadline<=dayOffset(2));const reminders=openTasks().filter(t=>t.reminder&&t.reminder<=dayOffset(1));const dayTasks=[...state.scheduled.filter(s=>s.day===today()).map(s=>findTask(s.taskId)),...poolForDay(today()).map(findTask)].filter(Boolean);const distinct=[...new Map(dayTasks.map(t=>[t.id,t])).values()];return `${titleHead('Welcome back','Make space for what matters.','Here is a calm overview of everything across your workspaces.',`<button class="btn secondary" data-action="modal-note">${icon('note')}<span class="desktop-only">Quick note</span></button><button class="btn" data-action="modal-task">${icon('plus')}<span class="desktop-only">New task</span></button>`)}${isCloud&&alertsBackendEnabled?`<div class="section"><div class="card"><div class="card-title"><h2>Reminder inbox</h2><button class="btn small secondary" data-action="refresh-alerts" ${state.alertLoading?'disabled':''}>Refresh</button></div><p class="tiny">Alerts are stored in your account. Optional push notifications use this device's permission and may arrive shortly after their due time; a closed browser can still receive them where supported.</p><div class="actions"><button type="button" class="btn small secondary" data-action="${state.pushEnabled?'disable-push':'enable-push'}" ${state.pushBusy?'disabled':''}>${state.pushEnabled?'Disable browser notifications':'Enable browser notifications'}</button><button type="button" class="btn small secondary" data-action="use-device-zone" ${state.pushBusy?'disabled':''}>Use device time zone</button><button type="button" class="btn small secondary" data-action="quiet-hours">Quiet hours</button></div>${state.pushMessage?`<p class="tiny" role="status">${escapeHTML(state.pushMessage)}</p>`:''}${state.alertError?`<p role="alert">${escapeHTML(state.alertError)}</p>`:''}${state.alerts.length?state.alerts.map((a,i)=>`<div class="alert-row"><div class="alert-icon ${a.kind==='deadline'?'danger':''}">${icon(a.kind==='deadline'?'alert':'bell')}</div><div><strong>${escapeHTML(a.title)}</strong><p>${a.kind==='deadline'?'Hard deadline':a.kind==='note'?'Note reminder':'Soft reminder'} · ${escapeHTML(a.day)} ${escapeHTML(a.time)}</p><div class="actions"><button type="button" class="btn small secondary" data-action="alert-ack" data-index="${i}" ${state.alertBusy?'disabled':''}>Acknowledge</button><button type="button" class="btn small secondary" data-action="alert-snooze" data-index="${i}" ${state.alertBusy?'disabled':''}>Snooze 1 hour</button></div></div></div>`).join(''):`<p class="tiny">${state.alertLoading?'Loading alerts…':'No due or upcoming alerts.'}</p>`}</div></div>`:''}<div class="hero"><div class="hero-copy"><small>${new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</small><h2>A little progress<br>goes a long way.</h2><p>Your plans, reminders and focused work all in one place.</p></div><button class="btn hero-action" data-action="nav" data-page="plan">Open day plan ${icon('arrow')}</button></div><div class="metrics"><div class="card metric"><div class="metric-label">Open tasks</div><div class="metric-value">${total}</div><div class="metric-note">Across all workspaces</div></div><div class="card metric"><div class="metric-label">Due soon</div><div class="metric-value">${due.length}</div><div class="metric-note">Next 48 hours</div></div><div class="card metric"><div class="metric-label">Today's plan</div><div class="metric-value">${isCloud&&(!poolLoaded.has(today())||!scheduleLoadedDates.has(today()))?'—':distinct.length}</div><div class="metric-note">${isCloud&&(!poolLoaded.has(today())||!scheduleLoadedDates.has(today()))?'Loading your saved plan':'Selected tasks'}</div></div></div><div class="section dash-grid"><div class="card"><div class="card-title"><h2>Today's priorities</h2><button class="text-link" data-action="nav" data-page="plan">View day plan ${icon('arrow')}</button></div>${distinct.length?distinct.slice(0,4).map(t=>taskRow(t)).join(''):'<p class="muted">Your day pool is empty. Choose tasks in Plan Your Day.</p>'}</div><div class="card"><div class="card-title"><h2>Needs your attention</h2><button class="text-link" data-action="nav" data-page="tasks">All tasks</button></div>${isCloud?'<p class="tiny">Your reminders and deadlines are in the inbox above. Acknowledging or snoozing them does not change the task deadline.</p>':([...due.slice(0,1).map(t=>({t,kind:'deadline'})),...reminders.slice(0,2).map(t=>({t,kind:'reminder'}))].slice(0,3).map(({t,kind})=>`<div class="alert-row"><div class="alert-icon ${kind==='deadline'?'danger':''}">${icon(kind==='deadline'?'alert':'bell')}</div><div><strong>${escapeHTML(t.title)}</strong><p>${kind==='deadline'?'Hard deadline':'Soft reminder'} · ${niceDate(kind==='deadline'?t.deadline:t.reminder)} ${kind==='deadline'?(t.deadlineTime||''):(t.reminderTime||'')}</p></div></div>`).join('')||'<p class="tiny">No upcoming alerts.</p>')}</div></div><div class="section dash-grid"><div class="card"><div class="card-title"><h2>Focus & time</h2><span class="pill">${state.timer&&state.timer.running?'Tracking now':'Ready when you are'}</span></div><div class="focus-card"><div><div class="tiny">${state.timer?escapeHTML(findTask(state.timer.taskId)?.title||'Active task'):'No task running'}</div><div class="focus-timer" data-timer-display>${formatTimer()}</div><div class="tiny">${state.timer?(isCloudTime?'Timer saved in Neon':'Timer stored on this device'):(isCloudTime?'Server-backed time sessions':'Start any task to track your time')}</div></div>${state.timer?`<div class="timer-inline-actions"><button class="btn small" data-action="${state.timer.running?'pause':'resume'}">${icon(state.timer.running?'pause':'play')}${state.timer.running?'Pause':'Resume'}</button><button class="btn small secondary" data-action="stop">${icon('stop')} Stop</button><button class="btn small secondary" data-action="finish-task" data-id="${escapeHTML(state.timer.taskId)}">${icon('check')} Finish</button></div>`:`<button class="btn small" data-action="nav" data-page="tasks">${icon('play')} Choose task</button>`}</div></div><div class="card"><div class="card-title"><h2>Your activity</h2><button class="text-link" data-action="nav" data-page="reports">All reports</button></div><div class="metrics" style="margin:0;gap:8px"><div class="metric" style="padding:10px 0"><div class="tiny">${isCloud?'Saved focus time':'Today'}</div><div class="metric-value" style="font-size:21px">${isCloud?(state.timeLoaded&&state.timeRollups?formatElapsed(accountTimeMs()):'—'):'2.4h'}</div></div><div class="metric" style="padding:10px 0"><div class="tiny">${isCloud?'Open tasks':'Week'}</div><div class="metric-value" style="font-size:21px">${isCloud?openTasks().length:'16h'}</div></div><div class="metric" style="padding:10px 0"><div class="tiny">${isCloud?'Completed tasks':'Month'}</div><div class="metric-value" style="font-size:21px">${isCloud?state.tasks.filter(t=>t.status==='done').length:'64h'}</div></div></div><p class="banner-note">${isCloud?'Saved focus time is an all-time account total, not a current-week estimate. Period-specific reports are in M7.2.':'Sample figures in the local design preview.'}</p></div></div>${homePins()}<div class="section"><div class="section-head"><h2>My workspaces</h2><button class="text-link" data-action="nav" data-page="workspaces">Explore all ${icon('arrow')}</button></div>${workspaceCards()}</div>`}
+function homeWeeklyReport(){
+ const report=isCloudTime?state.homeReport:null;
+ if(!report)return `<section class="card df-home-report">
+  <div class="card-title"><h2>Weekly activity</h2><button class="text-link" data-action="nav" data-page="reports">Full reports</button></div>
+  <p class="tiny" role="status">${escapeHTML(state.homeReportError||(
+   isCloudTime?(state.homeReportLoading?'Loading saved weekly activity…':'Weekly report not loaded yet.'):
+   'Sign in to see your recorded activity across workspaces.'))}</p>
+ </section>`;
+ const pie=pieSegments(report.workspaces.map(w=>({label:w.name||'Archived workspace',value:w.recordedMs})));
+ const legend=pie.segments.slice(0,5).map(row=>`<li><span class="df-home-swatch"
+  aria-hidden="true" style="background:${row.color}"></span><span>${escapeHTML(row.label)}</span>
+  <strong>${row.percentage.toFixed(1)}%</strong></li>`).join('');
+ return `<section class="card df-home-report">
+  <div class="card-title"><h2>Weekly activity</h2>
+   <button class="text-link" data-action="nav" data-page="reports">Explore reports ${icon('arrow')}</button></div>
+  <div class="df-home-report-totals">
+   <div><span class="tiny">Recorded focus</span><strong>${formatElapsed(report.accountRecordedMs)}</strong></div>
+   <div><span class="tiny">Fixed plan</span><strong>${minsText(report.accountPlannedMinutes)}</strong></div>
+  </div>
+  <div class="df-home-chart">
+   ${pie.total?`<div class="df-home-pie" role="img" style="background:${pieGradient(pie)}"
+    aria-label="${escapeHTML('Focus by workspace: '+pie.segments.map(x=>x.label+' '+x.percentage.toFixed(1)+'%').join(', '))}"></div>
+    <ul class="df-home-pie-legend">${legend}</ul>`:
+    '<p class="tiny">No recorded focus sessions yet this week. Start a task timer to see activity here.</p>'}
+  </div>
+  <p class="tiny">Actual saved focus time. Historical estimates remain separate in Reports.</p>
+ </section>`;
+}
+function home(){
+ const due=openTasks().filter(t=>t.deadline&&t.deadline<=dayOffset(2));
+ const assigned=[...state.scheduled.filter(x=>x.day===today()).map(x=>findTask(x.taskId)),
+  ...poolForDay(today()).map(findTask)].filter(Boolean);
+ const dayTasks=[...new Map(assigned.map(t=>[t.id,t])).values()];
+ const choices=dayTasks.filter(t=>t.status==='open');
+ const focusTasks=choices.length?choices:openTasks().slice(0,15);
+ const recent=state.notes.filter(n=>workspaces.some(w=>w.id===n.workspace))
+  .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||
+   String(b.updatedAt||'').localeCompare(String(a.updatedAt||''))).slice(0,3);
+ const notices=isCloud&&alertsBackendEnabled?state.alerts.length:due.length;
+ return `<main class="df-home-dashboard" aria-label="Home dashboard">
+  ${titleHead('YOUR DASHBOARD','Today',
+    new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),
+    `<button class="btn secondary df-home-bell" data-action="open-notifications"
+      aria-label="Notifications and reminder settings">${icon('bell')}
+      ${notices?`<span class="df-home-bell-count">${notices>99?'99+':notices}</span>`:''}
+     </button>
+     <button class="btn small secondary" data-action="modal-note">${icon('note')} Note</button>
+     <button class="btn small" data-action="modal-task">${icon('plus')} Task</button>`)}
+  <nav class="df-home-shortcuts" aria-label="Quick actions">
+   <button class="btn secondary" data-action="nav" data-page="plan">${icon('calendar')} Today's plan</button>
+   <button class="btn secondary" data-action="home-focus-jump">${icon('play')} Start timer</button>
+   <button class="btn secondary" data-action="nav" data-page="reports">${icon('chart')} Reports</button>
+  </nav>
+  <div class="df-home-metrics" aria-label="Daily overview">
+   <div class="card df-home-metric"><span class="tiny">Focus this week</span>
+    <strong>${isCloudTime?(state.homeReport?formatElapsed(state.homeReport.accountRecordedMs):'—'):
+     formatElapsed(state.sessions.reduce((sum,x)=>sum+(x.durationMs||0),0))}</strong>
+    <small>${isCloudTime?'Saved sessions':'Local preview sessions'}</small></div>
+   <div class="card df-home-metric"><span class="tiny">Today's plan</span>
+    <strong>${isCloud&&(!poolLoaded.has(today())||!scheduleLoadedDates.has(today()))?'—':dayTasks.length}</strong>
+    <small>Selected tasks</small></div>
+   <div class="card df-home-metric"><span class="tiny">Completed</span>
+    <strong>${state.tasks.filter(t=>t.status==='done').length}</strong>
+    <small>Current tasks, all-time</small></div>
+   <div class="card df-home-metric"><span class="tiny">Due soon</span><strong>${due.length}</strong>
+    <small>Next 48 hours</small></div>
+  </div>
+  ${homeWeeklyReport()}
+  <section class="card df-home-today" aria-label="Today's tasks">
+   <div class="card-title"><h2>Today's tasks</h2>
+    <button class="text-link" data-action="nav" data-page="plan">Open plan ${icon('arrow')}</button></div>
+   <div class="df-home-tasks">${dayTasks.length?dayTasks.slice(0,5).map(t=>taskRow(t)).join(''):
+     '<p class="tiny">Your day pool is empty. Add tasks in Today’s Plan to get started.</p>'}</div>
+   <div class="df-home-focus" id="df-home-focus">
+    <div><strong>${state.timer?'Current timer':'Start a focus timer'}</strong>
+     <p class="tiny">${state.timer?escapeHTML(findTask(state.timer.taskId)?.title||'Active task'):
+      'Choose the task to track; we never start an arbitrary task.'}</p></div>
+    ${focusTasks.length?`<label class="df-home-focus-select"><span class="form-label">Focus task</span>
+      <select class="field" id="df-home-focus-task">
+       <option value="">Choose a task</option>
+       ${focusTasks.map(t=>`<option value="${escapeHTML(t.id)}">${escapeHTML(t.title)}</option>`).join('')}
+      </select></label>
+      <button class="btn" type="button" data-action="home-start-focus">${icon('play')} Start</button>`:
+      '<button class="btn secondary" data-action="nav" data-page="tasks">Choose a task</button>'}
+    ${state.timer?`<span class="df-home-active-time" data-timer-display>${formatTimer()}</span>`:''}
+   </div>
+  </section>
+  <section class="df-home-notes" aria-label="Quick Notes">
+   <div class="section-head"><h2>Quick Notes</h2><div class="actions">
+    <button class="btn small secondary" data-action="modal-note">${icon('plus')} New</button>
+    <button class="text-link" data-action="nav" data-page="notes">All notes</button></div></div>
+   ${isCloud&&!state.noteLoaded?
+    `<div class="card"><p class="tiny" role="status">${escapeHTML(state.noteError||'Loading saved notes…')}</p></div>`:
+    recent.length?`<div class="df-home-note-grid">${recent.map(n=>`
+     <article class="note df-home-note">
+      <div class="df-home-note-head"><h3>${escapeHTML(n.title||'Untitled note')}</h3>
+       ${n.pinned?`<span class="tiny">${icon('pin')} Pinned</span>`:''}</div>
+      <p>${escapeHTML(n.content||'No text yet')}</p>
+      <div class="note-foot"><small>${escapeHTML(workspace(n.workspace).name)}</small>
+       <button class="mini-btn" data-action="edit-note" data-id="${escapeHTML(n.id)}">Open ${icon('arrow')}</button>
+      </div>
+     </article>`).join('')}</div>`:
+    `<div class="card df-home-empty-note"><p class="tiny">Your notes appear here as you create them.</p>
+     <button class="btn small secondary" data-action="modal-note">Write a note</button></div>`}
+  </section>
+  <section class="df-home-workspaces"><div class="section-head"><h2>My workspaces</h2>
+   <button class="text-link" data-action="nav" data-page="workspaces">All workspaces ${icon('arrow')}</button>
+   </div>${workspaceCards()}</section>
+ </main>`;
+}
 function workspaceCards(){return `<div class="workspace-strip">${workspaces.map(w=>`<button class="workspace-card" data-action="workspace" data-id="${w.id}"><div class="workspace-cover ${w.cover} ${photoClass('workspace',w.id,'cover')}"${photoStyle('workspace',w.id,'cover')}></div><div class="workspace-info"><strong>${escapeHTML(w.name)}</strong><p>${escapeHTML(w.subtitle)}</p><div class="caption-line"><span>${state.tasks.filter(t=>t.workspace===w.id&&t.status!=='done').length} open tasks</span>${icon('arrow')}</div></div></button>`).join('')}</div>`}
 function tasksPage(){
  let results=[...state.tasks].filter(t=>state.workspaceFilter==='all'||t.workspace===state.workspaceFilter)
