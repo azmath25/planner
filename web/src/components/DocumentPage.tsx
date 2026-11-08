@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import {
  cloudApi,type CloudDocument,type CloudDocumentInput,type CloudDocumentMeta
 } from '../auth/api';
-import { assertDocumentBlocks,emptyDocumentBlocks,canonicalDocumentJSON,documentTitleFromBlocks } from '../domain/documentBlocks';
+import { emptyDocumentBlocks,canonicalDocumentJSON,documentTitleFromBlocks } from '../domain/documentBlocks';
+import { saveUnsyncedDraft,readUnsyncedDraft,clearUnsyncedDraft } from '../domain/documentDraftBackup';
 import { BlockDocumentEditor } from './BlockDocumentEditor';
 
 type Workspace={id:string;name:string};
@@ -12,9 +13,10 @@ type Props={
  initialWorkspaceId?:string|null;
  initialTaskId?:string|null;
  initialTaskName?:string|null;
+ draftScope:string;
  onDirtyChange:(dirty:boolean)=>void;
 };
-function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,onDirtyChange}:Props){
+function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,draftScope,onDirtyChange}:Props){
  const [documents,setDocuments]=useState<CloudDocumentMeta[]>([]);
  const [deleted,setDeleted]=useState<CloudDocumentMeta[]>([]);
  const [trashLoaded,setTrashLoaded]=useState(false);
@@ -25,13 +27,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [title,setTitle]=useState('');
  const [blocks,setBlocks]=useState<unknown[]>(emptyDocumentBlocks());
  const [dirty,setDirty]=useState(false);
- const [validation,setValidation]=useState('');
+ const [backupError,setBackupError]=useState(false);
  const [conflict,setConflict]=useState(false);
  const [autoSavePaused,setAutoSavePaused]=useState(false);
  const [editorEpoch,setEditorEpoch]=useState(0);
  // A network response must not clear edits made after its request began.
  const draftVersion=useRef(0);
  const savingRef=useRef(false);
+ const uncertainSave=useRef<{docId:string;baseRevision:number;version:number;title:string;blocks:unknown[]}|null>(null);
+ const retryDelay=useRef(3500);
  // Notion-like: first sentence names the page until the user edits the title.
  const autoTitleRef=useRef(false);
  const [filterWorkspace,setFilterWorkspace]=useState(initialWorkspaceId||'all');
@@ -79,7 +83,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   autoTitleRef.current=!value||!value.title.trim()||value.title==='Untitled document';
   setTitle(value?.title??'');
   setBlocks(value?.blocks??emptyDocumentBlocks());
-  setValidation('');
+  setBackupError(false);
   setDirty(false);setConflict(false);setAutoSavePaused(false);setEditorEpoch(x=>x+1);
  };
  const refresh=async()=>{
@@ -97,8 +101,22 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const details=await cloudApi.getDocument(doc.id);
-   assertDocumentBlocks(details.blocks);
-   if(alive.current)resetDraft(details);
+   if(alive.current){
+    resetDraft(details);
+    const saved=readUnsyncedDraft(draftScope,details.id);
+    if(saved){
+     const same=saved.title===details.title&&canonicalDocumentJSON(saved.blocks)===canonicalDocumentJSON(details.blocks);
+     if(same)clearUnsyncedDraft(draftScope,details.id);
+     else if(window.confirm('Unsynced edits were found on this device. Restore them?')){
+      draftVersion.current++;
+      setTitle(saved.title);setBlocks(saved.blocks);setDirty(true);autoTitleRef.current=false;
+      if(saved.revision!==details.revision){
+       setConflict(true);
+       setError('The server also changed this document. Your local draft is restored, but review the versions before overwriting.');
+      }else setError('Recovered your local draft. Autosave is resuming.');
+     }
+    }
+   }
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot open this document');}
   finally{if(alive.current)setBusy(false);}
  };
@@ -106,13 +124,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   if(!active||busy||savingRef.current||conflict)return;
   // Saving never requires a separate naming step.
   const safeTitle=(title.trim()||documentTitleFromBlocks(blocks)||'Untitled document').slice(0,160);
-  try{assertDocumentBlocks(blocks);}catch(e){
-   setValidation(e instanceof Error?e.message:'Unsupported blocks');return;
-  }
+  // Draft persistence is not proof-reading: incorrect LaTeX and unfinished text are saved verbatim.
   // Capture exact version, document and payload. Never retry a network failure
   // automatically: the first write may already have committed on the server.
   const savedVersion=draftVersion.current;
   const docId=active.id;
+  const attempt={docId,baseRevision:active.revision,version:savedVersion,title:safeTitle,blocks};
   savingRef.current=true;setBusy(true);setError('');
   try{
    const updated=await cloudApi.updateDocument(docId,active.revision,{
@@ -125,11 +142,13 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     // Confirm the revision without remounting BlockNote: remounting after each
     // autosave discards cursor position, selection and editor undo history.
     setActive(updated);setDirty(false);setConflict(false);setAutoSavePaused(false);
-    setError('');
+    clearUnsyncedDraft(draftScope,docId);uncertainSave.current=null;
+    retryDelay.current=3500;setBackupError(false);setError('');
    }else{
     // A later edit arrived while the request was pending. Advance the
     // observed server revision without replacing the newer local draft.
     setActive(updated);setDirty(true);
+    uncertainSave.current=null;retryDelay.current=3500;
    }
   }catch(e){
    if(!alive.current)return;
@@ -138,8 +157,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     setConflict(true);
     setError('A newer version exists on the server. Your local draft is untouched. Download it or reload the latest version before continuing.');
    }else{
-    setAutoSavePaused(true);
-    setError('Save outcome uncertain. Your local changes are preserved here. Check the server before retrying.');
+    uncertainSave.current=attempt;setAutoSavePaused(true);
+    setError('Cloud save unconfirmed. Local draft retained; retrying after checking the server.');
    }
   }finally{
    savingRef.current=false;
@@ -147,13 +166,13 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   }
  };
  useEffect(()=>{
-  if(!active||!dirty||busy||savingRef.current||validation||
+  if(!active||!dirty||busy||savingRef.current||
      conflict||autoSavePaused||pendingCreate)return;
   const timer=window.setTimeout(()=>{void save();},1400);
   return ()=>window.clearTimeout(timer);
  // save() intentionally uses the latest render's captured title and blocks.
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[active?.id,active?.revision,title,blocks,dirty,busy,validation,conflict,autoSavePaused,pendingCreate]);
+ },[active?.id,active?.revision,title,blocks,dirty,busy,conflict,autoSavePaused,pendingCreate]);
  const reconcileUncertainSave=async()=>{
   if(!active||busy||savingRef.current||!autoSavePaused)return;
   setBusy(true);setError('');
@@ -187,12 +206,11 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const remote=await cloudApi.getDocument(active.id);
-   assertDocumentBlocks(remote.blocks);
-   if(alive.current)resetDraft(remote);
+   if(alive.current){clearUnsyncedDraft(draftScope,remote.id);resetDraft(remote);}
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Could not reload document');}
   finally{if(alive.current)setBusy(false);}
  };
- const changeDraft=(newBlocks:unknown[],message:string|null)=>{
+ const changeDraft=(newBlocks:unknown[],_message:string|null)=>{
   // Autosave must not disable typing or discard keystrokes that arrive while
   // its previous request is still in flight.
   if(busy&&!savingRef.current)return;
@@ -201,13 +219,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    const inferred=documentTitleFromBlocks(newBlocks);
    if(inferred)setTitle(inferred);
   }
-  setValidation(message||'');setDirty(true);
+  const nextTitle=autoTitleRef.current?(documentTitleFromBlocks(newBlocks)||title):title;
+  setBackupError(!saveUnsyncedDraft(draftScope,active?.id||'',active?.revision||1,nextTitle,newBlocks));
+  setDirty(true);
  };
  const changeTitle=(newTitle:string)=>{
   if(busy&&!savingRef.current)return;
   autoTitleRef.current=false;
   draftVersion.current++;setTitle(newTitle);setDirty(true);
-  setValidation(''); // New input gets a fresh validation pass.
+  setBackupError(!saveUnsyncedDraft(draftScope,active?.id||'',active?.revision||1,newTitle,blocks));
  };
  // A failed POST may have committed. Abandoning a retry never deletes data
  // or reuses the ID, and requires deliberate acknowledgment of that risk.
@@ -235,7 +255,6 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const created=await cloudApi.createDocument(id,body);
-   assertDocumentBlocks(created.blocks);
    if(!alive.current)return;
    setDocuments(list=>[created,...list.filter(d=>d.id!==id)]);
    setPendingCreate(null);
@@ -274,7 +293,6 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   setBusy(true);setError('');
   try{
    const restored=await cloudApi.restoreDocument(doc.id,doc.revision);
-   assertDocumentBlocks(restored.blocks);
    if(!alive.current)return;
    setDeleted(list=>list.filter(d=>d.id!==restored.id));
    setDocuments(list=>[restored,...list]);
@@ -365,7 +383,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  return <section className={'df-documents'+(writing?' df-documents-writing':'')} aria-label="Private document library">
   <div className="page-head">
    <div><div className="eyebrow">PRIVATE LIBRARY</div><h1>Documents</h1>
-    <p className="subtitle">Private rich-text documents autosave after 1.4 seconds of inactivity. Saves pause on errors; no offline sync is promised.</p>
+    <p className="subtitle">Autosave keeps unfinished writing and imperfect math. Unsynced edits are backed up on this device.</p>
    </div>
    <div className="actions">
     <button className="btn secondary small" type="button" onClick={()=>void refresh()} disabled={busy||loading}>Refresh</button>
@@ -373,8 +391,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    </div>
   </div>
   {error&&<p role="alert" className="info-banner">{error}</p>}
-  {active&&(conflict||autoSavePaused||!!validation)&&<div className="actions" role="group" aria-label="Document recovery actions">
-    <button className="btn small secondary" disabled={busy||conflict||!!validation}
+  {active&&(conflict||autoSavePaused)&&<div className="actions" role="group" aria-label="Document recovery actions">
+    <button className="btn small secondary" disabled={busy||conflict}
       type="button" onClick={()=>void reconcileUncertainSave()}>Check server and retry</button>
     <button className="btn small secondary" disabled={busy}
       type="button" onClick={exportDraft}>Download local draft</button>
@@ -445,9 +463,9 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         disabled={busy&&!savingRef.current}
         onClick={()=>{if(canDiscard())resetDraft(null);}}>← Documents</button>
        <p className="tiny df-doc-save-status" role="status" aria-live="polite">
-        {busy?'Saving…':conflict?'Conflict — draft preserved':autoSavePaused?'Autosave paused':validation?'Cannot autosave: '+validation:dirty?'Unsaved — autosave scheduled':'Saved'}
+        {busy?'Saving…':conflict?'Conflict — draft preserved':autoSavePaused?'Autosave paused':backupError?'Local backup unavailable':dirty?'Unsaved — autosave scheduled':'Saved'}
        </p>
-       <button type="button" className="btn small" disabled={busy||!dirty||!!validation||conflict||autoSavePaused}
+       <button type="button" className="btn small" disabled={busy||!dirty||conflict||autoSavePaused}
         onClick={()=>void save()}>Save</button>
        <details className="df-doc-options">
         <summary className="btn small secondary">More</summary>
