@@ -32,7 +32,16 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [autoSavePaused,setAutoSavePaused]=useState(false);
  const [editorEpoch,setEditorEpoch]=useState(0);
  // View-only scale; it never changes the document JSON or autosave revision.
- const [editorZoom,setEditorZoom]=useState(100);
+ const [editorZoom,setEditorZoom]=useState(()=>{
+  try{
+   const value=Number(localStorage.getItem('dayframe.document-zoom.'+encodeURIComponent(draftScope)));
+   return Number.isInteger(value)&&value>=60&&value<=150&&value%10===0?value:100;
+  }catch{return 100;}
+ });
+ useEffect(()=>{
+  try{localStorage.setItem('dayframe.document-zoom.'+encodeURIComponent(draftScope),String(editorZoom));}
+  catch{/* Zoom still works when browser storage is disabled. */}
+ },[draftScope,editorZoom]);
  // A network response must not clear edits made after its request began.
  const draftVersion=useRef(0);
  const savingRef=useRef(false);
