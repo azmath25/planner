@@ -8,6 +8,8 @@ import { cloudApi } from '../auth/api';
 import { periodReportCsv } from '../domain/reportCsv';
 import { timeInsightsCsv } from '../domain/timeInsights';
 import {pieSegments,pieGradient} from '../domain/reportPie';
+import {createQuickNoteAutosaver} from '../domain/quickNoteAutosave';
+import {effectiveNoteTitle} from '../domain/quickNoteDraft';
 
 export function mountLegacyDayframe(storageKey = 'dayframe.m1.design-demo.1', cloud: any = null, account: any = {}) {
  const accountName=String(account?.name|| (cloud?'Account':'Local demo')).trim()||'Account';
@@ -1001,9 +1003,9 @@ else if(state.modal==='note'||state.modal==='note-edit'){
  const selected=n?.workspace||(workspaces.some(w=>w.id===state.modalTask)?state.modalTask:'general');
  title=n?'Edit quick note':'Capture a quick note';
  body=`<form id="note-form" data-note-context="${escapeHTML(state.modal)}:${escapeHTML(state.modalTask||'')}">
-  <div class="field-wrap"><label class="form-label" for="ntitle">Title *</label>
-   <input class="field" name="title" id="ntitle" required maxlength="120"
-    value="${escapeHTML(n?.title||'')}" placeholder="Something worth remembering" autofocus/></div>
+  <div class="field-wrap"><label class="form-label" for="ntitle">Title (optional)</label>
+   <input class="field" name="title" id="ntitle" maxlength="120"
+    value="${escapeHTML(n?.title||'')}" placeholder="First sentence becomes the title" autofocus/></div>
   <div class="field-wrap"><label class="form-label" for="ncontent">Your note</label>
    <textarea class="field" id="ncontent" name="content" maxlength="8000" rows="6"
     placeholder="A quick thought, idea or reminder…">${escapeHTML(n?.content||'')}</textarea></div>
@@ -1032,8 +1034,11 @@ else if(state.modal==='note'||state.modal==='note-edit'){
   </div>
   <small class="form-hint">${isCloud?'Your note reminder will appear in the account inbox when due. Browser push is optional and requires permission.':'Local demo notes do not send notifications.'}</small>
   ${state.noteError?`<p class="tiny" role="alert">${escapeHTML(state.noteError)}</p>`:''}
-  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Cancel</button>
-   <button type="submit" class="btn" ${state.noteBusy?'disabled':''}>${n?'Save changes':'Save note'}</button></div>
+  <p class="tiny df-note-autosave-status" id="note-autosave-status" role="status" aria-live="polite">
+   ${escapeHTML(noteAutoStatusMessage)}
+  </p>
+  <div class="modal-footer"><button type="button" class="btn secondary" data-action="close">Close</button>
+   <button type="submit" class="btn" ${state.noteBusy?'disabled':''}>Save now</button></div>
  </form>`;
 }
 else if(state.modal==='note-convert'){
