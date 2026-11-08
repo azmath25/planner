@@ -159,15 +159,17 @@ test('M6.3b JSON export is owner-only, private, no-store and bounded to a single
  assert.equal((await request('/v1/documents/'+ID+'/export','POST','alice',{any:'thing'})).status,405);
 });
 
-test('M6.3c document media endpoints remain disabled even with authentication',async()=>{
+test('M6.3c document attachments reject arbitrary files and remain private',async()=>{
  const {request,calls}=setup();
+ // Only bounded owner-authenticated JPEG/PNG/WebP photo slots are accepted.
  assert.equal((await request('/v1/documents/'+ID+'/attachments','POST','alice',{
   name:'malware.svg',body:'<script>alert(1)</script>'
- })).status,415);
+ })).status,405);
  assert.equal((await request('/v1/documents/'+ID+'/attachments','POST',null,{
   name:'malware.svg'
  })).status,401);
- assert.equal(calls.length,0,'Do not touch the DB for unsupported binary uploads');
+ assert.deepEqual(calls,[{sql:DOCUMENT_DETAIL_SQL,args:['alice',ID]}],
+  'Authenticated unsupported methods perform only the owner-visibility check');
 });
 
 test('Wrong or unfinished LaTeX is still valid private document draft data',async()=>{
