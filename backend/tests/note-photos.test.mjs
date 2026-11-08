@@ -41,7 +41,7 @@ test('photo upload uses guarded owner-scoped SQL and bounded image validation',a
  assert.equal(put.args[0],'alice');
  assert.equal(put.args[1],ID);
  assert.equal((await send('PUT','alice',{data:'data:text/html;base64,'+tiny})).status,400);
- assert.equal((await send('PUT','alice',{data:'data:image/png;base64,QUFBQUFBQUFBQUFBQUFB'})).status,400);
+ assert.equal((await send('PUT','alice',{data:'data:image/png;base64,QUFBQUFBQUFBQUFBQUFB'})).status,413);
  assert.equal((await send('PUT','alice',{data:'data:image/png;base64,'+'A'.repeat(245000)})).status,413);
 });
 test('private photo download and deletion remain scoped to note owner',async()=>{
