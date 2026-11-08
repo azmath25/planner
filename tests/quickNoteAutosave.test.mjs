@@ -133,3 +133,33 @@ test('a recovered draft is scoped to the intended signed-in account',()=>{
  assert.equal(again.initialFields.content,'Alice draft');
  again.dispose();
 });
+
+test('editing another existing note cannot erase a pending new-note recovery copy',async()=>{
+ const store=mem();
+ const createApi={async create(id,body){return note(id,1,body);},
+  async update(id,revision,body){return note(id,revision+1,body);},
+  async list(){return []}};
+ const pending=createQuickNoteAutosaver({
+  scope:'user-1',id:null,revision:0,initial:fields('',''),storage:store,
+  api:createApi,onSaved:()=>{},onStatus:()=>{}});
+ pending.change(fields('Unfinished new note with wrong math \\frac{'));
+ pending.dispose();
+ const before=[...store.map.values()].find(s=>s.includes('Unfinished new note'));
+ assert.ok(before);
+ const existing=createQuickNoteAutosaver({
+  scope:'user-1',id:'22222222-2222-4222-8222-222222222222',
+  revision:1,initial:fields('Original','Existing'),storage:store,
+  api:createApi,onSaved:()=>{},onStatus:()=>{}});
+ existing.change(fields('An edit to a different note','Existing'));
+ assert.equal(await existing.flush(),true);
+ assert.ok([...store.map.values()].find(s=>s.includes('Unfinished new note')));
+ existing.dispose();
+});
+test('reminder time without a date remains in device draft rather than being lost',async()=>{
+ const h=setup();
+ h.controller.change({...fields('Remember this later'),reminderTime:'09:30'});
+ assert.equal(await h.controller.flush(),false);
+ assert.equal(h.notes.size,0);
+ assert.ok([...h.storage.map.values()][0].includes('09:30'));
+ h.controller.dispose();
+});
