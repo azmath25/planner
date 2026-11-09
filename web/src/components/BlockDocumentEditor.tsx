@@ -94,10 +94,23 @@ export function BlockDocumentEditor({
      const requested=window.prompt('Child page title','Untitled child page');
      if(requested===null)return;
      const name=requested.trim().slice(0,160)||'Untitled child page';
-     const anchorId=editor.getTextCursorPosition().block.id;
+     // Consume the slash command with an empty paragraph placeholder.
+     // The child URL is not known until the owner-scoped API confirms creation.
+     const placeholder=insertOrUpdateBlockForSlashMenu(editor,{
+      type:'paragraph',content:[]
+     });
      void onCreateChild(name).then(page=>{
-      if(page)insertPageLink(page,anchorId);
-     }).catch(()=>{/* Parent keeps its existing content; host displays the error. */});
+      if(!page)return;
+      const current=editor.getBlock(placeholder.id);
+      if(!current)return;
+      editor.updateBlock(current,{
+       type:'paragraph',content:[
+        {type:'text',text:'↳ ',styles:{}},
+        {type:'link',href:documentPageUrl(page.id,window.location.href),
+         content:[{type:'text',text:page.title,styles:{}}]}
+       ]
+      });
+     }).catch(()=>{/* Parent remains editable; API error is shown above. */});
     }
    },
    {
