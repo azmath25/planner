@@ -21,7 +21,7 @@ export type CloudWorkspace={
 // server-side text block subset; uploaded HTML or media must never be rendered.
 export type CloudDocumentMeta={
  id:string;workspace:string;taskId:string|null;parentId:string|null;title:string;
- revision:number;deletedAt:string|null;createdAt:string;updatedAt:string;
+ revision:number;deletedAt:string|null;archivedAt:string|null;createdAt:string;updatedAt:string;
 };
 export type CloudDocument=CloudDocumentMeta&{blocks:unknown[]};
 export type CloudDocumentInput=Pick<CloudDocument,'workspace'|'taskId'|'parentId'|'title'|'blocks'>;
@@ -34,6 +34,7 @@ function verifyDocumentMeta(value:unknown):value is CloudDocumentMeta{
   typeof d.title==='string'&&d.title.length>0&&d.title.length<=160&&
   Number.isSafeInteger(d.revision)&&Number(d.revision)>=1&&
   (d.deletedAt===null||typeof d.deletedAt==='string')&&
+  (d.archivedAt===null||typeof d.archivedAt==='string')&&
   typeof d.createdAt==='string'&&typeof d.updatedAt==='string';
 }
 function verifyFullDocument(value:unknown):value is CloudDocument{
@@ -425,6 +426,41 @@ export const cloudApi={
   if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
    throw new Error('Invalid document revision');
   await call('/v1/documents/'+id,{method:'DELETE',body:{revision}});
+ },
+ async listArchivedDocuments():Promise<CloudDocumentMeta[]>{
+  const documents:CloudDocumentMeta[]=[];let offset:number|null=0;
+  for(let page=0;offset!==null;page++){
+   if(page>1000)throw new Error('Too many archived document pages');
+   const data=await call<{documents:unknown[];nextOffset:number|null}>(
+    '/v1/documents/archive?limit=50&offset='+offset);
+   if(!Array.isArray(data.documents)||!data.documents.every(verifyDocumentMeta)||
+    data.documents.some(d=>!d.archivedAt||d.deletedAt))throw new Error('Invalid archived document list');
+   documents.push(...data.documents);
+   if(data.nextOffset!==null&&(!Number.isSafeInteger(data.nextOffset)||data.nextOffset<=offset))
+    throw new Error('Invalid archive pagination');
+   offset=data.nextOffset;
+  }
+  return documents;
+ },
+ async archiveDocument(id:string,revision:number):Promise<CloudDocumentMeta>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid document revision');
+  const data=await call<{document:unknown}>('/v1/documents/'+id+'/archive',{
+   method:'POST',body:{revision}
+  });
+  if(!verifyDocumentMeta(data.document)||!data.document.archivedAt)
+   throw new Error('Invalid archived document response');
+  return data.document;
+ },
+ async unarchiveDocument(id:string,revision:number):Promise<CloudDocumentMeta>{
+  if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)
+   throw new Error('Invalid archived document revision');
+  const data=await call<{document:unknown}>('/v1/documents/'+id+'/unarchive',{
+   method:'POST',body:{revision}
+  });
+  if(!verifyDocumentMeta(data.document)||data.document.archivedAt)
+   throw new Error('Invalid unarchived document response');
+  return data.document;
  },
  async listDeletedDocuments():Promise<CloudDocumentMeta[]>{
   const documents:CloudDocumentMeta[]=[];let offset:number|null=0;
