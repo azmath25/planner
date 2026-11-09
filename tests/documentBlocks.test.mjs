@@ -87,3 +87,22 @@ test('New page title defaults to the first sentence without requiring naming',()
  assert.equal(documentTitleFromBlocks(good('A short heading')),'A short heading');
  assert.equal(documentTitleFromBlocks([]),'');
 });
+
+test('linked child and video embed paragraphs survive existing document validation',()=>{
+ const child={
+  id:'page1',type:'paragraph',props:{},children:[],content:[
+   {type:'text',text:'↳ ',styles:{}},
+   {type:'link',href:'https://dayframe.example/?dayframeDocument=123e4567-e89b-42d3-a456-426614174000',
+    content:[{type:'text',text:'Child page',styles:{}}]}
+  ]
+ };
+ const video={
+  id:'video1',type:'paragraph',props:{},children:[],content:[
+   {type:'text',text:'▶ Embedded video: ',styles:{}},
+   {type:'link',href:'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    content:[{type:'text',text:'Open video',styles:{}}]}
+  ]
+ };
+ assert.doesNotThrow(()=>assertDocumentBlocks([child,video,good('Real title')[0]]));
+ assert.equal(documentTitleFromBlocks([child,video,good('Real title')[0]]),'Real title');
+});
