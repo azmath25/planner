@@ -53,7 +53,7 @@ const schema=BlockNoteSchema.create({
   checkListItem:defaultBlockSpecs.checkListItem,
   codeBlock:defaultBlockSpecs.codeBlock,
   mathBlock:createReactMathBlockSpec(),
-  videoEmbed:videoEmbedBlock
+  videoEmbed:videoEmbedBlock()
  },
  inlineContentSpecs:{
   text:defaultInlineContentSpecs.text,
