@@ -16,11 +16,17 @@ type Props={
  initialTaskName?:string|null;
  draftScope:string;
  onDirtyChange:(dirty:boolean)=>void;
+ onGoTask?:(taskId:string)=>void;
+ onGoWorkspace?:(workspaceId:string)=>void;
 };
-function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,draftScope,onDirtyChange}:Props){
+function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,draftScope,onDirtyChange,onGoTask,onGoWorkspace}:Props){
  const [documents,setDocuments]=useState<CloudDocumentMeta[]>([]);
  const [deleted,setDeleted]=useState<CloudDocumentMeta[]>([]);
+ const [archived,setArchived]=useState<CloudDocumentMeta[]>([]);
  const [trashLoaded,setTrashLoaded]=useState(false);
+ const [archiveLoaded,setArchiveLoaded]=useState(false);
+ const [showArchive,setShowArchive]=useState(false);
+ const [isTyping,setIsTyping]=useState(false);
  const [loading,setLoading]=useState(true);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -60,13 +66,13 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [filterTask,setFilterTask]=useState<string|null>(initialTaskId||null);
  const [attachDocumentId,setAttachDocumentId]=useState('');
  const [showTrash,setShowTrash]=useState(false);
- const writing=Boolean(active&&!showTrash);
+ const writing=Boolean(active&&!showTrash&&!showArchive);
  useEffect(()=>{
   // Give the active document the viewport, not the narrow dashboard column.
   // Remove the class on unmount, including a task-navigation exit.
-  document.documentElement.classList.toggle('df-writing-open',Boolean(active&&!showTrash));
+  document.documentElement.classList.toggle('df-writing-open',Boolean(active&&!showTrash&&!showArchive));
   return ()=>document.documentElement.classList.remove('df-writing-open');
- },[active?.id,showTrash]);
+ },[active?.id,showTrash,showArchive]);
  const [searchTerm,setSearchTerm]=useState('');
  const [searchResults,setSearchResults]=useState<CloudDocumentMeta[]|null>(null);
  const [searchBusy,setSearchBusy]=useState(false);
@@ -94,7 +100,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  useEffect(()=>{
   const docId=active?.id;
   setPhotos([]);setPhotoError('');
-  if(!docId||showTrash)return;
+  if(!docId||showTrash||showArchive)return;
   let cancelled=false;
   void cloudApi.getDocumentPhotos(docId).then(rows=>{
    if(!cancelled&&alive.current)setPhotos(rows);
@@ -103,7 +109,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     e instanceof Error?e.message:'Could not load document photos');
   });
   return ()=>{cancelled=true;};
- },[active?.id,showTrash]);
+ },[active?.id,showTrash,showArchive]);
  const uploadPhoto=async(file:File|null)=>{
   if(!active||!file||photoBusy)return;
   if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){
@@ -160,6 +166,17 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    a.download=documentDownloadFilename(title.trim()||'Untitled document');
    document.body.appendChild(a);a.click();a.remove();
   }finally{window.setTimeout(()=>URL.revokeObjectURL(url),1500);}
+ };
+ const printPdf=()=>{
+  if(!active)return;
+  // Browser-native print-to-PDF avoids untrusted remote converters and retains
+  // the same safe self-contained HTML used by the document download.
+  const printable=documentDownloadHtml(
+   title.trim()||documentTitleFromBlocks(blocks)||'Untitled document',blocks,photos);
+  const popup=window.open('','_blank');
+  if(!popup){setError('Allow pop-ups for Dayframe to print or save this page as PDF.');return;}
+  popup.addEventListener('load',()=>{popup.focus();popup.print();},{once:true});
+  popup.document.open();popup.document.write(printable);popup.document.close();
  };
  const canDiscard=()=>{
   if(busy||savingRef.current){setError('An account request is still finishing. Try again when it completes.');return false;}
@@ -380,7 +397,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    setDocuments(list=>[created,...list.filter(d=>d.id!==id)]);
    setPendingCreate(null);
    resetDraft(created);
-   setShowTrash(false);
+   setShowTrash(false);setShowArchive(false);
   }catch(e){if(alive.current)setError((e instanceof Error?e.message:'Cannot create document')+
     '. Use Retry creation to reconcile this request before starting a different document.');}
   finally{if(alive.current)setBusy(false);}
@@ -449,9 +466,44 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot delete this document');}
   finally{if(alive.current)setBusy(false);}
  };
+ const archiveDocument=async()=>{
+  if(!active||busy||dirty||savingRef.current)return;
+  if(!window.confirm('Archive this document? It remains private and can be restored from Archive.'))return;
+  setBusy(true);setError('');
+  try{
+   await cloudApi.archiveDocument(active.id,active.revision);
+   if(!alive.current)return;
+   setDocuments(rows=>rows.filter(d=>d.id!==active.id));
+   setArchiveLoaded(false);resetDraft(null);
+  }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot archive this document');}
+  finally{if(alive.current)setBusy(false);}
+ };
+ const openArchive=async()=>{
+  if(!canDiscard())return;
+  setShowTrash(false);setShowArchive(true);resetDraft(null);setError('');
+  if(archiveLoaded)return;
+  setLoading(true);
+  try{
+   const rows=await cloudApi.listArchivedDocuments();
+   if(alive.current){setArchived(rows);setArchiveLoaded(true);}
+  }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot load archive');}
+  finally{if(alive.current)setLoading(false);}
+ };
+ const unarchive=async(doc:CloudDocumentMeta)=>{
+  if(busy)return;
+  setBusy(true);setError('');
+  try{
+   const restored=await cloudApi.unarchiveDocument(doc.id,doc.revision);
+   if(!alive.current)return;
+   setArchived(rows=>rows.filter(d=>d.id!==restored.id));
+   setDocuments(rows=>[restored,...rows]);
+   setShowArchive(false);setShowTrash(false);resetDraft(null);
+  }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot restore this archived document');}
+  finally{if(alive.current)setBusy(false);}
+ };
  const openTrash=async()=>{
   if(!canDiscard())return;
-  setShowTrash(true);resetDraft(null);setError('');
+  setShowTrash(true);setShowArchive(false);resetDraft(null);setError('');
   if(trashLoaded)return;
   setLoading(true);
   try{
@@ -468,7 +520,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    if(!alive.current)return;
    setDeleted(list=>list.filter(d=>d.id!==restored.id));
    setDocuments(list=>[restored,...list]);
-   setShowTrash(false);
+   setShowTrash(false);setShowArchive(false);
    resetDraft(restored);
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Cannot restore document');}
   finally{if(alive.current)setBusy(false);}
