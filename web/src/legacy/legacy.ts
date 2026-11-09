@@ -713,7 +713,7 @@ function notesPage(){
        data-id="${escapeHTML(n.id)}" ${disabled}>Restore</button>`:
      `<button type="button" class="mini-btn df-note-delete" data-action="delete-note"
        data-id="${escapeHTML(n.id)}" ${disabled}
-       aria-label="Delete ${label}" title="Delete note">${icon('trash')} Delete</button>`}
+       aria-label="Delete ${label}" title="Delete note">${icon('trash')}</button>`}
    </div>
   </article>`;
  }).join('');
