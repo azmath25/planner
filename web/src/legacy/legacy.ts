@@ -1665,7 +1665,28 @@ function render(){
     initialWorkspaceId:state.documentWorkspaceId,
     initialTaskId:state.documentTaskId,
     initialTaskName:findTask(state.documentTaskId)?.title||null,
-    draftScope:storageKey
+    draftScope:storageKey,
+    onGoTask:(taskId)=>{
+     const task=findTask(taskId);
+     if(!task)return;
+     queueMicrotask(()=>{
+      if(disposed)return;
+      state.taskId=taskId;state.taskTab='overview';state.page='detail';
+      window.scrollTo({top:0,behavior:'instant'});render();
+      if(isCloud)void loadTaskMedia(taskId);
+     });
+    },
+    onGoWorkspace:(workspaceId)=>{
+     const localId=localWorkspaceId(workspaceId);
+     if(!workspaces.some(w=>w.id===localId))return;
+     queueMicrotask(()=>{
+      if(disposed)return;
+      state.viewWorkspace=localId;state.page='workspace';
+      window.scrollTo({top:0,behavior:'instant'});render();
+      if(isCloudTime)void loadCloudWeek();
+      if(isCloud)void loadCloudNotes();
+     });
+    }
    },dirty=>{
     documentPageDirty=dirty;
     window.dispatchEvent(new CustomEvent('dayframe:draft-state',{detail:{dirty}}));
