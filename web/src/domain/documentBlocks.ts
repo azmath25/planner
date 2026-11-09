@@ -119,6 +119,9 @@ export function documentTitleFromBlocks(blocks:unknown):string{
   if(depth>6)return '';
   for(const row of entries){
    if(!plain(row))continue;
+   // A child link or an embedded video is not a document title.
+   if(Array.isArray(row.content)&&plain(row.content[0])&&
+    ['↳ ','▶ Embedded video: '].includes(String(row.content[0].text)))continue;
    let value='';
    if(Array.isArray(row.content)){
     for(const run of row.content){
