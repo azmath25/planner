@@ -713,40 +713,56 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     {active&&!showTrash&&!showArchive?<>
      <div className="df-doc-controls">
       <div className="df-doc-writing-bar">
-       <button type="button" className="btn small secondary df-doc-back"
-        disabled={busy&&!savingRef.current}
-        onClick={()=>{if(canDiscard())resetDraft(null);}}>← Documents</button>
-       <p className="tiny df-doc-save-status" role="status" aria-live="polite">
-        {busy?'Saving to cloud…':conflict?'Cloud save needs attention — draft kept':autoSavePaused?'Local draft saved — retrying cloud':backupError?'Local recovery unavailable':dirty?'Draft backed up — cloud save soon':'Saved to cloud'}
-       </p>
-       <button type="button" className="btn small" disabled={busy||!dirty||conflict}
-        onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>
-        {autoSavePaused?'Retry sync':'Save now'}</button>
-       <button type="button" className="btn small secondary df-doc-download"
-        onClick={downloadReadable} disabled={photoBusy}>Download HTML</button>
-       <div className="df-doc-zoom-control" role="group" aria-label="Document zoom">
-        <button type="button" className="btn small secondary" aria-label="Zoom out 10 percent"
-         disabled={editorZoom<=60} onClick={()=>setEditorZoom(z=>Math.max(60,z-10))}>−</button>
-        <button type="button" className="btn small secondary df-doc-zoom-value"
-         aria-label={'Reset document zoom, currently '+editorZoom+' percent'}
-         title="Reset to 100%" onClick={()=>setEditorZoom(100)}>{editorZoom}%</button>
-        <button type="button" className="btn small secondary" aria-label="Zoom in 10 percent"
-         disabled={editorZoom>=150} onClick={()=>setEditorZoom(z=>Math.min(150,z+10))}>+</button>
+      <button type="button" className="btn small secondary df-doc-back"
+       aria-label={active.parentId?'Back to parent page':'Back to documents'}
+       title={active.parentId?'Parent page':'Documents'}
+       disabled={busy&&!savingRef.current}
+       onClick={()=>{
+        if(active.parentId){
+         const parent=documents.find(d=>d.id===active.parentId);
+         if(parent){void open(parent);return;}
+        }
+        if(canDiscard())resetDraft(null);
+       }}>←</button>
+      <p className="tiny df-doc-save-status" role="status" aria-live="polite">
+       {busy?'Saving…':conflict?'Sync needs attention':autoSavePaused?'Sync pending':backupError?'Backup unavailable':dirty?'Unsaved':'Saved'}
+      </p>
+      <details className="df-doc-options">
+       <summary className="btn small secondary df-doc-menu-trigger" aria-label="Document options" title="Document options">⋯</summary>
+       <div className="df-doc-menu">
+        <button type="button" className="btn small secondary" disabled={busy||!dirty||conflict}
+         onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>
+         {autoSavePaused?'Retry sync':'Save now'}</button>
+        <details className="df-doc-export-options">
+         <summary className="btn small secondary">Download as…</summary>
+         <div className="df-doc-export-choices">
+          <button type="button" className="btn small secondary" disabled={photoBusy}
+           onClick={downloadReadable}>HTML document</button>
+          <button type="button" className="btn small secondary" disabled={photoBusy}
+           onClick={printPdf}>Print / Save PDF</button>
+          <button type="button" className="btn small secondary" disabled={busy}
+           onClick={()=>void exportSaved()}>Saved JSON</button>
+          <button type="button" className="btn small secondary" onClick={exportDraft}>Local draft JSON</button>
+         </div>
+        </details>
+        <button type="button" className="btn small secondary" disabled={busy}
+         onClick={()=>void create(true)}>New child page</button>
+        {active.taskId&&onGoTask&&<button type="button" className="btn small secondary"
+         onClick={()=>{if(canDiscard())onGoTask(active.taskId!);}}>Go to task</button>}
+        {onGoWorkspace&&<button type="button" className="btn small secondary"
+         onClick={()=>{if(canDiscard())onGoWorkspace(active.workspace);}}>Go to workspace</button>}
+        {active.taskId&&!active.parentId&&<button type="button" className="btn small secondary"
+         disabled={busy||dirty||documents.some(d=>d.parentId===active.id)}
+         onClick={()=>void unlinkFromTask()}>Remove from task</button>}
+        <button type="button" className="btn small secondary" disabled={busy||!dirty}
+         onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
+        <button type="button" className="btn small secondary" disabled={busy||dirty}
+         onClick={()=>void archiveDocument()}>Archive document</button>
+        <button type="button" className="btn small secondary df-doc-menu-danger" disabled={busy||dirty}
+         onClick={()=>void remove()}>Delete document</button>
        </div>
-       <details className="df-doc-options">
-        <summary className="btn small secondary">More</summary>
-        <div className="actions">
-         <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void create(true)}>New child page</button>
-         <button type="button" className="btn small secondary" disabled={busy||!dirty}
-          onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
-         <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void exportSaved()}>Download saved JSON</button>
-         {active.taskId&&!active.parentId&&<button type="button" className="btn small secondary"
-          disabled={busy||dirty||documents.some(d=>d.parentId===active.id)}
-          onClick={()=>void unlinkFromTask()}>Remove from task</button>}
-         <button type="button" className="btn small secondary" disabled={busy||dirty} onClick={()=>void remove()}>Delete</button>
-        </div>
-       </details>
-      </div>
+      </details>
+     </div>
       <label className="field-wrap df-doc-title-field">
        <span className="form-label">Page title (optional; filled from first sentence)</span>
        <input className="field" aria-label="Page title (optional)" placeholder="Untitled"
@@ -755,12 +771,33 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       </label>
       {active.parentId&&<p className="tiny">Nested below another document. Delete children first.</p>}
      </div>
-     <div className="df-document-editor" aria-label="Rich text editor">
+     <div className="df-document-editor" aria-label="Rich text editor"
+      onFocusCapture={event=>{
+       if(event.target instanceof HTMLElement&&event.target.closest('[contenteditable="true"]'))setIsTyping(true);
+      }}
+      onBlurCapture={()=>setIsTyping(false)}>
       <div className="df-doc-zoom-surface" style={{zoom:editorZoom/100}}>
        <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks}
         readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
       </div>
      </div>
+     <div className={'df-doc-zoom-control df-doc-zoom-floating'+(isTyping?' df-doc-zoom-writing':'')}
+       role="group" aria-label="Document zoom">
+      <button type="button" className="btn small secondary" aria-label="Zoom out 10 percent"
+       disabled={editorZoom<=60} onClick={()=>setEditorZoom(z=>Math.max(60,z-10))}>−</button>
+      <button type="button" className="btn small secondary df-doc-zoom-value"
+       aria-label={'Reset document zoom, currently '+editorZoom+' percent'}
+       title="Reset to 100%" onClick={()=>setEditorZoom(100)}>{editorZoom}%</button>
+      <button type="button" className="btn small secondary" aria-label="Zoom in 10 percent"
+       disabled={editorZoom>=150} onClick={()=>setEditorZoom(z=>Math.min(150,z+10))}>+</button>
+     </div>
+     {documents.some(d=>d.parentId===active.id)&&<section className="df-doc-child-links"
+       aria-label="Child pages">
+      <h3>Pages inside this document</h3>
+      {documents.filter(d=>d.parentId===active.id).map(d=><button type="button"
+       key={d.id} className="df-doc-child-link" disabled={busy}
+       onClick={()=>void open(d)}>▤ {d.title}</button>)}
+     </section>}
      <section className="df-doc-photo-section" aria-label="Document photos">
       <div className="df-doc-photo-heading">
        <strong>Photos</strong>
