@@ -3,17 +3,45 @@ import {
  defaultBlockSpecs, defaultInlineContentSpecs, defaultStyleSpecs
 } from '@blocknote/core';
 import { filterSuggestionItems,insertOrUpdateBlockForSlashMenu } from '@blocknote/core/extensions';
-import { getDefaultReactSlashMenuItems, SuggestionMenuController, useCreateBlockNote } from '@blocknote/react';
+import { createReactBlockSpec,getDefaultReactSlashMenuItems, SuggestionMenuController, useCreateBlockNote } from '@blocknote/react';
 import {
  createReactMathBlockSpec,createReactInlineMathSpec,getMathSlashMenuItems
 } from '@blocknote/math-block';
 import { BlockNoteView } from '@blocknote/mantine';
 import { safeDocumentLink } from '../domain/documentBlocks';
 import { documentPageUrl,linkedDocumentId } from '../domain/documentPageLinks';
+import { videoEmbedSource,videoFromStoredBlock,videoToStoredBlock } from '../domain/documentVideoEmbeds';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import '@blocknote/math-block/style.css';
 
+const videoEmbedBlock=createReactBlockSpec({
+ type:'videoEmbed',
+ propSchema:{url:{default:''}},
+ content:'none'
+},{
+ render:({block})=>{
+  const src=videoEmbedSource(block.props.url);
+  return <div className="df-doc-video-embed" contentEditable={false}>
+   {src?<iframe title="Embedded video" src={src} loading="lazy"
+    referrerPolicy="strict-origin-when-cross-origin"
+    sandbox="allow-scripts allow-same-origin allow-presentation"
+    allow="fullscreen; picture-in-picture; encrypted-media"
+    allowFullScreen/>:<p>Video unavailable</p>}
+   <a href={block.props.url} target="_blank" rel="noopener noreferrer">Open video in new tab</a>
+  </div>;
+ }
+});
+function storedEditorBlocks(values:unknown[]):unknown[]{
+ return values.map(value=>{
+  const item=videoToStoredBlock(value);
+  if(item&&typeof item==='object'&&!Array.isArray(item)){
+   const row=item as Record<string,unknown>;
+   return {...row,children:Array.isArray(row.children)?storedEditorBlocks(row.children):[]};
+  }
+  return item;
+ });
+}
 // Match the server's strict allow-list. Links and page references are normal,
 // revisioned BlockNote content; unsafe HTML/iframes are never persisted.
 const schema=BlockNoteSchema.create({
@@ -24,7 +52,8 @@ const schema=BlockNoteSchema.create({
   numberedListItem:defaultBlockSpecs.numberedListItem,
   checkListItem:defaultBlockSpecs.checkListItem,
   codeBlock:defaultBlockSpecs.codeBlock,
-  mathBlock:createReactMathBlockSpec()
+  mathBlock:createReactMathBlockSpec(),
+  videoEmbed:videoEmbedBlock
  },
  inlineContentSpecs:{
   text:defaultInlineContentSpecs.text,
@@ -45,7 +74,7 @@ const schema=BlockNoteSchema.create({
 function editorCompatibleBlocks(blocks:unknown[]):unknown[]{
  return blocks.map(item=>{
   if(!item||typeof item!=='object'||Array.isArray(item))return item;
-  const row=item as Record<string,unknown>;
+  const row=videoFromStoredBlock(item) as Record<string,unknown>;
   const props=row.props&&typeof row.props==='object'&&!Array.isArray(row.props)?
    row.props as Record<string,unknown>:null;
   const children=Array.isArray(row.children)?editorCompatibleBlocks(row.children):row.children;
@@ -132,6 +161,23 @@ export function BlockDocumentEditor({
     }
    },
    {
+    title:'Embed video',group:'Pages and links',
+    subtext:'Embed a YouTube or Vimeo video inside the document',
+    aliases:['youtube','vimeo','video','iframe','embed'],
+    icon:<span aria-hidden="true">▶</span>,
+    onItemClick:()=>{
+     if(readOnly)return;
+     const url=window.prompt('YouTube or Vimeo URL (https://...)');
+     if(url===null)return;
+     if(!videoEmbedSource(url)){
+      window.alert('Only HTTPS YouTube and Vimeo videos can be embedded.');return;
+     }
+     insertOrUpdateBlockForSlashMenu(editor,{
+      type:'videoEmbed',props:{url}
+     });
+    }
+   },
+   {
     title:'Insert web link',group:'Pages and links',
     subtext:'Add a safe, clickable HTTP/HTTPS link',
     aliases:['hyperlink','website','url','link'],
@@ -188,7 +234,7 @@ export function BlockDocumentEditor({
    slashMenu={false}
    onChange={()=>{
     const current:unknown[]=JSON.parse(JSON.stringify(editor.document));
-    onEdit(current,null);
+    onEdit(storedEditorBlocks(current),null);
    }}
   >
    <SuggestionMenuController
