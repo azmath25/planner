@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "npm run typecheck && vite build && node scripts/finalize-site.mjs",
+    "build": "npm run typecheck && npm run test:documents && vite build && node scripts/finalize-site.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "test:source": "node tests/source-smoke.mjs && node --test tests/insights-harness-code.test.mjs",
     "preview": "vite preview --host 127.0.0.1",
