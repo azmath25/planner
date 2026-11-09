@@ -926,3 +926,11 @@
  .df-doc-floating-zoom{right:12px;bottom:max(12px,env(safe-area-inset-bottom))}
  .df-writing-open .df-document-editor .bn-editor{padding:10px 4px}
 }
+
+/* M12: icon-only quick-note delete control with a real touch target. */
+.df-quick-note-actions .df-note-delete{
+ width:36px;height:36px;min-width:36px;min-height:36px;
+ padding:0;display:inline-flex;align-items:center;justify-content:center;
+ line-height:1;flex:0 0 auto}
+.df-quick-note-actions .df-note-delete svg{width:16px;height:16px}
+.df-quick-note-actions .df-note-delete:hover{color:var(--danger,#a34040)}
