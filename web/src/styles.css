@@ -934,3 +934,14 @@
  line-height:1;flex:0 0 auto}
 .df-quick-note-actions .df-note-delete svg{width:16px;height:16px}
 .df-quick-note-actions .df-note-delete:hover{color:var(--danger,#a34040)}
+
+/* Restricted video blocks stay in the writing flow, responsive on phones. */
+.df-doc-video-embed{display:flex;flex-direction:column;gap:8px;
+ width:min(100%,720px);padding:8px 0 14px;box-sizing:border-box}
+.df-doc-video-embed iframe{display:block;width:100%;aspect-ratio:16/9;
+ height:auto;min-height:150px;border:1px solid var(--line);
+ border-radius:12px;background:#111}
+.df-doc-video-embed a{font-size:12px;color:var(--accent);align-self:flex-start}
+@media(max-width:430px){
+ .df-doc-video-embed iframe{min-height:130px;border-radius:8px}
+}
