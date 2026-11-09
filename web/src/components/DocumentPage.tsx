@@ -775,7 +775,12 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         readOnly={busy&&!savingRef.current} onEdit={changeDraft}
         pages={documents.filter(d=>d.id!==active.id).map(d=>({id:d.id,title:d.title}))}
         onCreateChild={createLinkedChild}
-        onOpenPage={id=>void open({id} as CloudDocumentMeta)}/>
+        onOpenPage={id=>{
+         if(dirty||linkedCreateBusy){
+          setError('Your page link is still saving. Open it after cloud sync finishes.');return;
+         }
+         void open({id} as CloudDocumentMeta);
+        }}/>
       </div>
      </div>
      <div className="df-doc-floating-zoom df-doc-zoom-control" role="group" aria-label="Document zoom">
