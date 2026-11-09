@@ -618,7 +618,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    </div>
    <div className="actions">
     <button className="btn secondary small" type="button" onClick={()=>void refresh()} disabled={busy||loading}>Refresh</button>
-    <button className="btn" type="button" onClick={()=>void create(false)} disabled={busy||showTrash}>
+    <button className="btn" type="button" onClick={()=>void create(false)} disabled={busy||showTrash||showArchive}>
      {filterTask?'New task document':'New document'}</button>
    </div>
   </div>
@@ -643,13 +643,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   <div className="df-doc-grid">
    <aside className="card df-doc-library" aria-label="Document folders">
     <div className="actions">
-     <button type="button" className={'btn small '+(!showTrash?'':'secondary')}
-      onClick={()=>{if(canDiscard()){setShowTrash(false);resetDraft(null);}}}
-      aria-pressed={!showTrash}>My documents</button>
+     <button type="button" className={'btn small '+(!showTrash&&!showArchive?'':'secondary')}
+      onClick={()=>{if(canDiscard()){setShowTrash(false);setShowArchive(false);resetDraft(null);}}}
+      aria-pressed={!showTrash&&!showArchive}>My documents</button>
+     <button type="button" className={'btn small '+(showArchive?'':'secondary')}
+      onClick={()=>void openArchive()} aria-pressed={showArchive}>Archive</button>
      <button type="button" className={'btn small '+(showTrash?'':'secondary')}
       onClick={()=>void openTrash()} aria-pressed={showTrash}>Recently Deleted</button>
     </div>
-    {!showTrash&&<>
+    {!showTrash&&!showArchive&&<>
      <label className="field-wrap"><span className="form-label">Search documents (server)</span>
       <input className="field" type="search" aria-label="Search private documents"
        placeholder="Title or text (2+ characters)" maxLength={120}
@@ -688,7 +690,11 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
      </div>}
     </>}
     <div className="df-doc-list">
-     {loading?<p role="status">Loading documents…</p>:showTrash?
+     {loading?<p role="status">Loading documents…</p>:showArchive?
+       archived.length?archived.map(d=><div className="df-doc-row" key={d.id}>
+        <span>{d.title}</span><button type="button" className="btn small secondary"
+         disabled={busy} onClick={()=>void unarchive(d)}>Restore</button>
+       </div>):<p className="tiny">No archived documents.</p>:showTrash?
        deleted.length?deleted.map(d=><div className="df-doc-row" key={d.id}>
         <span>{d.title}</span><button type="button" className="btn small secondary"
          disabled={busy} onClick={()=>void restore(d)}>Restore</button>
@@ -704,7 +710,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
     </div>
    </aside>
    <div className="card df-doc-content">
-    {active&&!showTrash?<>
+    {active&&!showTrash&&!showArchive?<>
      <div className="df-doc-controls">
       <div className="df-doc-writing-bar">
        <button type="button" className="btn small secondary df-doc-back"
@@ -784,8 +790,8 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
       {photoError&&<p className="tiny" role="alert">{photoError}</p>}
      </section>
     </>:<div className="df-doc-empty">
-      <h2>{showTrash?'Restore a document':'Choose a document'}</h2>
-      <p className="subtitle">{showTrash?'Restore a deleted page to edit it.':
+      <h2>{showArchive?'Restore an archived document':showTrash?'Restore a document':'Choose a document'}</h2>
+      <p className="subtitle">{showArchive?'Restore a page from Archive to edit it.':showTrash?'Restore a deleted page to edit it.':
        'Select a page from the library, or create a document with the button above.'}</p>
      </div>}
    </div>
