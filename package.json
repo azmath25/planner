@@ -18,7 +18,7 @@
     "test:responsive": "node tests/responsive-layout-browser.mjs",
     "test:quicknotes": "node --test tests/quickNoteAutosave.test.mjs tests/quickNoteFormWiring.test.mjs",
     "test:dashboard": "node --test tests/homeReportsRedesign.test.mjs",
-    "test:ux": "node --test tests/settingsReportsNotes.test.mjs tests/homeReportsRedesign.test.mjs tests/taskDocumentsWiring.test.mjs",
+    "test:ux": "node --test tests/settingsReportsNotes.test.mjs tests/homeReportsRedesign.test.mjs tests/taskDocumentsWiring.test.mjs tests/documentMenu.test.mjs",
     "test:note-media": "node --experimental-strip-types --test tests/notePresentation.test.mjs && node --test backend/tests/note-photos.test.mjs"
   },
   "dependencies": {
