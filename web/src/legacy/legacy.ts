@@ -1946,6 +1946,23 @@ function updateTimer(action,id){
   else if(action==='stop'&&state.timer){recordAndStop('stopped');}
   persist();render();
 }
+// Document menu links use the existing in-app router; never open a new login session.
+trackListener('dayframe:document-navigate',(event)=>{
+ const detail=(event as CustomEvent<{kind:string;id:string}>).detail;
+ if(state.page!=='documents'||!detail||typeof detail.id!=='string')return;
+ const target=detail.kind==='task'?'detail':detail.kind==='workspace'?'workspace':null;
+ if(!target)return;
+ const task=target==='detail'?findTask(detail.id):null;
+ const workspace=target==='workspace'?workspaces.find(w=>serverWorkspaceId(w.id)===detail.id):null;
+ if(target==='detail'&&!task||target==='workspace'&&!workspace)return;
+ if(documentPageDirty&&!window.confirm('Leave this document? Unsaved edits are backed up on this device.'))return;
+ // This explicit confirmation replaces the router's generic dirty prompt.
+ documentPageDirty=false;
+ if(task){state.taskId=task.id;state.taskTab='overview';}
+ if(workspace){state.viewWorkspace=workspace.id;}
+ navigate(target);
+ if(task&&isCloud)void loadTaskMedia(task.id);
+});
 trackListener('click',async e=>{if(e.target.dataset.backdrop){
  // Accidental outside clicks during note writing must never close the draft.
  if(!['note','note-edit'].includes(state.modal))closeModal();
