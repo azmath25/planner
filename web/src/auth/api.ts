@@ -431,7 +431,7 @@ export const cloudApi={
   const documents:CloudDocumentMeta[]=[];let offset:number|null=0;
   for(let page=0;offset!==null;page++){
    if(page>1000)throw new Error('Too many archived document pages');
-   const data=await call<{documents:unknown[];nextOffset:number|null}>(
+   const data:{documents:unknown[];nextOffset:number|null}=await call<{documents:unknown[];nextOffset:number|null}>(
     '/v1/documents/archive?limit=50&offset='+offset);
    if(!Array.isArray(data.documents)||!data.documents.every(verifyDocumentMeta)||
     data.documents.some(d=>!d.archivedAt||d.deletedAt))throw new Error('Invalid archived document list');
