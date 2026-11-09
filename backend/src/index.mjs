@@ -40,12 +40,12 @@ export const ARCHIVED_SQL="SELECT "+WORKSPACE_FIELDS+" FROM dayframe.workspaces 
 const DOCUMENT_META_FIELDS=[
  'd.id::text AS id','d.workspace_id::text AS workspace',
  'd.task_id::text AS "taskId"','d.parent_id::text AS "parentId"',
- 'd.title','d.revision','d.deleted_at AS "deletedAt"',
+ 'd.title','d.revision','d.deleted_at AS "deletedAt"','d.archived_at AS "archivedAt"',
  'd.created_at AS "createdAt"','d.updated_at AS "updatedAt"'
 ].join(',');
 const DOCUMENT_FULL_FIELDS=DOCUMENT_META_FIELDS+',d.blocks';
 export const DOCUMENT_LIST_SQL="SELECT "+DOCUMENT_META_FIELDS+
- " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL "+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL AND d.archived_at IS NULL "+
  "AND ($2::uuid IS NULL OR d.workspace_id=$2::uuid) "+
  "AND ($3::uuid IS NULL OR d.task_id=$3::uuid) "+
  "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
@@ -54,7 +54,7 @@ export const DOCUMENT_LIST_SQL="SELECT "+DOCUMENT_META_FIELDS+
 // Search is per authenticated owner. The query uses literal substring matching,
 // not caller-supplied SQL wildcards or unbounded regex.
 export const DOCUMENT_SEARCH_SQL="SELECT "+DOCUMENT_META_FIELDS+
- " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL "+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL AND d.archived_at IS NULL "+
  "AND ($2::uuid IS NULL OR d.workspace_id=$2::uuid) "+
  "AND ($3::uuid IS NULL OR d.task_id=$3::uuid) "+
  "AND (strpos(lower(d.title),lower($4))>0 OR strpos(lower(d.blocks::text),lower($4))>0) "+
@@ -66,7 +66,7 @@ export const DOCUMENT_TRASH_SQL="SELECT "+DOCUMENT_META_FIELDS+
  "ORDER BY d.deleted_at DESC,d.id DESC LIMIT $2 OFFSET $3";
 export const DOCUMENT_DETAIL_SQL="SELECT "+DOCUMENT_FULL_FIELDS+
  " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.id=$2 "+
- "AND d.deleted_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w "+
+ "AND d.deleted_at IS NULL AND d.archived_at IS NULL AND EXISTS(SELECT 1 FROM dayframe.workspaces w "+
  "WHERE w.id=d.workspace_id AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL)";
 export const DOCUMENT_INSERT_SQL="INSERT INTO dayframe.documents AS d "+
  "(id,owner_user_id,workspace_id,task_id,parent_id,title,blocks) "+
@@ -78,13 +78,13 @@ export const DOCUMENT_INSERT_SQL="INSERT INTO dayframe.documents AS d "+
  "ON CONFLICT(id) DO NOTHING RETURNING "+DOCUMENT_FULL_FIELDS;
 export const DOCUMENT_UPDATE_SQL="UPDATE dayframe.documents d SET workspace_id=$3,task_id=$4::uuid,"+
  "parent_id=$5::uuid,title=$6,blocks=$7::jsonb,revision=d.revision+1,updated_at=now() "+
- "WHERE d.owner_user_id=$1 AND d.id=$2 AND d.revision=$8 AND d.deleted_at IS NULL "+
+ "WHERE d.owner_user_id=$1 AND d.id=$2 AND d.revision=$8 AND d.deleted_at IS NULL AND d.archived_at IS NULL "+
  "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=$3 AND w.owner_user_id=$1 "+
  "AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
  "RETURNING "+DOCUMENT_FULL_FIELDS;
 export const DOCUMENT_DELETE_SQL="UPDATE dayframe.documents d SET deleted_at=now(),"+
  "revision=d.revision+1,updated_at=now() WHERE d.owner_user_id=$1 AND d.id=$2 "+
- "AND d.revision=$3 AND d.deleted_at IS NULL "+
+ "AND d.revision=$3 AND d.deleted_at IS NULL AND d.archived_at IS NULL "+
  "AND NOT EXISTS(SELECT 1 FROM dayframe.documents child WHERE child.owner_user_id=$1 "+
  "AND child.parent_id=d.id AND child.deleted_at IS NULL) "+
  "RETURNING d.id::text AS id";
@@ -94,6 +94,24 @@ export const DOCUMENT_RESTORE_SQL="UPDATE dayframe.documents d SET deleted_at=NU
  "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
  "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
  "RETURNING "+DOCUMENT_FULL_FIELDS;
+
+export const DOCUMENT_ARCHIVED_SQL="SELECT "+DOCUMENT_META_FIELDS+
+ " FROM dayframe.documents d WHERE d.owner_user_id=$1 AND d.deleted_at IS NULL "+
+ "AND d.archived_at IS NOT NULL ORDER BY d.archived_at DESC,d.id DESC LIMIT $2 OFFSET $3";
+export const DOCUMENT_ARCHIVE_SET_SQL="UPDATE dayframe.documents d SET archived_at=now(),"+
+ "revision=d.revision+1,updated_at=now() WHERE d.owner_user_id=$1 AND d.id=$2 "+
+ "AND d.revision=$3 AND d.deleted_at IS NULL AND d.archived_at IS NULL "+
+ "AND NOT EXISTS(SELECT 1 FROM dayframe.documents child WHERE child.owner_user_id=$1 "+
+ "AND child.parent_id=d.id AND child.deleted_at IS NULL AND child.archived_at IS NULL) "+
+ "RETURNING "+DOCUMENT_META_FIELDS;
+export const DOCUMENT_UNARCHIVE_SQL="UPDATE dayframe.documents d SET archived_at=NULL,"+
+ "revision=d.revision+1,updated_at=now() WHERE d.owner_user_id=$1 AND d.id=$2 "+
+ "AND d.revision=$3 AND d.deleted_at IS NULL AND d.archived_at IS NOT NULL "+
+ "AND EXISTS(SELECT 1 FROM dayframe.workspaces w WHERE w.id=d.workspace_id "+
+ "AND w.owner_user_id=$1 AND w.deleted_at IS NULL AND w.archived_at IS NULL) "+
+ "AND (d.parent_id IS NULL OR EXISTS(SELECT 1 FROM dayframe.documents parent "+
+ "WHERE parent.id=d.parent_id AND parent.owner_user_id=$1 AND parent.deleted_at IS NULL "+
+ "AND parent.archived_at IS NULL)) RETURNING "+DOCUMENT_META_FIELDS;
 
 /* M6.1 Quick Notes: only JWT-owner owned rows are ever returned. */
 const NOTE_FIELDS=[
@@ -991,6 +1009,26 @@ return {async fetch(req){
        status:200,headers:{...hdr,'content-type':'application/json; charset=utf-8',
         'content-disposition':'attachment; filename="dayframe-document.json"'}
       });
+    }
+    // Archive and unarchive require the authenticated owner and an exact revision.
+    if(path==='/v1/documents/archive'){
+      if(req.method!=='GET')return json({error:'Method not allowed'},405,{...hdr,allow:'GET,OPTIONS'});
+      const params=new URL(req.url).searchParams;
+      const limit=Number(params.get('limit')??50),offset=Number(params.get('offset')??0);
+      if(!Number.isSafeInteger(limit)||limit<1||limit>100||
+         !Number.isSafeInteger(offset)||offset<0||offset>1000000)
+        throw fail(400,'Invalid archive pagination');
+      const {rows}=await query(DOCUMENT_ARCHIVED_SQL,[uid,limit+1,offset]);
+      return json({documents:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null},200,hdr);
+    }
+    const archivePath=/^\/v1\/documents\/([a-f0-9-]{36})\/(archive|unarchive)$/i.exec(path);
+    if(archivePath){
+      if(req.method!=='POST')return json({error:'Method not allowed'},405,{...hdr,allow:'POST,OPTIONS'});
+      const id=uuid(archivePath[1],'document ID'),rev=revision(await readBody(req,1500));
+      const sql=archivePath[2].toLowerCase()==='archive'?DOCUMENT_ARCHIVE_SET_SQL:DOCUMENT_UNARCHIVE_SQL;
+      const {rows}=await query(sql,[uid,id,rev]);
+      if(!rows.length)throw fail(409,'Document changed or an active child/parent prevents this change');
+      return json({document:rows[0]},200,hdr);
     }
     // Private documents: no public URLs or document-content search endpoints.
     if(path==='/v1/documents/trash'&&req.method==='GET'){
