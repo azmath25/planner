@@ -18,7 +18,7 @@ import '@blocknote/math-block/style.css';
 const schema=BlockNoteSchema.create({
  blockSpecs:{
   paragraph:defaultBlockSpecs.paragraph,
-  heading:createHeadingBlockSpec({levels:[1,2],allowToggleHeadings:false}),
+  heading:createHeadingBlockSpec({levels:[1,2,3],allowToggleHeadings:false}),
   bulletListItem:defaultBlockSpecs.bulletListItem,
   numberedListItem:defaultBlockSpecs.numberedListItem,
   checkListItem:defaultBlockSpecs.checkListItem,
@@ -40,7 +40,7 @@ const schema=BlockNoteSchema.create({
   backgroundColor:defaultStyleSpecs.backgroundColor
  }
 });
-// Existing documents may contain H3-H6 produced before the two-heading UI.
+// Existing documents may contain H4-H6 produced before the three-heading UI.
 // Show them as H2 instead of refusing to open an otherwise valid draft.
 function editorCompatibleBlocks(blocks:unknown[]):unknown[]{
  return blocks.map(item=>{
@@ -49,8 +49,8 @@ function editorCompatibleBlocks(blocks:unknown[]):unknown[]{
   const props=row.props&&typeof row.props==='object'&&!Array.isArray(row.props)?
    row.props as Record<string,unknown>:null;
   const children=Array.isArray(row.children)?editorCompatibleBlocks(row.children):row.children;
-  if(row.type==='heading'&&props&&typeof props.level==='number'&&props.level>2)
-   return {...row,props:{...props,level:2},children};
+  if(row.type==='heading'&&props&&typeof props.level==='number'&&props.level>3)
+   return {...row,props:{...props,level:3},children};
   return {...row,children};
  });
 }
