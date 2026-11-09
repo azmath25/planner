@@ -14,6 +14,6 @@ export function linkedDocumentId(href:string,appUrl:string):string|null{
   if(url.origin!==app.origin||url.pathname!==app.pathname||
    url.username||url.password)return null;
   const values=url.searchParams.getAll('dayframeDocument');
-  return values.length===1&&UUID.test(values[0])?values[0]:null;
+  return values.length===1&&UUID.test(values[0]!)?values[0]!:null;
  }catch{return null;}
 }
