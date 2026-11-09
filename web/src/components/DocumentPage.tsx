@@ -72,25 +72,35 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  const [searchBusy,setSearchBusy]=useState(false);
  const [searchError,setSearchError]=useState('');
  const [pendingCreate,setPendingCreate]=useState<{id:string;body:CloudDocumentInput}|null>(null);
+ // An uncertain child POST reuses its original ID on the next slash command.
+ const linkedCreateRequest=useRef<{parentId:string;id:string;body:CloudDocumentInput}|null>(null);
+ const [linkedCreateBusy,setLinkedCreateBusy]=useState(false);
  const alive=useRef(true);
  useEffect(()=>{
   alive.current=true;
   let cancelled=false;
   void cloudApi.listDocuments().then(rows=>{
-   if(!cancelled){setDocuments(rows);setLoading(false);}
+   if(!cancelled){
+    setDocuments(rows);setLoading(false);
+    const target=new URL(window.location.href).searchParams.get('dayframeDocument');
+    if(target){
+     const requested=rows.find(d=>d.id===target);
+     if(requested)void open(requested);
+    }
+   }
   }).catch(e=>{
    if(!cancelled){setError(e instanceof Error?e.message:'Cannot load documents');setLoading(false);}
   });
   return ()=>{cancelled=true;alive.current=false;};
  },[]);
  useEffect(()=>{
-  onDirtyChange(dirty||busy||pendingCreate!==null);
+  onDirtyChange(dirty||busy||linkedCreateBusy||pendingCreate!==null);
   const unload=(event:BeforeUnloadEvent)=>{
-   if(dirty||busy||pendingCreate!==null){event.preventDefault();event.returnValue='';}
+   if(dirty||busy||linkedCreateBusy||pendingCreate!==null){event.preventDefault();event.returnValue='';}
   };
   window.addEventListener('beforeunload',unload);
   return ()=>window.removeEventListener('beforeunload',unload);
- },[dirty,busy,pendingCreate,onDirtyChange]);
+ },[dirty,busy,linkedCreateBusy,pendingCreate,onDirtyChange]);
  useEffect(()=>{
   const docId=active?.id;
   setPhotos([]);setPhotoError('');
@@ -187,6 +197,9 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   document.dispatchEvent(new CustomEvent('dayframe:document-navigate',{detail:{kind,id}}));
  };
  const canDiscard=()=>{
+  if(linkedCreateBusy){
+   setError('A child page is being created. Finish that request before leaving.');return false;
+  }
   if(busy||savingRef.current){setError('An account request is still finishing. Try again when it completes.');return false;}
   if(pendingCreate){setError('A document creation result is uncertain. Retry creation first.');return false;}
   return !dirty||window.confirm('Discard unsaved document changes?');
@@ -409,6 +422,35 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   }catch(e){if(alive.current)setError((e instanceof Error?e.message:'Cannot create document')+
     '. Use Retry creation to reconcile this request before starting a different document.');}
   finally{if(alive.current)setBusy(false);}
+ };
+ // Creating a child from / leaves its parent editor mounted so the slash
+ // command can insert a clickable link exactly where the cursor was.
+ const createLinkedChild=async(rawTitle:string):Promise<{id:string;title:string}|null>=>{
+  if(!active||busy||linkedCreateBusy||pendingCreate||conflict){
+   setError('Finish the current document operation before creating a child page.');return null;
+  }
+  const parentId=active.id;
+  const candidateTitle=rawTitle.trim().slice(0,160)||'Untitled child page';
+  const pending=linkedCreateRequest.current;
+  // A failed or lost response may already have committed; retry the same ID.
+  const request=pending?.parentId===parentId?pending:{
+   parentId,id:crypto.randomUUID(),
+   body:{workspace:active.workspace,taskId:active.taskId,parentId,
+    title:candidateTitle,blocks:emptyDocumentBlocks()}
+  };
+  linkedCreateRequest.current=request;
+  setLinkedCreateBusy(true);setError('');
+  try{
+   const created=await cloudApi.createDocument(request.id,request.body);
+   if(!alive.current||activePhotoId.current!==parentId)return null;
+   setDocuments(list=>[created,...list.filter(d=>d.id!==created.id)]);
+   linkedCreateRequest.current=null;
+   return {id:created.id,title:created.title};
+  }catch(e){
+   if(alive.current)setError((e instanceof Error?e.message:'Cannot create child page')+
+    '. Try the same child-page command again to reconcile the original request.');
+   return null;
+  }finally{if(alive.current)setLinkedCreateBusy(false);}
  };
  const attachExisting=async()=>{
   if(!filterTask||!initialWorkspaceId||!attachDocumentId||
@@ -730,7 +772,10 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
      <div className="df-document-editor" aria-label="Rich text editor">
       <div className="df-doc-zoom-surface" style={{zoom:editorZoom/100}}>
        <BlockDocumentEditor key={active.id+'-'+editorEpoch} blocks={blocks}
-        readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
+        readOnly={busy&&!savingRef.current} onEdit={changeDraft}
+        pages={documents.filter(d=>d.id!==active.id).map(d=>({id:d.id,title:d.title}))}
+        onCreateChild={createLinkedChild}
+        onOpenPage={id=>void open({id} as CloudDocumentMeta)}/>
       </div>
      </div>
      <div className="df-doc-floating-zoom df-doc-zoom-control" role="group" aria-label="Document zoom">
