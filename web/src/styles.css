@@ -877,3 +877,62 @@
 [data-theme="monochrome"] .df-home-pie,
 [data-theme="monochrome"] .df-pie-disc,
 [data-theme="monochrome"] .df-report-large-pie{border-radius:50%!important}
+
+
+/* M12 quiet document canvas: one back arrow, a compact options menu and
+   dismissing corner zoom. Keep all variants of the existing Dayframe theme. */
+.df-doc-writing-bar{gap:8px;flex-wrap:nowrap;min-height:48px;padding:4px 0 8px}
+.df-doc-writing-bar .df-doc-back,
+.df-doc-writing-bar .df-doc-menu-trigger{
+ width:40px;height:40px;min-width:40px;min-height:40px;
+ padding:0;display:flex;align-items:center;justify-content:center;
+ font-size:21px;line-height:1
+}
+.df-doc-writing-bar .df-doc-save-status{
+ margin-left:auto;text-align:right;min-width:0;font-size:11px;
+ color:var(--muted);white-space:nowrap;text-overflow:ellipsis;overflow:hidden
+}
+.df-doc-options{flex:0 0 auto}
+.df-doc-options[open]>.df-doc-menu{
+ position:absolute;right:0;top:calc(100% + 6px);z-index:32;
+ width:min(300px,calc(100vw - 28px));max-height:min(72dvh,560px);
+ display:flex;flex-direction:column;gap:4px;overflow-y:auto;
+ padding:10px;border:1px solid var(--line);
+ border-radius:12px;background:var(--surface);box-shadow:var(--shadow)
+}
+.df-doc-options .df-doc-menu>.btn,
+.df-doc-options .df-doc-export-choices>.btn,
+.df-doc-options .df-doc-export-options>summary{
+ display:flex;width:100%;min-height:38px;text-align:left;
+ justify-content:flex-start;align-items:center;padding:8px 11px
+}
+.df-doc-options .df-doc-export-options{width:100%;border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:4px}
+.df-doc-options .df-doc-export-options>summary{list-style:none;cursor:pointer}
+.df-doc-options .df-doc-export-options>summary::-webkit-details-marker{display:none}
+.df-doc-export-options[open] .df-doc-export-choices{display:flex;flex-direction:column;gap:4px;padding:5px 0 5px 12px}
+.df-doc-options .df-doc-menu-danger{color:var(--danger)}
+.df-doc-title-field .form-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.df-doc-title-field .field{border:0;background:transparent;padding-inline:4px;box-shadow:none}
+.df-doc-zoom-floating{
+ position:fixed;right:clamp(12px,2vw,28px);
+ bottom:calc(12px + env(safe-area-inset-bottom,0px));
+ z-index:24;display:inline-flex;gap:1px;align-items:center;
+ padding:3px;border:1px solid var(--line);
+ border-radius:12px;background:var(--surface);box-shadow:var(--shadow);
+ opacity:.78;transition:opacity .18s ease;
+}
+.df-doc-zoom-floating .btn{min-height:30px;min-width:28px;padding:4px 6px;font-size:11px}
+.df-doc-zoom-floating .df-doc-zoom-value{min-width:46px}
+.df-doc-zoom-floating:hover,.df-doc-zoom-floating:focus-within{opacity:1}
+.df-doc-zoom-floating.df-doc-zoom-writing{opacity:0;pointer-events:none}
+.df-doc-child-links{display:flex;flex-direction:column;gap:7px;margin-top:18px;padding:14px 2px;border-top:1px solid var(--line)}
+.df-doc-child-links h3{margin:0 0 4px;font-size:13px}
+.df-doc-child-link{display:flex;align-items:center;text-align:left;min-height:40px;max-width:100%;padding:8px 10px;
+ color:var(--ink);border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-wrap:anywhere}
+.df-doc-child-link:hover,.df-doc-child-link:focus-visible{border-color:var(--accent)}
+@media(max-width:480px){
+ .df-doc-writing-bar{gap:5px;flex-wrap:nowrap}
+ .df-doc-writing-bar .df-doc-back,.df-doc-writing-bar .df-doc-menu-trigger{width:40px;height:40px}
+ .df-doc-writing-bar .df-doc-save-status{order:initial;max-width:calc(100vw - 150px)}
+ .df-doc-zoom-floating .btn{min-height:30px;min-width:28px}
+}
