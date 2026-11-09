@@ -579,7 +579,7 @@ function home(){
       <div class="df-quick-note-actions">
        <button type="button" class="mini-btn df-note-delete" data-action="delete-note"
         data-id="${escapeHTML(n.id)}" aria-label="Delete ${escapeHTML(n.title||'Untitled note')}">
-        ${icon('trash')} Delete</button>
+        ${icon('trash')}</button>
       </div>
      </article>`).join('')}</div>`:
     `<div class="card df-home-empty-note"><p class="tiny">Your notes appear here as you create them.</p>
@@ -1174,7 +1174,7 @@ function taskDetail(){
  <button class="btn small secondary" data-action="add-subtask" data-id="${t.id}">${icon('plus')} Subtask</button>`}
  ${isCloud?`<button class="btn small secondary" data-action="modal-move-task" data-id="${escapeHTML(t.id)}">${icon('folder')} Move</button>
  <button class="btn small secondary" data-action="modal-archive-task" data-id="${escapeHTML(t.id)}">${icon('folder')} Archive</button>`:''}
- <button class="btn small secondary" data-action="modal-delete-task" data-id="${t.id}">${icon('trash')} Delete</button></div></div>`;
+ <button class="btn small secondary" data-action="modal-delete-task" data-id="${t.id}">${icon('trash')}</button></div></div>`;
 }
 function renderModal(){if(!state.modal)return '';let body='',title='';const t=state.modalTask&&findTask(state.modalTask);if(['task','edit'].includes(state.modal)){title=t?'Edit task':'Add a task';const w=(t?.workspace)||(workspaces.some(x=>x.id===state.modalTask)?state.modalTask:'general');body=`<form id="task-form"><div class="field-wrap"><label class="form-label" for="title">Task title *</label><input class="field" id="title" name="title" required autofocus maxlength="160" value="${escapeHTML(t?.title||'')}" placeholder="What needs to get done?" /></div><div class="form-grid"><div class="field-wrap"><label class="form-label" for="workspace">Workspace</label><select class="field" id="workspace" name="workspace" ${t?'disabled':''}>${workspaces.map(x=>`<option value="${x.id}" ${w===x.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select>${t?`<input type="hidden" name="workspace" value="${escapeHTML(w)}"><small class="form-hint">Use Move on task details to move task and subtasks.</small>`:''}</div><div class="field-wrap"><label class="form-label" for="estimate">Estimated minutes</label><input class="field" type="number" min="1" max="100000" id="estimate" name="estimate" value="${t?.estimate||30}" required /></div></div>
  <div class="form-grid"><div class="field-wrap"><label class="form-label" for="task-priority">Priority</label><select class="field" id="task-priority" name="priority">
