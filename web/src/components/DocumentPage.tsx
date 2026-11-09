@@ -183,7 +183,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
   frame.srcdoc=markup;
  };
  const openLinked=(kind:'task'|'workspace',id:string)=>{
-  if(!canDiscard())return;
+  if(busy||savingRef.current||pendingCreate)return;
   document.dispatchEvent(new CustomEvent('dayframe:document-navigate',{detail:{kind,id}}));
  };
  const canDiscard=()=>{
