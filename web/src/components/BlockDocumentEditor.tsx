@@ -12,13 +12,13 @@ import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import '@blocknote/math-block/style.css';
 
-// Notion-like editing: a simple pair of heading levels, text and code, safe
+// Notion-like editing: three heading levels, text and code, safe
 // hyperlinks and editable LaTeX math (inline or display). No image uploads or
 // arbitrary embedded HTML. The server validates this exact content model.
 const schema=BlockNoteSchema.create({
  blockSpecs:{
   paragraph:defaultBlockSpecs.paragraph,
-  heading:createHeadingBlockSpec({levels:[1,2],allowToggleHeadings:false}),
+  heading:createHeadingBlockSpec({levels:[1,2,3],allowToggleHeadings:false}),
   bulletListItem:defaultBlockSpecs.bulletListItem,
   numberedListItem:defaultBlockSpecs.numberedListItem,
   checkListItem:defaultBlockSpecs.checkListItem,
@@ -50,7 +50,7 @@ function editorCompatibleBlocks(blocks:unknown[]):unknown[]{
    row.props as Record<string,unknown>:null;
   const children=Array.isArray(row.children)?editorCompatibleBlocks(row.children):row.children;
   if(row.type==='heading'&&props&&typeof props.level==='number'&&props.level>2)
-   return {...row,props:{...props,level:2},children};
+   return {...row,props:{...props,level:3},children};
   return {...row,children};
  });
 }
