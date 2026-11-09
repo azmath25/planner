@@ -184,7 +184,7 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
  };
  const openLinked=(kind:'task'|'workspace',id:string)=>{
   if(!canDiscard())return;
-  window.dispatchEvent(new CustomEvent('dayframe:document-navigate',{detail:{kind,id}}));
+  document.dispatchEvent(new CustomEvent('dayframe:document-navigate',{detail:{kind,id}}));
  };
  const canDiscard=()=>{
   if(busy||savingRef.current){setError('An account request is still finishing. Try again when it completes.');return false;}
