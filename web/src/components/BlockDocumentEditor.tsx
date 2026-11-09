@@ -28,7 +28,7 @@ const videoEmbedBlock=createReactBlockSpec({
     sandbox="allow-scripts allow-same-origin allow-presentation"
     allow="fullscreen; picture-in-picture; encrypted-media"
     allowFullScreen/>:<p>Video unavailable</p>}
-   <a href={block.props.url} target="_blank" rel="noopener noreferrer">Open video in new tab</a>
+   {src&&<a href={block.props.url} target="_blank" rel="noopener noreferrer">Open video in new tab</a>}
   </div>;
  }
 });
