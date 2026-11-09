@@ -877,3 +877,52 @@
 [data-theme="monochrome"] .df-home-pie,
 [data-theme="monochrome"] .df-pie-disc,
 [data-theme="monochrome"] .df-report-large-pie{border-radius:50%!important}
+
+/* M12: keep the writing surface clean; controls stay reachable by touch or keyboard. */
+.df-doc-minimal-bar{display:flex!important;align-items:center;flex-wrap:nowrap!important;
+ gap:10px;padding:0 0 10px;min-height:44px;border-bottom:0;background:var(--surface)}
+.df-doc-minimal-bar>.df-doc-back{width:40px;min-width:40px!important;height:40px;
+ padding:0;font-size:22px;line-height:1;flex:0 0 auto}
+.df-doc-bar-caption{font-size:13px;color:var(--muted);min-width:0;overflow:hidden;
+ text-overflow:ellipsis;white-space:nowrap}
+.df-doc-minimal-bar>.df-doc-top-menu{margin-left:auto;flex:0 0 auto}
+.df-doc-top-menu summary{width:40px;height:40px;min-height:40px!important;
+ display:flex!important;align-items:center;justify-content:center;
+ font-size:24px;line-height:1;padding:0}
+.df-doc-top-menu[open] .df-doc-menu{position:absolute;right:0;top:calc(100% + 4px);
+ z-index:50;display:flex;flex-direction:column;align-items:stretch;
+ width:min(290px,calc(100vw - 32px));max-height:min(75dvh,620px);overflow:auto;
+ gap:3px;padding:9px;border:1px solid var(--line);border-radius:14px;
+ box-shadow:var(--shadow);background:var(--surface)}
+.df-doc-menu .btn{display:flex;align-items:center;min-height:38px;width:100%;
+ justify-content:flex-start;text-align:left;white-space:normal;font-size:13px}
+.df-doc-menu .df-doc-save-status{margin:3px 6px 8px;min-height:18px;
+ color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.df-doc-menu-separator{height:1px;background:var(--line);margin:5px 4px}
+.df-doc-menu .df-doc-danger{color:var(--danger,#a34040)}
+.df-writing-open .df-doc-title-field>.form-label{display:none}
+.df-writing-open .df-doc-title-field>.field{font-size:clamp(25px,4.2vw,42px);
+ font-weight:720;line-height:1.2;padding:12px 6px;border:0;background:transparent;
+ box-shadow:none;min-height:56px}
+.df-writing-open .df-document-editor{border:0;border-radius:0;box-shadow:none}
+.df-writing-open .df-document-editor .bn-editor{padding-inline:clamp(6px,2vw,24px)}
+.df-doc-floating-zoom{position:fixed;right:max(18px,env(safe-area-inset-right));
+ bottom:max(18px,env(safe-area-inset-bottom));z-index:16;display:flex;
+ align-items:center;gap:2px;padding:4px;border:1px solid var(--line);
+ border-radius:13px;background:var(--surface);box-shadow:var(--shadow);
+ opacity:.78;transition:opacity .2s ease}
+.df-doc-floating-zoom:hover,.df-doc-floating-zoom:focus-within{opacity:1}
+.df-doc-floating-zoom>.btn{min-width:30px;min-height:30px;
+ padding:4px 6px;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
+.df-doc-floating-zoom>.df-doc-zoom-value{min-width:52px;font-size:11px}
+.df-documents-writing:has(.df-document-editor :focus-within) .df-doc-floating-zoom:not(:focus-within){
+ opacity:0;pointer-events:none}
+@media(max-width:430px){
+ .df-writing-open .df-doc-content{padding:10px}
+ .df-doc-minimal-bar{padding:0 0 5px}
+ .df-doc-minimal-bar>.df-doc-back{flex:0 0 40px!important}
+ .df-doc-minimal-bar>.df-doc-top-menu{flex:0 0 40px!important}
+ .df-doc-top-menu summary{width:40px!important}
+ .df-doc-floating-zoom{right:12px;bottom:max(12px,env(safe-area-inset-bottom))}
+ .df-writing-open .df-document-editor .bn-editor{padding:10px 4px}
+}
