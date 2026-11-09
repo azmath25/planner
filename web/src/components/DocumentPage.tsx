@@ -161,6 +161,31 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    document.body.appendChild(a);a.click();a.remove();
   }finally{window.setTimeout(()=>URL.revokeObjectURL(url),1500);}
  };
+ // Browser-native PDF print uses the same escaped, self-contained readable export.
+ // The user selects Save as PDF in the system print dialog; no remote converter.
+ const printPdf=()=>{
+  if(!active)return;
+  const markup=documentDownloadHtml(title.trim()||documentTitleFromBlocks(blocks)||'Untitled document',blocks,photos);
+  const frame=document.createElement('iframe');
+  frame.title='Dayframe PDF print document';
+  frame.setAttribute('aria-hidden','true');
+  frame.style.cssText='position:fixed;left:-10000px;top:0;width:800px;height:1000px;border:0';
+  const cleanup=()=>{window.setTimeout(()=>frame.remove(),15000);};
+  frame.onload=()=>{
+   try{
+    const win=frame.contentWindow;
+    if(!win)throw Error('Print view unavailable');
+    win.focus();win.print();
+   }catch{setError('Your browser blocked printing. Try Download HTML instead.');}
+   finally{cleanup();}
+  };
+  document.body.appendChild(frame);
+  frame.srcdoc=markup;
+ };
+ const openLinked=(kind:'task'|'workspace',id:string)=>{
+  if(!canDiscard())return;
+  window.dispatchEvent(new CustomEvent('dayframe:document-navigate',{detail:{kind,id}}));
+ };
  const canDiscard=()=>{
   if(busy||savingRef.current){setError('An account request is still finishing. Try again when it completes.');return false;}
   if(pendingCreate){setError('A document creation result is uncertain. Retry creation first.');return false;}
@@ -654,38 +679,43 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
    <div className="card df-doc-content">
     {active&&!showTrash?<>
      <div className="df-doc-controls">
-      <div className="df-doc-writing-bar">
+      <div className="df-doc-writing-bar df-doc-minimal-bar">
        <button type="button" className="btn small secondary df-doc-back"
+        aria-label={active.parentId?'Back to parent page':'Back to documents'}
+        title={active.parentId?'Back to parent page':'Back to documents'}
         disabled={busy&&!savingRef.current}
-        onClick={()=>{if(canDiscard())resetDraft(null);}}>← Documents</button>
-       <p className="tiny df-doc-save-status" role="status" aria-live="polite">
-        {busy?'Saving to cloud…':conflict?'Cloud save needs attention — draft kept':autoSavePaused?'Local draft saved — retrying cloud':backupError?'Local recovery unavailable':dirty?'Draft backed up — cloud save soon':'Saved to cloud'}
-       </p>
-       <button type="button" className="btn small" disabled={busy||!dirty||conflict}
-        onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>
-        {autoSavePaused?'Retry sync':'Save now'}</button>
-       <button type="button" className="btn small secondary df-doc-download"
-        onClick={downloadReadable} disabled={photoBusy}>Download HTML</button>
-       <div className="df-doc-zoom-control" role="group" aria-label="Document zoom">
-        <button type="button" className="btn small secondary" aria-label="Zoom out 10 percent"
-         disabled={editorZoom<=60} onClick={()=>setEditorZoom(z=>Math.max(60,z-10))}>−</button>
-        <button type="button" className="btn small secondary df-doc-zoom-value"
-         aria-label={'Reset document zoom, currently '+editorZoom+' percent'}
-         title="Reset to 100%" onClick={()=>setEditorZoom(100)}>{editorZoom}%</button>
-        <button type="button" className="btn small secondary" aria-label="Zoom in 10 percent"
-         disabled={editorZoom>=150} onClick={()=>setEditorZoom(z=>Math.min(150,z+10))}>+</button>
-       </div>
-       <details className="df-doc-options">
-        <summary className="btn small secondary">More</summary>
-        <div className="actions">
-         <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void create(true)}>New child page</button>
-         <button type="button" className="btn small secondary" disabled={busy||!dirty}
-          onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard edits</button>
+        onClick={()=>{if(active.parentId)void open({id:active.parentId} as CloudDocumentMeta);
+         else if(canDiscard())resetDraft(null);}}>←</button>
+       <span className="df-doc-bar-caption">{active.parentId?'Parent page':'Documents'}</span>
+       <details className="df-doc-options df-doc-top-menu">
+        <summary className="btn small secondary" aria-label="Document actions" title="Document actions">⋯</summary>
+        <div className="df-doc-menu" role="group" aria-label="Document actions"
+         onClick={e=>{if((e.target as HTMLElement).closest('button'))(e.currentTarget.parentElement as HTMLDetailsElement)?.removeAttribute('open');}}>
+         <p className="tiny df-doc-save-status" role="status" aria-live="polite">
+          {busy?'Saving to cloud…':conflict?'Cloud save needs attention':autoSavePaused?'Local draft kept — retry pending':backupError?'Local recovery unavailable':dirty?'Saving changes…':'Saved to cloud'}
+         </p>
+         <button type="button" className="btn small secondary" disabled={busy||!dirty||conflict}
+          onClick={()=>void (autoSavePaused?reconcileUncertainSave():save())}>Save now</button>
+         <div className="df-doc-menu-separator"/>
+         <button type="button" className="btn small secondary" onClick={printPdf}>Save as PDF…</button>
+         <button type="button" className="btn small secondary" disabled={photoBusy} onClick={downloadReadable}>Download HTML</button>
          <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void exportSaved()}>Download saved JSON</button>
+         <div className="df-doc-menu-separator"/>
+         <button type="button" className="btn small secondary" disabled={busy} onClick={()=>void create(true)}>New child page</button>
+         {active.parentId&&<button type="button" className="btn small secondary"
+          onClick={()=>void open({id:active.parentId!} as CloudDocumentMeta)}>Go to parent page</button>}
+         {active.taskId&&<button type="button" className="btn small secondary"
+          onClick={()=>openLinked('task',active.taskId!)}>Go to task</button>}
+         <button type="button" className="btn small secondary"
+          onClick={()=>openLinked('workspace',active.workspace)}>Go to workspace</button>
          {active.taskId&&!active.parentId&&<button type="button" className="btn small secondary"
           disabled={busy||dirty||documents.some(d=>d.parentId===active.id)}
           onClick={()=>void unlinkFromTask()}>Remove from task</button>}
-         <button type="button" className="btn small secondary" disabled={busy||dirty} onClick={()=>void remove()}>Delete</button>
+         <div className="df-doc-menu-separator"/>
+         <button type="button" className="btn small secondary" disabled={busy||!dirty}
+          onClick={()=>{if(window.confirm('Discard local edits?'))resetDraft(active);}}>Discard local edits</button>
+         <button type="button" className="btn small secondary df-doc-danger" disabled={busy||dirty}
+          onClick={()=>void remove()}>Delete document</button>
         </div>
        </details>
       </div>
@@ -703,6 +733,15 @@ function Documents({workspaces,initialWorkspaceId,initialTaskId,initialTaskName,
         readOnly={busy&&!savingRef.current} onEdit={changeDraft}/>
       </div>
      </div>
+     <div className="df-doc-floating-zoom df-doc-zoom-control" role="group" aria-label="Document zoom">
+       <button type="button" className="btn small secondary" aria-label="Zoom out 10 percent"
+        disabled={editorZoom<=60} onClick={()=>setEditorZoom(z=>Math.max(60,z-10))}>−</button>
+       <button type="button" className="btn small secondary df-doc-zoom-value"
+        aria-label={'Reset document zoom, currently '+editorZoom+' percent'}
+        title="Reset zoom to 100%" onClick={()=>setEditorZoom(100)}>{editorZoom}%</button>
+       <button type="button" className="btn small secondary" aria-label="Zoom in 10 percent"
+        disabled={editorZoom>=150} onClick={()=>setEditorZoom(z=>Math.min(150,z+10))}>+</button>
+      </div>
      <section className="df-doc-photo-section" aria-label="Document photos">
       <div className="df-doc-photo-heading">
        <strong>Photos</strong>
