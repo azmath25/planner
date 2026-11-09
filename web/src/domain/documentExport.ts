@@ -40,7 +40,7 @@ function renderBlocks(blocks:unknown,depth=0):string{
   const children=renderBlocks(block.children,depth+1);
   switch(block.type){
    case 'heading':{
-    const level=plain(block.props)&&block.props.level===2?'h2':'h1';
+    const level=plain(block.props)&&[1,2,3].includes(Number(block.props.level))?'h'+block.props.level:'h1';
     return '<'+level+'>'+content+'</'+level+'>'+children;
    }
    case 'paragraph':return '<p>'+content+'</p>'+children;
