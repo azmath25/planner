@@ -128,7 +128,7 @@ export function BlockDocumentEditor({
        'No document with that title. Search by typing / followed by the page name.');
       return;
      }
-     insertPageLink(matches[0]);
+     insertPageLink(matches[0]!);
     }
    },
    {
